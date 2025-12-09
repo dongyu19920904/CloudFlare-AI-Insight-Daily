@@ -546,6 +546,8 @@ export async function callChatAPI(env, promptText, systemPromptText = null) {
     const platform = env.USE_MODEL_PLATFORM;
     if (platform.startsWith("OPEN")) {
         return callOpenAIChatAPI(env, promptText, systemPromptText);
+    } else if (platform.startsWith("ANTHROPIC")) {
+        return callAnthropicChatAPI(env, promptText, systemPromptText);
     } else { // Default to Gemini
         return callGeminiChatAPI(env, promptText, systemPromptText);
     }
@@ -565,6 +567,8 @@ export async function* callChatAPIStream(env, promptText, systemPromptText = nul
     const platform = env.USE_MODEL_PLATFORM;
     if (platform.startsWith("OPEN")) {
         yield* callOpenAIChatAPIStream(env, promptText, systemPromptText);
+    } else if (platform.startsWith("ANTHROPIC")) {
+        yield* callAnthropicChatAPIStream(env, promptText, systemPromptText);
     } else { // Default to Gemini
         yield* callGeminiChatAPIStream(env, promptText, systemPromptText);
     }
