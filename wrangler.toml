@@ -1,5 +1,5 @@
 # wrangler.toml
-name = "ai-daily"
+name = 'cloudflare-ai-lnsight-daily'
 main = "src/index.js" # <-- Important: path to your main worker script
 compatibility_date = "2025-05-20" # Or your project's compatibility date
 workers_dev = true
