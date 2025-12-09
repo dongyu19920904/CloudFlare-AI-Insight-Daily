@@ -294,9 +294,22 @@ export async function handleGenAIContent(request, env) {
             const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(摘要)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall3_System, fullPromptForCall3_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
+        // 今日摘要板块
         dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
 
+        // 快速导航（新增）
+        dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n';
+        dailySummaryMarkdownContent += '- [💬 互动区](#互动区) - 来聊聊你的看法\n\n';
+
+        // 今日 AI 资讯（原有内容）
         dailySummaryMarkdownContent += `\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
+        
+        // 互动模块（新增）
+        dailySummaryMarkdownContent += '\n\n---\n\n';
+        dailySummaryMarkdownContent += '## 💬 互动区\n\n';
+        dailySummaryMarkdownContent += '> 今天的内容里，你最感兴趣的是哪个？欢迎在评论区聊聊！\n\n';
+        
         if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
 
