@@ -297,20 +297,12 @@ export async function handleGenAIContent(request, env) {
         // 今日摘要板块
         dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
 
-        // 快速导航（新增）
+        // 快速导航
         dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
-        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n';
-        dailySummaryMarkdownContent += '- [📌 今日话题](#今日话题) - 一起来讨论\n\n';
+        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
 
-        // 今日 AI 资讯（原有内容）
+        // 今日 AI 资讯（包含 AI 生成的推广和 FAQ）
         dailySummaryMarkdownContent += `\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
-        
-        // 今日话题模块（新增）
-        dailySummaryMarkdownContent += '\n\n---\n\n';
-        dailySummaryMarkdownContent += '## 📌 今日话题\n\n';
-        dailySummaryMarkdownContent += '**AI 算力荒来了，你怎么看？**\n\n';
-        dailySummaryMarkdownContent += '电力缺口、成本上涨、基建落后...这会不会成为 AI 发展的"天花板"？\n\n';
-        dailySummaryMarkdownContent += '💭 在 [Twitter](https://twitter.com) / [知乎](https://zhihu.com) 分享你的观点，带上 `#AI日报` 话题标签！\n\n';
         
         if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
