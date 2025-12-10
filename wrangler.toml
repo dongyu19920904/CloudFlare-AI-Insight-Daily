@@ -50,4 +50,4 @@ INSERT_AD = "false"
 INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://dongyu19920904.github.io/Hextra-AI-Insight-Daily/)</h3>"
 
 [triggers]
-crons = ["0 0 * * *"]
+crons = ["0 0 * * *", "0 1 * * 5"]

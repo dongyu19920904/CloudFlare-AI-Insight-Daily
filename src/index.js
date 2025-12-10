@@ -10,10 +10,20 @@ import { handleWriteRssData } from './handlers/writeRssData.js';
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { handleScheduled } from './handlers/scheduled.js';
+import { handleScheduledWeeklyBlog } from './handlers/scheduledWeeklyBlog.js';
 
 export default {
     async scheduled(event, env, ctx) {
-        await handleScheduled(event, env, ctx);
+        const cron = event.cron;
+        console.log(`[Scheduled] Cron triggered: ${cron}`);
+        
+        if (cron === '0 1 * * 5') {
+            // 每周五 UTC 01:00 (北京时间周五早上9点) 生成周报博客
+            await handleScheduledWeeklyBlog(event, env, ctx);
+        } else {
+            // 每日任务 (默认)
+            await handleScheduled(event, env, ctx);
+        }
     },
     async fetch(request, env) {
         // Check essential environment variables
