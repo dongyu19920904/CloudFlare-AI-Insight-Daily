@@ -129,6 +129,144 @@
     * 默认账号密码：root/toor
 ---
 
+## 🔧 常见问题与解决方案
+
+在部署和使用过程中，您可能会遇到以下问题。这里整理了详细的解决方案供参考。
+
+### 1. GitHub Secret Scanning 阻止推送
+
+**问题描述**：将代码推送到 GitHub 时，提示 `push declined due to repository rule violations`，原因是检测到敏感信息（如 API Key、Token）。
+
+**解决方案**：将所有敏感信息从 `wrangler.toml` 移除，改用 Cloudflare Secrets 存储：
+
+```bash
+# 设置各项 Secret（按提示输入值）
+npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put LOGIN_PASSWORD
+```
+
+在 `wrangler.toml` 中只保留注释说明，不要写入实际值：
+```toml
+# GITHUB_TOKEN = 通过 wrangler secret 设置
+# ANTHROPIC_API_KEY = 通过 wrangler secret 设置
+```
+
+---
+
+### 2. 前端内容不更新
+
+**问题描述**：后台生成了新内容并保存到 GitHub，但前端网站显示的还是旧内容。
+
+**可能原因及解决方案**：
+
+#### 原因 A：Workflow 拉取了错误的仓库
+检查 `.github/workflows/build-book.yaml` 中的默认值：
+```yaml
+source_repo:
+  description: '要拉取代码的源仓库（格式：owner/repo）'
+  required: true
+  default: '你的用户名/Hextra-AI-Insight-Daily'  # 改成你自己的仓库
+source_branch:
+  description: '要拉取的源分支'
+  required: true
+  default: 'main'  # 确保分支名正确
+```
+
+#### 原因 B：GitHub Token 权限不足
+生成新的 Personal Access Token：
+1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. 点击 "Generate new token"
+3. **必须勾选**：`repo`（完整仓库权限）和 `workflow`（工作流权限）
+4. 生成后复制 Token
+5. 更新到 Cloudflare：
+```bash
+npx wrangler secret put GITHUB_TOKEN
+# 粘贴新 Token
+npx wrangler deploy
+```
+
+#### 原因 C：Workflow 未触发
+手动触发 workflow：
+1. 进入 GitHub 仓库 → Actions → "Update Content from Daily Notes"
+2. 点击 "Run workflow"
+3. 确认参数正确后运行
+
+---
+
+### 3. 保存到 GitHub 显示成功但内容未更新
+
+**问题描述**：点击"保存日报到 GitHub"显示成功弹窗，但检查 GitHub 仓库发现文件内容没变。
+
+**解决方案**：这通常是 GitHub Token 权限问题。请按照上面"原因 B"的步骤重新生成一个有 `repo` 权限的 Token。
+
+验证方法：
+```bash
+# 查看最近提交记录
+# 在 GitHub 仓库页面查看 daily/yyyy-mm-dd.md 文件的提交时间
+```
+
+---
+
+### 4. AI 生成的内容格式不符合预期
+
+**问题描述**：希望 AI 生成的内容有分类结构（如：产品更新、前沿研究、开源项目等），但实际输出只有单一列表。
+
+**解决方案**：修改 `src/prompt/summarizationPromptStepZero.js` 中的 Prompt，明确指定输出格式要求：
+
+```javascript
+// 在 Prompt 中添加分类要求
+**必须按以下分类输出（有内容的分类才输出）：**
+
+### **产品与功能更新**
+产品发布、功能更新、工具升级等
+
+### **前沿研究**
+论文、学术成果、技术突破等
+
+### **开源TOP项目**
+GitHub 热门项目、开源工具等（注明 ⭐ 星数）
+
+### **社媒分享**
+Twitter/X、微博等社交媒体热点
+```
+
+修改后重新部署：
+```bash
+npx wrangler deploy
+```
+
+---
+
+### 5. 查看已配置的 Secrets
+
+```bash
+# 列出所有已配置的 Secrets
+npx wrangler secret list
+
+# 更新某个 Secret
+npx wrangler secret put SECRET_NAME
+
+# 删除某个 Secret
+npx wrangler secret delete SECRET_NAME
+```
+
+---
+
+### 6. 部署失败或 Worker 报错
+
+**调试方法**：
+1. 检查 Cloudflare Dashboard → Workers → 你的 Worker → Logs（实时日志）
+2. 查看具体错误信息
+3. 常见问题：
+   - API Key 无效或过期
+   - 环境变量名称拼写错误
+   - KV Namespace 未正确绑定
+
+---
+
 ## 📚 更多文档
 
 *   **🛠️ [技术架构与部署指南](docs/DEPLOYMENT.md)**：深入了解项目的工作原理和详细的部署步骤。
