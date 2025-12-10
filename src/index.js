@@ -9,8 +9,12 @@ import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData } from './handlers/writeRssData.js'; 
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
+import { handleScheduled } from './handlers/scheduled.js';
 
 export default {
+    async scheduled(event, env, ctx) {
+        await handleScheduled(event, env, ctx);
+    },
     async fetch(request, env) {
         // Check essential environment variables
         const requiredEnvVars = [

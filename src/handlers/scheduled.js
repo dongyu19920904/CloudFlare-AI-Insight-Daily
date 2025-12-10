@@ -1,0 +1,109 @@
+import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml } from '../helpers.js';
+import { fetchAllData, dataSources } from '../dataFetchers.js';
+import { storeInKV } from '../kv.js';
+import { callChatAPIStream } from '../chatapi.js';
+import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero";
+import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
+import { insertFoot } from '../foot.js';
+import { insertAd } from '../ad.js';
+import { createOrUpdateGitHubFile, getGitHubFileSha } from '../github.js';
+
+export async function handleScheduled(event, env, ctx) {
+    const dateStr = getISODate();
+    console.log(`[Scheduled] Starting daily automation for ${dateStr}`);
+
+    try {
+        // 1. Fetch Data
+        console.log(`[Scheduled] Fetching data...`);
+        const allUnifiedData = await fetchAllData(env);
+        const fetchPromises = [];
+        for (const sourceType in dataSources) {
+            if (Object.hasOwnProperty.call(dataSources, sourceType)) {
+                fetchPromises.push(storeInKV(env.DATA_KV, `${dateStr}-${sourceType}`, allUnifiedData[sourceType] || []));
+            }
+        }
+        await Promise.all(fetchPromises);
+        console.log(`[Scheduled] Data fetched and stored.`);
+
+        // 2. Prepare Content Items
+        const selectedContentItems = [];
+        for (const sourceType in allUnifiedData) {
+            const items = allUnifiedData[sourceType];
+            if (items && items.length > 0) {
+                for (const item of items) {
+                    let itemText = "";
+                    switch (item.type) {
+                        case 'news':
+                            itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${stripHtml(item.details.content_html)}`;
+                            break;
+                        case 'project':
+                            itemText = `Project Name: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nDescription: ${item.description}\nStars: ${item.details.totalStars}`;
+                            break;
+                        case 'paper':
+                            itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${stripHtml(item.details.content_html)}`;
+                            break;
+                        case 'socialMedia':
+                            itemText = `socialMedia Post by ${item.authors}：Published: ${item.published_date}\nUrl: ${item.url}\nContent: ${stripHtml(item.details.content_html)}`;
+                            break;
+                        default:
+                            itemText = `Type: ${item.type}\nTitle: ${item.title || 'N/A'}\nDescription: ${item.description || 'N/A'}\nURL: ${item.url || 'N/A'}`;
+                            if (item.published_date) itemText += `\nPublished: ${item.published_date}`;
+                            if (item.source) itemText += `\nSource: ${item.source}`;
+                            if (item.details && item.details.content_html) itemText += `\nContent: ${stripHtml(item.details.content_html)}`;
+                            break;
+                    }
+                    if (itemText) selectedContentItems.push(itemText);
+                }
+            }
+        }
+
+        if (selectedContentItems.length === 0) {
+            console.log(`[Scheduled] No items found. Skipping generation.`);
+            return;
+        }
+
+        // 3. Generate Content (Call 2)
+        console.log(`[Scheduled] Generating content...`);
+        let fullPromptForCall2_System = getSystemPromptSummarizationStepOne();
+        let fullPromptForCall2_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n';
+        
+        let outputOfCall2 = "";
+        for await (const chunk of callChatAPIStream(env, fullPromptForCall2_User, fullPromptForCall2_System)) {
+            outputOfCall2 += chunk;
+        }
+        outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
+
+        // 4. Generate Summary (Call 3)
+        console.log(`[Scheduled] Generating summary...`);
+        let fullPromptForCall3_System = getSystemPromptSummarizationStepThree();
+        let fullPromptForCall3_User = outputOfCall2;
+        
+        let outputOfCall3 = "";
+        for await (const chunk of callChatAPIStream(env, fullPromptForCall3_User, fullPromptForCall3_System)) {
+            outputOfCall3 += chunk;
+        }
+        outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
+
+        // 5. Assemble Markdown
+        let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
+        dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
+        dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
+        dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
+        dailySummaryMarkdownContent += `\n\n${outputOfCall2}`;
+        
+        if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
+        if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
+
+        // 6. Commit to GitHub
+        console.log(`[Scheduled] Committing to GitHub...`);
+        const filePath = `daily/${dateStr}.md`;
+        const existingSha = await getGitHubFileSha(env, filePath);
+        const commitMessage = `${existingSha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, filePath, dailySummaryMarkdownContent, commitMessage, existingSha);
+        console.log(`[Scheduled] Success!`);
+
+    } catch (error) {
+        console.error(`[Scheduled] Error:`, error);
+    }
+}
