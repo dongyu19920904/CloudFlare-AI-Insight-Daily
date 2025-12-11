@@ -24,6 +24,18 @@ export function getSystemPromptSummarizationStepOne() {
 ### **产品与功能更新**
 产品发布、功能更新、工具升级等
 
+---
+⚡ **【中插小贴士】** 在输出完"产品与功能更新"板块后，**必须插入一句话的中插广告**：
+
+**格式（每次措辞要变化）：**
+> 💡 想第一时间体验这些新功能？去 [爱窝啦](https://aivora.cn?utm_source=daily_news&utm_medium=mid_ad) 领号，5 分钟搞定！
+
+其他变体示例：
+- "🔥 心动了？[爱窝啦](https://aivora.cn?utm_source=daily_news&utm_medium=mid_ad) 有现成账号，不用折腾注册！"
+- "✨ 这些工具国内也能用！[爱窝啦](https://aivora.cn?utm_source=daily_news&utm_medium=mid_ad) 帮你搞定账号问题~"
+
+---
+
 ### **前沿研究**
 论文、学术成果、技术突破等
 
@@ -92,7 +104,7 @@ Twitter/X、微博等社交媒体热点
 ---
 💡 **宝子们，想玩这些 AI 神器又搞不定账号？**
 
-看完今天的资讯是不是心痒痒？但是注册账号、搞国外支付真的太劝退了😭。听我一句劝，直接去 [爱窝啦 · AI 账号店](https://aivora.cn) 看看！他们家是专门做这个的，ChatGPT、Claude、Cursor 都有，直接用人民币就能买，还有中文客服小姐姐，简直是懒人福音！真香预警！😋
+看完今天的资讯是不是心痒痒？但是注册账号、搞国外支付真的太劝退了😭。听我一句劝，直接去 [爱窝啦 · AI 账号店](https://aivora.cn?utm_source=daily_news&utm_medium=bottom_ad&utm_campaign=soft_promo) 看看！他们家是专门做这个的，ChatGPT、Claude、Cursor 都有，直接用人民币就能买，还有中文客服小姐姐，简直是懒人福音！真香预警！😋
 
 ---
 
@@ -100,7 +112,7 @@ Twitter/X、微博等社交媒体热点
 ---
 🛒 **别再为账号发愁了，头发要紧！**
 
-今天聊的这些 AI 工具虽然强，但对国内用户来说门槛真的高（懂的都懂）。如果你想快速上手，不想折腾梯子和信用卡，不妨试试 [爱窝啦 Aivora](https://aivora.cn)。ChatGPT、Claude、Cursor 账号都有，直接买直接用，售后也超稳。把时间花在研究 AI 上，别浪费在注册账号上啦！冲鸭！🦆
+今天聊的这些 AI 工具虽然强，但对国内用户来说门槛真的高（懂的都懂）。如果你想快速上手，不想折腾梯子和信用卡，不妨试试 [爱窝啦 Aivora](https://aivora.cn?utm_source=daily_news&utm_medium=bottom_ad&utm_campaign=soft_promo)。ChatGPT、Claude、Cursor 账号都有，直接买直接用，售后也超稳。把时间花在研究 AI 上，别浪费在注册账号上啦！冲鸭！🦆
 
 ---
 
@@ -117,11 +129,11 @@ Twitter/X、微博等社交媒体热点
 
 **Q：家人们，国内怎么用 ChatGPT / Claude / Cursor 最方便？**
 
-A：最省心的办法就是找靠谱的发卡站，比如 [爱窝啦 · AI 账号店](https://aivora.cn)。直接支付宝/微信就能买，不用自己折腾魔法和外币卡，对学生党和打工人超友好！ChatGPT Plus、Claude Pro、Cursor Pro 都有，主打一个方便快捷！
+A：最省心的办法就是找靠谱的发卡站，比如 [爱窝啦 · AI 账号店](https://aivora.cn?utm_source=daily_news&utm_medium=faq&utm_campaign=q1)。直接支付宝/微信就能买，不用自己折腾魔法和外币卡，对学生党和打工人超友好！ChatGPT Plus、Claude Pro、Cursor Pro 都有，主打一个方便快捷！
 
 **Q：这种发卡站买的账号稳吗？**
 
-A：找 [爱窝啦](https://aivora.cn) 这种老牌子一般都没问题，有售后保障，翻车了能找客服。不过记得拿到号先改密码，保护好自己的隐私哦！
+A：找 [爱窝啦](https://aivora.cn?utm_source=daily_news&utm_medium=faq&utm_campaign=q2) 这种老牌子一般都没问题，有售后保障，翻车了能找客服。不过记得拿到号先改密码，保护好自己的隐私哦！
 
 👇 **评论区见！告诉我你今天最想冲哪个 AI 神器？**
 \`\`\`
