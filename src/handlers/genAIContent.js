@@ -10,7 +10,7 @@ import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPr
 import { getSystemPromptPodcastFormatting, getSystemPromptShortPodcastFormatting } from '../prompt/podcastFormattingPrompt.js';
 import { getSystemPromptDailyAnalysis } from '../prompt/dailyAnalysisPrompt.js'; // Import new prompt
 import { insertFoot } from '../foot.js';
-import { insertAd } from '../ad.js';
+import { insertAd, insertMidAd } from '../ad.js';
 import { getDailyReportContent } from '../github.js'; // 导入 getDailyReportContent
 
 export async function handleGenAIPodcastScript(request, env) {
@@ -273,6 +273,8 @@ export async function handleGenAIContent(request, env) {
         if (fullPromptForCall2_System) promptsMarkdownContent += `### System Instruction\n\`\`\`\n${fullPromptForCall2_System}\n\`\`\`\n\n`;
         if (fullPromptForCall2_User) promptsMarkdownContent += `### User Input (Output of Call 1)\n\`\`\`\n${fullPromptForCall2_User}\n\`\`\`\n\n`;
 
+        const contentWithMidAd = insertMidAd(outputOfCall2);
+
         let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
         dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
 
@@ -302,7 +304,7 @@ export async function handleGenAIContent(request, env) {
         dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
 
         // 今日 AI 资讯（包含 AI 生成的推广和 FAQ）
-        dailySummaryMarkdownContent += `\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
+        dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
         
         if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;

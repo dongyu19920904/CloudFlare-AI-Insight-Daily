@@ -5,7 +5,7 @@ import { callChatAPIStream } from '../chatapi.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
 import { insertFoot } from '../foot.js';
-import { insertAd } from '../ad.js';
+import { insertAd, insertMidAd } from '../ad.js';
 import { createOrUpdateGitHubFile, getGitHubFileSha } from '../github.js';
 
 export async function handleScheduled(event, env, ctx) {
@@ -85,12 +85,13 @@ export async function handleScheduled(event, env, ctx) {
         outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
 
         // 5. Assemble Markdown
+        const contentWithMidAd = insertMidAd(outputOfCall2);
         let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
         dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
         dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
         dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
         dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
-        dailySummaryMarkdownContent += `\n\n${outputOfCall2}`;
+        dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
         
         if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;

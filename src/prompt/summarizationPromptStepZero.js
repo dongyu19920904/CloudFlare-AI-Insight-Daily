@@ -7,6 +7,7 @@ export function getSystemPromptSummarizationStepOne() {
 1. 所有内容必须来自原文，不能瞎编！
 2. **必须保留原文中的图片链接！** 格式：\`![AI资讯：图片描述](原始图片URL)\`
 3. **必须保留原文 URL 并转为超链接！** 格式：\`[来源:(AI资讯)](原始URL)\` 或 \`[关键词(AI资讯)](原始URL)\`
+4. **所有推广链接必须带 UTM 追踪参数**：\`utm_source=daily_news\`，\`utm_medium\` 按位置区分（mid_ad / bottom_ad / faq），\`utm_campaign\` 写 \`content\`。
 
 **语言风格（必须严格遵守）：**
 - **极度网感**：使用小红书/抖音/B站流行语（如：家人们、绝绝子、泰酷辣、杀疯了、汗流浃背、含金量谁懂啊、尊嘟假嘟、冲鸭）。
