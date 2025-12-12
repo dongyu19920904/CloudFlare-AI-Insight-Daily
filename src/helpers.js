@@ -193,17 +193,21 @@ export function getShanghaiTime() {
  * @returns {boolean} True if the date is within the last 'days', false otherwise.
  */
 export function isDateWithinLastDays(dateString, days) {
-    // Convert both dates to Shanghai time for consistent comparison
-    const itemDate = convertToShanghaiTime(dateString);
-    const today = new Date(fetchDate);
+    if (!dateString || !days) return false;
 
-    // Normalize today to the start of its day in Shanghai time
-    today.setHours(0, 0, 0, 0);
+    const itemTime = new Date(dateString).getTime();
+    if (Number.isNaN(itemTime)) return false;
 
-    const diffTime = today.getTime() - itemDate.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // Use fetchDate (YYYY-MM-DD) as the reference "today" in Asia/Shanghai.
+    const refDateStr = fetchDate || getISODate();
+    const shanghaiStart = new Date(`${refDateStr}T00:00:00+08:00`);
+    if (Number.isNaN(shanghaiStart.getTime())) return false;
 
-    return diffDays >= 0 && diffDays < days;
+    const windowStartMs =
+        shanghaiStart.getTime() - (Math.max(days, 1) - 1) * 24 * 60 * 60 * 1000;
+    const windowEndMs = shanghaiStart.getTime() + 24 * 60 * 60 * 1000;
+
+    return itemTime >= windowStartMs && itemTime < windowEndMs;
 }
 
 /**
