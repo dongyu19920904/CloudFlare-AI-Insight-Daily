@@ -4,10 +4,12 @@ import { fetchAllData, fetchDataByCategory, dataSources } from '../dataFetchers.
 import { storeInKV } from '../kv.js';
 
 export async function handleWriteData(request, env) {
+    // Always anchor to当天日期（上海时区），避免出现 1970-01-01 之类的错误值。
+    // 如需指定其他日期，可后续再扩展请求体参数。
     const dateParam = getFetchDate();
-    const dateStr = dateParam ? dateParam : getISODate();
-    // Ensure date filtering uses the same date we're writing under,
-    // even if the worker instance is warm from a previous day.
+    const todayStr = getISODate();
+    const dateStr =
+        (dateParam && dateParam !== '1970-01-01') ? dateParam : todayStr;
     setFetchDate(dateStr);
     console.log(`Starting /writeData process for date: ${dateStr}`);
     let category = null;
