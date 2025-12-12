@@ -113,6 +113,24 @@ export function stripHtml(html) {
 }
 
 /**
+ * 将 stripHtml 产生的媒体占位符转换为 Markdown 图片。
+ * 形如：
+ *  - [图片: https://xx/1.png]
+ *  - [图片: 描述 https://xx/1.png]
+ */
+export function convertPlaceholdersToMarkdownImages(text) {
+    if (!text) return '';
+    const str = String(text);
+    return str.replace(/\[图片:\s*([^\]]+?)\]/g, (match, inner) => {
+        const parts = inner.trim().split(/\s+/);
+        const url = parts[parts.length - 1];
+        if (!/^https?:\/\//i.test(url)) return match;
+        const alt = parts.slice(0, -1).join(' ') || 'AI资讯图片';
+        return `![${alt}](${url})`;
+    });
+}
+
+/**
  * Checks if a given date string is within the last specified number of days (inclusive of today).
  * @param {string} dateString - The date string to check (YYYY-MM-DD).
  * @param {number} days - The number of days to look back (e.g., 3 for today and the past 2 days).

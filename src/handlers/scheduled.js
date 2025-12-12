@@ -1,6 +1,6 @@
-import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml } from '../helpers.js';
+import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
-import { storeInKV } from '../kv.js';
+import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPIStream } from '../chatapi.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
@@ -10,12 +10,25 @@ import { createOrUpdateGitHubFile, getGitHubFileSha } from '../github.js';
 
 export async function handleScheduled(event, env, ctx) {
     const dateStr = getISODate();
+    setFetchDate(dateStr);
     console.log(`[Scheduled] Starting daily automation for ${dateStr}`);
 
     try {
         // 1. Fetch Data
         console.log(`[Scheduled] Fetching data...`);
-        const allUnifiedData = await fetchAllData(env);
+        // 定时任务无法从浏览器 localStorage 获取 Cookie，这里优先使用环境变量 FOLO_COOKIE，
+        // 如果未设置则尝试从 KV(FOLO_COOKIE_KV_KEY) 读取。
+        let foloCookie = env.FOLO_COOKIE;
+        if (!foloCookie && env.FOLO_COOKIE_KV_KEY) {
+            try {
+                foloCookie = await getFromKV(env.DATA_KV, env.FOLO_COOKIE_KV_KEY);
+                if (foloCookie) console.log(`[Scheduled] Loaded Folo cookie from KV (${env.FOLO_COOKIE_KV_KEY}).`);
+            } catch (err) {
+                console.warn(`[Scheduled] Failed to load Folo cookie from KV: ${err.message}`);
+            }
+        }
+
+        const allUnifiedData = await fetchAllData(env, foloCookie);
         const fetchPromises = [];
         for (const sourceType in dataSources) {
             if (Object.hasOwnProperty.call(dataSources, sourceType)) {
@@ -72,6 +85,7 @@ export async function handleScheduled(event, env, ctx) {
             outputOfCall2 += chunk;
         }
         outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
+        outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
 
         // 4. Generate Summary (Call 3)
         console.log(`[Scheduled] Generating summary...`);

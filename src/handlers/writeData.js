@@ -1,11 +1,14 @@
 // src/handlers/writeData.js
-import { getISODate, getFetchDate } from '../helpers.js';
+import { getISODate, getFetchDate, setFetchDate } from '../helpers.js';
 import { fetchAllData, fetchDataByCategory, dataSources } from '../dataFetchers.js'; // 导入 fetchDataByCategory 和 dataSources
 import { storeInKV } from '../kv.js';
 
 export async function handleWriteData(request, env) {
     const dateParam = getFetchDate();
     const dateStr = dateParam ? dateParam : getISODate();
+    // Ensure date filtering uses the same date we're writing under,
+    // even if the worker instance is warm from a previous day.
+    setFetchDate(dateStr);
     console.log(`Starting /writeData process for date: ${dateStr}`);
     let category = null;
     let foloCookie = null;
@@ -16,6 +19,16 @@ export async function handleWriteData(request, env) {
             const requestBody = await request.json();
             category = requestBody.category;
             foloCookie = requestBody.foloCookie; // 获取 foloCookie
+        }
+
+        // 如果前端提供了 Folo Cookie，则持久化到 KV，供定时任务自动抓取使用
+        if (foloCookie && env.FOLO_COOKIE_KV_KEY) {
+            try {
+                await storeInKV(env.DATA_KV, env.FOLO_COOKIE_KV_KEY, foloCookie, 86400 * 30); // 30 天
+                console.log(`Saved Folo cookie to KV with key: ${env.FOLO_COOKIE_KV_KEY}`);
+            } catch (err) {
+                console.warn(`Failed to save Folo cookie to KV: ${err.message}`);
+            }
         }
 
         console.log(`Starting /writeData process for category: ${category || 'all'} with foloCookie presence: ${!!foloCookie}`);

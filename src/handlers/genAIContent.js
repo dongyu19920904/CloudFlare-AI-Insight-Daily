@@ -1,5 +1,5 @@
 // src/handlers/genAIContent.js
-import { getISODate, escapeHtml, stripHtml, removeMarkdownCodeBlock, formatDateToChinese, convertEnglishQuotesToChinese} from '../helpers.js';
+import { getISODate, escapeHtml, stripHtml, removeMarkdownCodeBlock, formatDateToChinese, convertEnglishQuotesToChinese, convertPlaceholdersToMarkdownImages} from '../helpers.js';
 import { getFromKV } from '../kv.js';
 import { callChatAPIStream } from '../chatapi.js';
 import { generateGenAiPageHtml } from '../htmlGenerators.js';
@@ -258,6 +258,7 @@ export async function handleGenAIContent(request, env) {
             outputOfCall2 = processedChunks.join('');
             if (!outputOfCall2 || outputOfCall2.trim() === "") throw new Error("Chat processing call returned empty content.");
             outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2); // Clean the output
+            outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
             console.log("Call 2 (Processing Call 1 Output) successful. Output length:", outputOfCall2.length);
         } catch (error) {
             console.error("Error in Chat API Call 2 (Processing Call 1 Output):", error);

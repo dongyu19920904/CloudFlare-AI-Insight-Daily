@@ -1,16 +1,24 @@
 // src/dataFetchers.js
 import NewsAggregatorDataSource from './dataSources/newsAggregator.js';
+import FoloMultiFeedsDataSource from './dataSources/folo-multi-feeds.js';
+import AibaseDataSource from './dataSources/aibase.js';
+import JiqizhixinDataSource from './dataSources/jiqizhixin.js';
+import QbitDataSource from './dataSources/qbit.js';
+import XinzhiyuanDataSource from './dataSources/xinzhiyuan.js';
+import XiaohuDataSource from './dataSources/xiaohu.js';
 import GithubTrendingDataSource from './dataSources/github-trending.js';
 import PapersDataSource from './dataSources/papers.js';
+import HuggingfacePapersDataSource from './dataSources/huggingface-papers.js';
 import TwitterDataSource from './dataSources/twitter.js';
 import RedditDataSource from './dataSources/reddit.js';
 
 
 // Register data sources as arrays to support multiple sources per type
 export const dataSources = {
-    news: { name: '新闻', sources: [NewsAggregatorDataSource] },
+    // news 下支持多个可选 Folo feed/list 源：只要在环境变量中配置对应 *_FEED_ID 或 LIST_ID 即可自动生效
+    news: { name: '新闻', sources: [NewsAggregatorDataSource, FoloMultiFeedsDataSource, AibaseDataSource, JiqizhixinDataSource, QbitDataSource, XinzhiyuanDataSource, XiaohuDataSource] },
     project: { name: '项目', sources: [GithubTrendingDataSource] },
-    paper: { name: '论文', sources: [PapersDataSource] },
+    paper: { name: '论文', sources: [PapersDataSource, HuggingfacePapersDataSource] },
     socialMedia: { name: '社交平台', sources: [TwitterDataSource, RedditDataSource] },
     // Add new data sources here as arrays, e.g.,
     // newType: { name: '新类型', sources: [NewTypeDataSource1, NewTypeDataSource2] },
@@ -49,6 +57,14 @@ export async function fetchAndTransformDataForType(sourceType, env, foloCookie) 
         const dateB = new Date(b.published_date);
         return dateB.getTime() - dateA.getTime();
     });
+
+    // Cap items per type to keep prompts within model limits, configurable via env
+    const typeCapKey = `MAX_ITEMS_${sourceType.toUpperCase()}`;
+    const maxItems = parseInt(env[typeCapKey] || env.MAX_ITEMS_PER_TYPE || '30', 10);
+    if (Number.isFinite(maxItems) && maxItems > 0 && allUnifiedDataForType.length > maxItems) {
+        console.log(`Capping ${sourceType} items from ${allUnifiedDataForType.length} to ${maxItems}.`);
+        allUnifiedDataForType = allUnifiedDataForType.slice(0, maxItems);
+    }
 
     return allUnifiedDataForType;
 }
