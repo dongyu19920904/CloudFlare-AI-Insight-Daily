@@ -35,7 +35,7 @@ REDDIT_FETCH_PAGES = "2"
 PROJECTS_API_URL = "https://git-trending.justlikemaki.vip/topone/?since=daily"
 
 # 抓取量上限（防止 prompt 过长）。可按需调大/调小
-MAX_ITEMS_PER_TYPE = "30"
+MAX_ITEMS_PER_TYPE = "50"
 
 # 无法创建 Folo 列表时，可直接配置多个信息源 ID（逗号/空格分隔）
 # 这些 ID 对应 timeline/articles/<ID> 的数字，一般是 feedId。
