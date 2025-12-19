@@ -136,6 +136,15 @@
 
 ---
 
+## 🧭 优化修改方案（执行清单）
+
+- **数据源与时效**：在 `wrangler.toml` 维护 `FOLO_NEWS_IDS`（去重追加），按需调整 `FOLO_NEWS_FETCH_PAGES` 与 `FOLO_FILTER_DAYS`；其他来源对应 `HGPAPERS_FETCH_PAGES`、`TWITTER_FETCH_PAGES`、`REDDIT_FETCH_PAGES`。
+- **输入上限控制**：用 `MAX_ITEMS_PER_TYPE` 控制每类输入上限，避免热点被截断或素材过少。
+- **日报成品化**：提示词仅在 TOP10 允许图片，分类速览/索引禁图；移除“无图/未入 TOP10/覆盖检查”等面向内部的字样。
+- **网感风格一致**：日报正文采用 90/00 中文互联网语境（第一人称、情绪价值），但全量索引保持中性可检索。
+- **模型与中转切换**：通过 `USE_MODEL_PLATFORM` 切换；Gemini 使用 `GEMINI_API_URL`/`DEFAULT_GEMINI_MODEL`/`GEMINI_STREAM_MODE`/`GEMINI_API_VERSION`，密钥走 `wrangler secret`。
+- **部署与排错**：每次改动后重新部署（`npx wrangler deploy` 或控制台），在 `Observability → Logs` 查看抓取与生成日志，确认构建状态为 Success。
+
 ## ❓为什么生成日报需要手动勾选内容，而不是让 AI 自动筛选
 
 我坚信，AI 是增强人类智慧的强大**工具**，而非**替代品**。
