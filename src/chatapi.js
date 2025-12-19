@@ -1,6 +1,6 @@
 // src/chatapi.js
 
-const GEMINI_API_VERSIONS = ["v1beta", "v1"];
+const GEMINI_API_VERSIONS = ["v1beta", "v1", ""];
 
 function normalizeBaseUrl(url) {
     return String(url || "").replace(/\/+$/, "");
@@ -12,6 +12,34 @@ function getGeminiApiKey(env) {
 
 function getGeminiModelName(env) {
     return env.DEFAULT_GEMINI_MODEL || env.GEMINI_MODEL;
+}
+
+function getGeminiApiVersionCandidates(env, baseUrl) {
+    const configured = String(env.GEMINI_API_VERSION ?? "auto").trim().toLowerCase();
+    const base = normalizeBaseUrl(baseUrl);
+    const baseHasVersion = /\/v1beta$|\/v1$/i.test(base);
+    if (baseHasVersion) {
+        return [""];
+    }
+
+    if (configured === "" || configured === "auto" || configured === "default") {
+        return GEMINI_API_VERSIONS;
+    }
+    if (configured === "v1beta" || configured === "v1") {
+        return [configured];
+    }
+    if (
+        configured === "noversion" ||
+        configured === "no-version" ||
+        configured === "no_version" ||
+        configured === "none" ||
+        configured === "off" ||
+        configured === "0"
+    ) {
+        return [""];
+    }
+
+    return GEMINI_API_VERSIONS;
 }
 
 function getGeminiStreamMode(env) {
@@ -48,7 +76,8 @@ function buildGeminiHeaders(apiKey, useHeaderAuth) {
 
 function buildGeminiUrl(baseUrl, apiVersion, modelName, method, apiKey, useQueryKey, extraQuery = "") {
     const base = normalizeBaseUrl(baseUrl);
-    const path = `${base}/${apiVersion}/models/${modelName}:${method}`;
+    const versionSegment = apiVersion ? `/${apiVersion}` : "";
+    const path = `${base}${versionSegment}/models/${modelName}:${method}`;
     const queryParts = [];
     if (useQueryKey && apiKey) queryParts.push(`key=${encodeURIComponent(apiKey)}`);
     if (extraQuery) queryParts.push(extraQuery.replace(/^[?&]/, ""));
@@ -124,7 +153,7 @@ async function callGeminiChatAPI(env, promptText, systemPromptText = null) {
     let lastCompatibilityError = null;
 
     try {
-        for (const apiVersion of GEMINI_API_VERSIONS) {
+        for (const apiVersion of getGeminiApiVersionCandidates(env, baseUrl)) {
             authLoop: for (const auth of authModes) {
                 while (true) {
                     const effectivePromptText = useSystemInstruction ? promptText : (hasSystem ? `${systemPromptText}\n\n${promptText}` : promptText);
@@ -240,7 +269,7 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
     let hasYieldedContent = false;
     try {
         requestLoop:
-        for (const apiVersion of GEMINI_API_VERSIONS) {
+        for (const apiVersion of getGeminiApiVersionCandidates(env, baseUrl)) {
             authLoop:
             for (const auth of authModes) {
                 for (const streamQuery of streamQueryVariants) {
