@@ -25,6 +25,8 @@ DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
 GEMINI_STREAM_MODE = "auto"
 # Gemini API version: auto | v1beta | v1 | noversion
 GEMINI_API_VERSION = "auto"
+# Gemini 调试日志：true/false（仅输出URL与响应摘要，不包含key或正文）
+GEMINI_DEBUG = "false"
 FOLO_COOKIE_KV_KEY = "folo_auth_cookie" 
 FOLO_DATA_API = "https://api.follow.is/entries"
 FOLO_FILTER_DAYS = 1

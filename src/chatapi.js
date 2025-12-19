@@ -42,6 +42,77 @@ function getGeminiApiVersionCandidates(env, baseUrl) {
     return GEMINI_API_VERSIONS;
 }
 
+function isGeminiDebug(env) {
+    const value = String(env.GEMINI_DEBUG ?? "").trim().toLowerCase();
+    return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function redactGeminiUrl(url) {
+    return String(url || "").replace(/([?&]key=)[^&]+/gi, "$1***");
+}
+
+function logGeminiDebug(env, message, meta) {
+    if (!isGeminiDebug(env)) return;
+    if (meta) {
+        console.log(message, meta);
+        return;
+    }
+    console.log(message);
+}
+
+function isInvalidArgumentError(status, message) {
+    if (status !== 400) return false;
+    const text = String(message || "").toLowerCase();
+    return text.includes("invalid argument") || text.includes("invalid_argument");
+}
+
+function formatGeminiVariant(variant) {
+    return `system=${variant.useSystemInstruction ? "on" : "off"}, merge=${variant.mergeSystem ? "on" : "off"}, role=${variant.useRole ? "on" : "off"}, gen=${variant.includeGenerationConfig ? "on" : "off"}`;
+}
+
+function getGeminiPayloadVariants(hasSystem, allowGenerationConfig) {
+    const variants = [];
+    const genOptions = allowGenerationConfig ? [true, false] : [false];
+
+    if (hasSystem) {
+        for (const includeGenerationConfig of genOptions) {
+            variants.push({ useSystemInstruction: true, mergeSystem: false, useRole: true, includeGenerationConfig });
+            variants.push({ useSystemInstruction: true, mergeSystem: false, useRole: false, includeGenerationConfig });
+            variants.push({ useSystemInstruction: false, mergeSystem: true, useRole: true, includeGenerationConfig });
+            variants.push({ useSystemInstruction: false, mergeSystem: true, useRole: false, includeGenerationConfig });
+        }
+    } else {
+        for (const includeGenerationConfig of genOptions) {
+            variants.push({ useSystemInstruction: false, mergeSystem: false, useRole: true, includeGenerationConfig });
+            variants.push({ useSystemInstruction: false, mergeSystem: false, useRole: false, includeGenerationConfig });
+        }
+    }
+
+    return variants;
+}
+
+function buildGeminiPayload(promptText, systemPromptText, variant) {
+    const hasSystem = systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '';
+    const useSystemInstruction = variant.useSystemInstruction && hasSystem;
+    const shouldMergeSystem = variant.mergeSystem && hasSystem && !useSystemInstruction;
+    const effectivePromptText = shouldMergeSystem ? `${systemPromptText}\n\n${promptText}` : promptText;
+    const parts = [{ text: effectivePromptText }];
+    const content = variant.useRole ? { role: "user", parts } : { parts };
+    const payload = { contents: [content] };
+
+    if (useSystemInstruction) {
+        payload.systemInstruction = { parts: [{ text: systemPromptText }] };
+    }
+    if (variant.includeGenerationConfig) {
+        payload.generationConfig = {
+            temperature: 1,
+            topP: 0.95
+        };
+    }
+
+    return { payload };
+}
+
 function getGeminiStreamMode(env) {
     const mode = String(env.GEMINI_STREAM_MODE ?? "auto").trim().toLowerCase();
     if (
@@ -148,69 +219,82 @@ async function callGeminiChatAPI(env, promptText, systemPromptText = null) {
     ];
 
     const hasSystem = systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '';
-    let useSystemInstruction = Boolean(hasSystem);
-    let mergedSystemOnce = false;
+    const payloadVariants = getGeminiPayloadVariants(hasSystem, false);
     let lastCompatibilityError = null;
 
     try {
+        versionLoop:
         for (const apiVersion of getGeminiApiVersionCandidates(env, baseUrl)) {
-            authLoop: for (const auth of authModes) {
-                while (true) {
-                    const effectivePromptText = useSystemInstruction ? promptText : (hasSystem ? `${systemPromptText}\n\n${promptText}` : promptText);
-                    const payload = {
-                        contents: [{
-                            parts: [{ text: effectivePromptText }]
-                        }],
-                    };
-
-                    if (useSystemInstruction && hasSystem) {
-                        payload.systemInstruction = {
-                            parts: [{ text: systemPromptText }]
-                        };
-                        console.log("System instruction included in Chat API call.");
-                    }
-
+            authLoop:
+            for (const auth of authModes) {
+                for (const variant of payloadVariants) {
+                    const { payload } = buildGeminiPayload(promptText, systemPromptText, variant);
                     const url = buildGeminiUrl(baseUrl, apiVersion, modelName, "generateContent", apiKey, auth.useQueryKey);
+                    logGeminiDebug(env, "Gemini non-stream request", { url: redactGeminiUrl(url), variant: formatGeminiVariant(variant) });
+
                     const response = await fetchWithTimeout(url, {
                         method: 'POST',
                         headers: buildGeminiHeaders(apiKey, auth.useHeaderAuth),
                         body: JSON.stringify(payload)
                     }, 180000);
 
+                    const contentType = response.headers.get('content-type') || '';
                     if (!response.ok) {
                         const errorBodyText = await response.text();
-
-                        if (useSystemInstruction && !mergedSystemOnce && shouldFallbackToMergedSystem(systemPromptText, errorBodyText)) {
-                            useSystemInstruction = false;
-                            mergedSystemOnce = true;
-                            continue; // retry same endpoint/auth with merged system prompt
-                        }
-
                         let errorData;
                         try {
                             errorData = JSON.parse(errorBodyText);
                         } catch (e) {
                             errorData = errorBodyText;
                         }
-                        console.error("Gemini Chat API Error Response Body:", typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData);
                         const message = typeof errorData === 'object' && errorData.error?.message
                             ? errorData.error.message
                             : (typeof errorData === 'string' ? errorData : 'Unknown Gemini Chat API error');
 
+                        logGeminiDebug(env, "Gemini non-stream error response", {
+                            url: redactGeminiUrl(url),
+                            status: response.status,
+                            contentType,
+                            variant: formatGeminiVariant(variant),
+                            bodyPreview: String(errorBodyText || "").slice(0, 200)
+                        });
+
                         lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): ${message}`);
 
-                        // Compatibility fallbacks
                         if (response.status === 404 || response.status === 405) {
-                            break authLoop; // try next API version
+                            continue versionLoop; // try next API version
                         }
                         if ((response.status === 401 || response.status === 403) && auth.useQueryKey) {
-                            break; // try header auth
+                            continue authLoop; // try header auth
                         }
+                        if (isInvalidArgumentError(response.status, message)) {
+                            continue; // try next payload variant
+                        }
+                        continue; // try next payload variant
+                    }
 
-                        break; // try next auth/apiVersion
+                    if (!contentType.includes('application/json')) {
+                        const bodyText = await response.text();
+                        logGeminiDebug(env, "Gemini non-stream non-JSON response", {
+                            url: redactGeminiUrl(url),
+                            status: response.status,
+                            contentType,
+                            variant: formatGeminiVariant(variant),
+                            bodyPreview: String(bodyText || "").slice(0, 200)
+                        });
+                        lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): Non-JSON response (${contentType || 'unknown'})`);
+                        continue; // try next payload variant
                     }
 
                     const data = await response.json();
+                    if (data?.error?.message) {
+                        const message = data.error.message;
+                        lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): ${message}`);
+                        if (isInvalidArgumentError(response.status, message)) {
+                            continue; // try next payload variant
+                        }
+                        continue;
+                    }
                     return extractGeminiTextFromResponse(data);
                 }
             }
@@ -261,8 +345,7 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
     const streamMode = getGeminiStreamMode(env);
 
     const hasSystem = systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '';
-    let useSystemInstruction = Boolean(hasSystem);
-    let mergedSystemOnce = false;
+    const payloadVariants = getGeminiPayloadVariants(hasSystem, true);
 
     let response = null;
     let lastCompatibilityError = null;
@@ -273,63 +356,64 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
             authLoop:
             for (const auth of authModes) {
                 for (const streamQuery of streamQueryVariants) {
-                    while (true) {
-                        const effectivePromptText = useSystemInstruction ? promptText : (hasSystem ? `${systemPromptText}\n\n${promptText}` : promptText);
-                        const payload = {
-                            contents: [{
-                                parts: [{ text: effectivePromptText }]
-                            }],
-                            generationConfig: {
-                                temperature: 1,
-                                topP: 0.95
-                            }
-                        };
-
-                        if (useSystemInstruction && hasSystem) {
-                            payload.systemInstruction = {
-                                parts: [{ text: systemPromptText }]
-                            };
-                            console.log("System instruction included in Chat API call.");
-                        }
-
+                    for (const variant of payloadVariants) {
+                        const { payload } = buildGeminiPayload(promptText, systemPromptText, variant);
                         const url = buildGeminiUrl(baseUrl, apiVersion, modelName, "streamGenerateContent", apiKey, auth.useQueryKey, streamQuery);
+                        logGeminiDebug(env, "Gemini stream request", { url: redactGeminiUrl(url), variant: formatGeminiVariant(variant) });
+
                         response = await fetchWithTimeout(url, {
                             method: 'POST',
                             headers: buildGeminiHeaders(apiKey, auth.useHeaderAuth),
                             body: JSON.stringify(payload)
                         }, 180000);
 
+                        const contentType = response.headers.get('content-type') || '';
                         if (!response.ok) {
                             const errorBodyText = await response.text();
-
-                            if (useSystemInstruction && !mergedSystemOnce && shouldFallbackToMergedSystem(systemPromptText, errorBodyText)) {
-                                useSystemInstruction = false;
-                                mergedSystemOnce = true;
-                                continue; // retry same endpoint/auth with merged system prompt
-                            }
-
                             let errorData;
                             try {
                                 errorData = JSON.parse(errorBodyText);
                             } catch (e) {
                                 errorData = errorBodyText;
                             }
-                            console.error("Gemini Chat API Error (Stream Initial) Response Body:", typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData);
                             const message = typeof errorData === 'object' && errorData.error?.message
                                 ? errorData.error.message
                                 : (typeof errorData === 'string' ? errorData : 'Unknown Gemini Chat API error');
 
+                            logGeminiDebug(env, "Gemini stream error response", {
+                                url: redactGeminiUrl(url),
+                                status: response.status,
+                                contentType,
+                                variant: formatGeminiVariant(variant),
+                                bodyPreview: String(errorBodyText || "").slice(0, 200)
+                            });
+
                             lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): ${message}`);
 
-                            // Compatibility fallbacks
                             if (response.status === 404 || response.status === 405) {
                                 continue requestLoop; // try next API version
                             }
                             if ((response.status === 401 || response.status === 403) && auth.useQueryKey) {
                                 continue authLoop; // try header auth
                             }
+                            if (isInvalidArgumentError(response.status, message)) {
+                                continue; // try next payload variant
+                            }
+                            continue; // try next payload variant
+                        }
 
-                            break; // try next streamQuery/auth/apiVersion
+                        if (contentType && !contentType.includes('application/json') && !contentType.includes('text/event-stream')) {
+                            const bodyText = await response.text();
+                            logGeminiDebug(env, "Gemini stream non-JSON response", {
+                                url: redactGeminiUrl(url),
+                                status: response.status,
+                                contentType,
+                                variant: formatGeminiVariant(variant),
+                                bodyPreview: String(bodyText || "").slice(0, 200)
+                            });
+                            lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): Non-JSON response (${contentType || 'unknown'})`);
+                            response = null;
+                            continue; // try next payload variant
                         }
 
                         break requestLoop; // got an OK response
