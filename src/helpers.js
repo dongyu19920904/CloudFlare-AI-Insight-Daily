@@ -121,10 +121,21 @@ export function stripHtml(html) {
 export function convertPlaceholdersToMarkdownImages(text) {
     if (!text) return '';
     const str = String(text);
-    return str.replace(/\[图片:\s*([^\]]+?)\]/g, (match, inner) => {
+    const isVideoUrl = (url) => /\.(mp4|mov|webm)(\?|#|$)/i.test(url);
+    const toVideoTag = (url) => `<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${url}"></video>`;
+    const withVideos = str.replace(/\[视频:\s*([^\]]+?)\]/g, (match, inner) => {
         const parts = inner.trim().split(/\s+/);
         const url = parts[parts.length - 1];
         if (!/^https?:\/\//i.test(url)) return match;
+        if (isVideoUrl(url)) return toVideoTag(url);
+        const label = parts.slice(0, -1).join(' ') || '视频';
+        return `[${label}](${url})`;
+    });
+    return withVideos.replace(/\[图片:\s*([^\]]+?)\]/g, (match, inner) => {
+        const parts = inner.trim().split(/\s+/);
+        const url = parts[parts.length - 1];
+        if (!/^https?:\/\//i.test(url)) return match;
+        if (isVideoUrl(url)) return toVideoTag(url);
         const alt = parts.slice(0, -1).join(' ') || 'AI资讯图片';
         return `![${alt}](${url})`;
     });
