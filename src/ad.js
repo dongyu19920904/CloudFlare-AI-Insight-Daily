@@ -15,7 +15,7 @@ export function insertAd() {
     `;
 }
 
-const MID_SOFT_AD = `> 💡 **提示**：想第一时间体验文中提到的 Claude 3.5 或 GPT-4o？没有账号？来 [**爱窝啦 Aivora**](https://aivora.cn?utm_source=daily_news&utm_medium=mid_ad&utm_campaign=content) 领个号，一分钟上手，售后无忧。`;
+const MID_SOFT_AD = `> 💡 **提示**：想第一时间体验文中提到的最新 AI 模型（Claude、GPT、Gemini）？没有账号？来 [**爱窝啦 Aivora**](https://aivora.cn?utm_source=daily_news&utm_medium=mid_ad&utm_campaign=content) 领个号，一分钟上手，售后无忧。`;
 
 /**
  * 将中插软广注入到 AI 生成的 Markdown 中：
