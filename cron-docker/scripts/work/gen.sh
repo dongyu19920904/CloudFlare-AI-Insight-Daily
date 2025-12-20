@@ -127,6 +127,30 @@ echo "$files_paths" | while read -r file_path_from_list; do
   echo "- [$link_text]($link_path)" >> "$OUTPUT_FILE"
 done
 
+# --- Weekly Blog Section ---
+# 假设 blog 目录与 daily 目录同级
+BLOG_DIR="${PARENT_OF_TARGET_DIR}/blog"
+
+if [ -d "$BLOG_DIR" ]; then
+    # 查找 blog 文件 (YYYY-week-XX.md)
+    blog_files=$(find "$BLOG_DIR" -maxdepth 1 -type f -name "????-week-??.md" | sort -r)
+    
+    if [ -n "$blog_files" ]; then
+        echo "" >> "$OUTPUT_FILE"
+        echo "# 深度周报" >> "$OUTPUT_FILE"
+        
+        echo "$blog_files" | while read -r blog_path; do
+            blog_basename=$(basename "$blog_path")
+            # 移除 .md 后缀 (POSIX 兼容)
+            link_text="${blog_basename%.md}"
+            # 链接路径相对于 SUMMARY.md (即项目根目录)
+            link_path="blog/${blog_basename}"
+            
+            echo "- [$link_text]($link_path)" >> "$OUTPUT_FILE"
+        done
+    fi
+fi
+
 echo "" # 在文件末尾添加一个空行
 echo "SUMMARY.md 文件已在 '${OUTPUT_FILE}' 生成。"
 if [ "$PARENT_OF_TARGET_DIR" = "." ]; then

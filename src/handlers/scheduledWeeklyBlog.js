@@ -76,7 +76,7 @@ export async function handleScheduledWeeklyBlog(event, env, ctx) {
         const weekNumber = getWeekNumber(today);
         const year = today.getFullYear();
         const blogFileName = `${year}-week-${String(weekNumber).padStart(2, '0')}.md`;
-        const blogFilePath = `content/blog/${blogFileName}`;
+        const blogFilePath = `blog/${blogFileName}`;
 
         // 5. Commit to GitHub
         console.log(`[WeeklyBlog] Committing to GitHub: ${blogFilePath}`);
