@@ -31,7 +31,7 @@ export async function handleGenAIPodcastScript(request, env) {
         const readGithub = formData.get('readGithub') === 'true';
 
         if (readGithub) {
-            const filePath = `daily/${dateStr}.md`;
+            const filePath = `content/cn/daily/${dateStr}.md`;
             console.log(`从 GitHub 读取文件: ${filePath}`);
             try {
                 outputOfCall1 = await getDailyReportContent(env, filePath);

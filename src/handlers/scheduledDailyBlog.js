@@ -12,7 +12,7 @@ export async function handleScheduledDailyBlog(event, env, ctx) {
     try {
         // 1. Get today's daily report content
         console.log(`[DailyBlog] Fetching today's daily report...`);
-        const filePath = `daily/${dateStr}.md`;
+        const filePath = `content/cn/daily/${dateStr}.md`;
 
         let dailyContent;
         try {
@@ -52,7 +52,7 @@ export async function handleScheduledDailyBlog(event, env, ctx) {
 
         // 4. Generate filename based on date
         const blogFileName = `${dateStr}.md`;
-        const blogFilePath = `blog/daily/${blogFileName}`;
+        const blogFilePath = `content/blog/daily/${blogFileName}`;
 
         // 5. Commit to GitHub
         console.log(`[DailyBlog] Committing to GitHub: ${blogFilePath}`);

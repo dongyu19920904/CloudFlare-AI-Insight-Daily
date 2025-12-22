@@ -18,7 +18,7 @@ export async function handleScheduledWeeklyBlog(event, env, ctx) {
             const pastDate = new Date(today);
             pastDate.setDate(today.getDate() - i);
             const pastDateStr = pastDate.toISOString().split('T')[0];
-            const filePath = `daily/${pastDateStr}.md`;
+            const filePath = `content/cn/daily/${pastDateStr}.md`;
             
             try {
                 const content = await getDailyReportContent(env, filePath);
@@ -76,7 +76,7 @@ export async function handleScheduledWeeklyBlog(event, env, ctx) {
         const weekNumber = getWeekNumber(today);
         const year = today.getFullYear();
         const blogFileName = `${year}-week-${String(weekNumber).padStart(2, '0')}.md`;
-        const blogFilePath = `blog/${blogFileName}`;
+        const blogFilePath = `content/blog/${blogFileName}`;
 
         // 5. Commit to GitHub
         console.log(`[WeeklyBlog] Committing to GitHub: ${blogFilePath}`);
