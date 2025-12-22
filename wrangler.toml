@@ -81,4 +81,8 @@ INSERT_AD = "true"
 INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)</h3>"
 
 [triggers]
-crons = ["0 0 * * *", "0 1 * * 5"]
+crons = [
+  "0 0 * * *",    # 每天 00:00 UTC 生成日报
+  "0 2 * * *",    # 每天 02:00 UTC 生成每日博客
+  "0 1 * * 5"     # 每周五 01:00 UTC 生成周报
+]

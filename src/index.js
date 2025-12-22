@@ -11,17 +11,21 @@ import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { handleScheduled } from './handlers/scheduled.js';
 import { handleScheduledWeeklyBlog } from './handlers/scheduledWeeklyBlog.js';
+import { handleScheduledDailyBlog } from './handlers/scheduledDailyBlog.js';
 
 export default {
     async scheduled(event, env, ctx) {
         const cron = event.cron;
         console.log(`[Scheduled] Cron triggered: ${cron}`);
-        
+
         if (cron === '0 1 * * 5') {
             // 每周五 UTC 01:00 (北京时间周五早上9点) 生成周报博客
             await handleScheduledWeeklyBlog(event, env, ctx);
+        } else if (cron === '0 2 * * *') {
+            // 每天 UTC 02:00 (北京时间早上10点) 生成每日博客
+            await handleScheduledDailyBlog(event, env, ctx);
         } else {
-            // 每日任务 (默认)
+            // 每日任务 (默认) - 生成日报
             await handleScheduled(event, env, ctx);
         }
     },
