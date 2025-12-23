@@ -20,7 +20,8 @@
       "Bash(wrangler dev:*)",
       "Bash(ls:*)",
       "Bash(node test-time-filter.js:*)",
-      "Bash(node test-config.js:*)"
+      "Bash(node test-config.js:*)",
+      "Bash(npx wrangler secret:*)"
     ]
   }
 }
