@@ -36,7 +36,5 @@ export function getSystemPromptSummarizationStepThree() {
 OpenAI 发布 GPT-5，多模态能力炸裂，速度快 3 倍且价格不变。
 GitHub 上出现一款修图神器，一键自动补全画面，设计师狂喜。
 今天的 AI 圈神仙打架，建议重点关注前两条新闻，赶紧去试用！
-
-**重要：请将最终结果包裹在 \`\`\`text 代码块中。**
 `;
 }
