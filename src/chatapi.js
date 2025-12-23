@@ -865,12 +865,19 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
         }
 
         const data = await response.json();
-        
-        if (data.content && data.content[0] && data.content[0].text) {
-            return data.content[0].text;
-        } else {
-            throw new Error("Anthropic Chat API returned no content.");
+
+        // Filter out thinking blocks and only return text content
+        if (data.content && Array.isArray(data.content)) {
+            const textBlocks = data.content
+                .filter(block => block.type === 'text' && block.text)
+                .map(block => block.text);
+
+            if (textBlocks.length > 0) {
+                return textBlocks.join('\n');
+            }
         }
+
+        throw new Error("Anthropic Chat API returned no content.");
     } catch (error) {
         console.error("Error calling Anthropic Chat API:", error);
         throw error;
@@ -927,6 +934,7 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
         const decoder = new TextDecoder();
         let buffer = '';
         let hasYieldedContent = false;
+        let currentBlockType = null;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -943,9 +951,18 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
 
                 try {
                     const parsed = JSON.parse(data);
-                    if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-                        hasYieldedContent = true;
-                        yield parsed.delta.text;
+
+                    // Track the type of the current content block
+                    if (parsed.type === 'content_block_start') {
+                        currentBlockType = parsed.content_block?.type;
+                    } else if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                        // Only yield text if the current block is not a thinking block
+                        if (currentBlockType !== 'thinking') {
+                            hasYieldedContent = true;
+                            yield parsed.delta.text;
+                        }
+                    } else if (parsed.type === 'content_block_stop') {
+                        currentBlockType = null;
                     } else if (parsed.type === 'error') {
                         throw new Error(`Anthropic stream error: ${parsed.error?.message || 'Unknown'}`);
                     }
