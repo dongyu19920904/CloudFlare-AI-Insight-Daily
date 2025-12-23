@@ -11,7 +11,13 @@
       "Bash(npx wrangler deploy)",
       "Bash(TZ=\"UTC\" date:*)",
       "Bash(gh workflow run:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(wrangler --version:*)",
+      "Bash(npm install:*)",
+      "Bash(wrangler triggers deploy:*)",
+      "Bash(curl:*)",
+      "Bash(wrangler dev:*)"
     ]
   }
 }
