@@ -1,4 +1,5 @@
 // src/prompt/dailyBlogPrompt.js
+// Fix syntax error in template literal
 export function getSystemPromptDailyBlog() {
     return `
 你是一位**专注于 AI 领域的科技博主**，你的读者是对 AI 技术感兴趣的开发者、研究者、创业者和爱好者。
