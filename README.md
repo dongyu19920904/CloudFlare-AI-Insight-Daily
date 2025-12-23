@@ -136,6 +136,34 @@
 
 ---
 
+## 🛠️ 常见问题与开发经验 (Troubleshooting & Best Practices)
+
+### 1. 解决 AI 模型输出"思考过程" (Chain of Thought) 的问题
+部分新模型（如 Gemini 2.0/3.0 Preview）会在输出最终结果前包含一段英文思考过程。为了防止这些内容出现在日报中：
+*   **代码层处理**：使用正则提取代码块内容，忽略前置文本。
+    ```javascript
+    // src/helpers.js
+    export function removeMarkdownCodeBlock(text) {
+        // 提取第一个代码块内的内容，忽略思考过程
+        const match = text.trim().match(/```(?:\w*)\s*([\s\S]*?)\s*```/);
+        return match ? match[1].trim() : text.trim();
+    }
+    ```
+*   **模型选择**：如果 Prompt 难以控制，可切换至 Claude 系列（如 `claude-opus-4-5`），通常输出更纯净。
+
+### 2. Prompt 编写中的语法陷阱
+在 JavaScript 文件中编写 Prompt 时，如果 Prompt 本身包含 Markdown 代码块标记（```），必须进行转义，否则会导致构建失败。
+*   ❌ 错误：`return \`请包裹在 ```markdown 中\`;`
+*   ✅ 正确：`return \`请包裹在 \`\`\`markdown 中\`;`
+
+### 3. 紧急部署方案
+当 GitHub Actions 或 Cloudflare 后台构建因 Git 同步问题卡住时，可直接在本地使用 Wrangler 强制部署：
+```bash
+npx wrangler deploy
+```
+
+---
+
 ## 🧭 优化修改方案（执行清单）
 
 - **数据源与时效**：在 `wrangler.toml` 维护 `FOLO_NEWS_IDS`（去重追加），按需调整 `FOLO_NEWS_FETCH_PAGES` 与 `FOLO_FILTER_DAYS`；其他来源对应 `HGPAPERS_FETCH_PAGES`、`TWITTER_FETCH_PAGES`、`REDDIT_FETCH_PAGES`。
