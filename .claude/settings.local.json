@@ -18,7 +18,8 @@
       "Bash(wrangler triggers deploy:*)",
       "Bash(curl:*)",
       "Bash(wrangler dev:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node test-time-filter.js:*)"
     ]
   }
 }

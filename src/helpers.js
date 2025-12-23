@@ -190,10 +190,10 @@ export function getShanghaiTime() {
 }
 
 /**
- * Checks if a given date string is within the last specified number of days (inclusive of today).
+ * Checks if a given date string is within the last specified number of hours from current time.
  * @param {string} dateString - The date string to check (YYYY-MM-DD or ISO format).
- * @param {number} days - The number of days to look back (e.g., 3 for today and the past 2 days).
- * @returns {boolean} True if the date is within the last 'days', false otherwise.
+ * @param {number} days - The number of days to look back (will be converted to hours: days * 24).
+ * @returns {boolean} True if the date is within the specified time window, false otherwise.
  */
 export function isDateWithinLastDays(dateString, days) {
     if (!dateString || !days) return false;
@@ -201,16 +201,16 @@ export function isDateWithinLastDays(dateString, days) {
     const itemTime = new Date(dateString).getTime();
     if (Number.isNaN(itemTime)) return false;
 
-    // Use fetchDate (YYYY-MM-DD) as the reference "today" in Asia/Shanghai.
-    const refDateStr = fetchDate || getISODate();
-    const shanghaiStart = new Date(`${refDateStr}T00:00:00+08:00`);
-    if (Number.isNaN(shanghaiStart.getTime())) return false;
+    // Get current time in Asia/Shanghai timezone
+    const now = getShanghaiTime();
+    const currentTimeMs = now.getTime();
 
-    const windowStartMs =
-        shanghaiStart.getTime() - (Math.max(days, 1) - 1) * 24 * 60 * 60 * 1000;
-    const windowEndMs = shanghaiStart.getTime() + 24 * 60 * 60 * 1000;
+    // Calculate time window: from (now - days*24 hours) to now
+    const hoursToLookBack = Math.max(days, 1) * 24;
+    const windowStartMs = currentTimeMs - (hoursToLookBack * 60 * 60 * 1000);
+    const windowEndMs = currentTimeMs;
 
-    return itemTime >= windowStartMs && itemTime < windowEndMs;
+    return itemTime >= windowStartMs && itemTime <= windowEndMs;
 }
 
 /**
