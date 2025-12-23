@@ -74,21 +74,13 @@ export async function fetchData(url, options = {}) {
  */
 export function removeMarkdownCodeBlock(text) {
     if (!text) return '';
-    let cleanedText = text.trim();
-
-    const jsonFence = "```json";
-    const genericFence = "```";
-
-    if (cleanedText.startsWith(jsonFence)) {
-        cleanedText = cleanedText.substring(jsonFence.length);
-    } else if (cleanedText.startsWith(genericFence)) {
-        cleanedText = cleanedText.substring(genericFence.length);
+    const cleanedText = text.trim();
+    // Match first code block (```...```) and capture content inside
+    const match = cleanedText.match(/```(?:\w*)\s*([\s\S]*?)\s*```/);
+    if (match) {
+        return match[1].trim();
     }
-
-    if (cleanedText.endsWith(genericFence)) {
-        cleanedText = cleanedText.substring(0, cleanedText.length - genericFence.length);
-    }
-    return cleanedText.trim();
+    return cleanedText;
 }
 
 /**

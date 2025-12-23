@@ -47,7 +47,7 @@ export function getSystemPromptDailyAnalysis() {
 ❌ **差（没标点/太啰嗦/太夸张）：**
 "OpenAI发布新模型炸裂全场速度起飞价格暴跌，Meta也不甘示弱开源新模型拳打GPT脚踢Claude，谷歌机器人成精了！"
 
-**现在，请开始你的提炼：**
+**现在，请开始你的提炼（请将最终结果包裹在 ```text 代码块中）：**
 `;
 }
 

@@ -20,7 +20,7 @@ OPENAI_API_URL = "https://code.newcli.com/codex"
 DEFAULT_OPEN_MODEL = "gpt-5.1"
 # GEMINI_API_KEY = 通过 wrangler secret 设置
 GEMINI_API_URL = "https://code.newcli.com/gemini"
-DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
+DEFAULT_GEMINI_MODEL = "gemini-3-pro"
 # Gemini 流式模式：auto(默认，失败自动降级到非流式) | off(禁用流式) | force(强制流式)
 GEMINI_STREAM_MODE = "auto"
 # Gemini API version: auto | v1beta | v1 | noversion
