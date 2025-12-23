@@ -17,7 +17,8 @@
       "Bash(npm install:*)",
       "Bash(wrangler triggers deploy:*)",
       "Bash(curl:*)",
-      "Bash(wrangler dev:*)"
+      "Bash(wrangler dev:*)",
+      "Bash(ls:*)"
     ]
   }
 }
