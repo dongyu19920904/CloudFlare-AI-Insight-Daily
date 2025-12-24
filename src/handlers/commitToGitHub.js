@@ -18,7 +18,7 @@ export async function handleCommitToGitHub(request, env) {
         const filesToCommit = [];
 
         if (dailyMd) {
-            filesToCommit.push({ path: `content/cn/daily/${dateStr}.md`, content: formatMarkdownText(dailyMd), description: "Daily Summary File" });
+            filesToCommit.push({ path: `daily/${dateStr}.md`, content: formatMarkdownText(dailyMd), description: "Daily Summary File" });
         }
         if (podcastMd) {
             filesToCommit.push({ path: `content/cn/podcast/${dateStr}.md`, content: podcastMd, description: "Podcast Script File" });
