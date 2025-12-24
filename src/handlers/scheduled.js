@@ -112,7 +112,7 @@ export async function handleScheduled(event, env, ctx) {
 
         // 6. Commit to GitHub
         console.log(`[Scheduled] Committing to GitHub...`);
-        const filePath = `content/cn/daily/${dateStr}.md`;
+        const filePath = `daily/${dateStr}.md`;  // 修改为前端期望的路径
         const existingSha = await getGitHubFileSha(env, filePath);
         const commitMessage = `${existingSha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
         await createOrUpdateGitHubFile(env, filePath, dailySummaryMarkdownContent, commitMessage, existingSha);
