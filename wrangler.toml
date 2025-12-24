@@ -80,7 +80,7 @@ PODCAST_BEGIN = "欢迎收听爱窝啦 AI 日报，每天为你精选 AI 领域�
 PODCAST_END = "感谢收听，我们下期再见"
 BOOK_LINK = ""
 INSERT_FOOT = "false"
-INSERT_AD = "true"
+INSERT_AD = "false"
 INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)</h3>"
 
 [triggers]
