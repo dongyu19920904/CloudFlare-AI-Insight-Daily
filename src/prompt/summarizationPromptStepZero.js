@@ -89,7 +89,7 @@ export function getSystemPromptSummarizationStepOne() {
    - 纯理论研究/遥远未来：5分
 
 4. **用户关注度（15分）**
-   - 热门话题（GPT/Claude/Gemini等明星产品）：15分
+   - 热门话题（GPT/Claude 4.5/Gemini 3 Pro等明星产品）：15分
    - 热门领域（AI绘画、视频生成、代码助手、Agent）：12分
    - 垂直领域工具（特定行业应用）：8分
    - 小众技术/学术研究：5分
@@ -164,7 +164,7 @@ export function getSystemPromptSummarizationStepOne() {
 
 ### 如何体验 [今日提到的某个 AI 模型/工具]？
 
-[今日提到的 AI 模型/工具名称]（如 ChatGPT、Claude、Gemini、Midjourney 等）目前需要[具体要求，如：订阅 Plus 会员/Pro 账号/付费账号]才能使用。对于国内用户，可能面临支付困难或账号注册限制。
+[今日提到的 AI 模型/工具名称]（如 ChatGPT、Claude 4.5、Gemini 3 Pro、Midjourney 等）目前需要[具体要求，如：订阅 Plus 会员/Pro 账号/付费账号]才能使用。对于国内用户，可能面临支付困难或账号注册限制。
 
 **解决方案**：
 - **[爱窝啦 Aivora](https://aivora.cn)** 提供 [相关 AI 工具] 的成品账号服务
