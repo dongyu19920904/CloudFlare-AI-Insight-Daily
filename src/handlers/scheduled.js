@@ -6,7 +6,8 @@ import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationProm
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
 import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
-import { createOrUpdateGitHubFile, getGitHubFileSha } from '../github.js';
+import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent } from '../contentUtils.js';
+import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 
 export async function handleScheduled(event, env, ctx) {
     const dateStr = getISODate();
@@ -112,10 +113,31 @@ export async function handleScheduled(event, env, ctx) {
 
         // 6. Commit to GitHub
         console.log(`[Scheduled] Committing to GitHub...`);
-        const filePath = `daily/${dateStr}.md`;  // 修改为前端期望的路径
-        const existingSha = await getGitHubFileSha(env, filePath);
-        const commitMessage = `${existingSha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
-        await createOrUpdateGitHubFile(env, filePath, dailySummaryMarkdownContent, commitMessage, existingSha);
+        const dailyFilePath = `daily/${dateStr}.md`;
+        const dailyPagePath = `content/cn/${getYearMonth(dateStr)}/${dateStr}.md`;
+        const homePath = 'content/cn/_index.md';
+
+        const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent);
+
+        const existingDailySha = await getGitHubFileSha(env, dailyFilePath);
+        const dailyCommitMessage = `${existingDailySha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, dailyFilePath, dailySummaryMarkdownContent, dailyCommitMessage, existingDailySha);
+
+        const existingDailyPageSha = await getGitHubFileSha(env, dailyPagePath);
+        const dailyPageCommitMessage = `${existingDailyPageSha ? 'Update' : 'Create'} daily page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, dailyPagePath, dailyPageContent, dailyPageCommitMessage, existingDailyPageSha);
+
+        let existingHomeContent = '';
+        try {
+            existingHomeContent = await getGitHubFileContent(env, homePath);
+        } catch (error) {
+            console.warn(`[Scheduled] Home page not found, will create a new one.`);
+        }
+        const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr);
+        const existingHomeSha = await getGitHubFileSha(env, homePath);
+        const homeCommitMessage = `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, homePath, homeContent, homeCommitMessage, existingHomeSha);
+
         console.log(`[Scheduled] Success!`);
 
     } catch (error) {

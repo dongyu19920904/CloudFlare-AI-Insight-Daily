@@ -1,6 +1,7 @@
 // src/handlers/commitToGitHub.js
 import { getISODate, formatMarkdownText } from '../helpers.js';
-import { getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
+import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent } from '../contentUtils.js';
+import { getGitHubFileContent, getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
 
@@ -18,7 +19,22 @@ export async function handleCommitToGitHub(request, env) {
         const filesToCommit = [];
 
         if (dailyMd) {
-            filesToCommit.push({ path: `daily/${dateStr}.md`, content: formatMarkdownText(dailyMd), description: "Daily Summary File" });
+            const normalizedDailyMd = formatMarkdownText(dailyMd);
+            const yearMonth = getYearMonth(dateStr);
+            const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
+            const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, normalizedDailyMd);
+
+            let existingHomeContent = '';
+            try {
+                existingHomeContent = await getGitHubFileContent(env, 'content/cn/_index.md');
+            } catch (error) {
+                console.warn('[commitToGitHub] Home page not found, will create a new one.');
+            }
+            const homeContent = updateHomeIndexContent(existingHomeContent, normalizedDailyMd, dateStr);
+
+            filesToCommit.push({ path: `daily/${dateStr}.md`, content: normalizedDailyMd, description: "Daily Summary File" });
+            filesToCommit.push({ path: dailyPagePath, content: dailyPageContent, description: "Daily Page File" });
+            filesToCommit.push({ path: 'content/cn/_index.md', content: homeContent, description: "Home Page File" });
         }
         if (podcastMd) {
             filesToCommit.push({ path: `content/cn/podcast/${dateStr}.md`, content: podcastMd, description: "Podcast Script File" });

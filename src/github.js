@@ -90,6 +90,15 @@ export async function createOrUpdateGitHubFile(env, filePath, content, commitMes
 }
 
 /**
+ * Gets the decoded content of a file from GitHub.
+ */
+export async function getGitHubFileContent(env, filePath) {
+    const GITHUB_BRANCH = env.GITHUB_BRANCH || 'main';
+    const data = await callGitHubApi(env, `/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+    return data && data.content ? b64DecodeUnicode(data.content) : '';
+}
+
+/**
  * Gets the content of a file from GitHub.
  */
 export async function getDailyReportContent(env, filePath) {
@@ -106,7 +115,7 @@ export async function getDailyReportContent(env, filePath) {
         const data = await callGitHubApi(env, `/contents/${filePath}?ref=${GITHUB_BRANCH}`);
         return b64DecodeUnicode(data.content);
     } catch (error) {
-        console.error(`Error fetching daily report content from ${rawUrl}:`, error);
+        console.error(`Error fetching daily report content from ${filePath}:`, error);
         throw error;
     }
 }
