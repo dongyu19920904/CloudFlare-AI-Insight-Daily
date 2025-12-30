@@ -1,5 +1,5 @@
 // src/handlers/commitToGitHub.js
-import { getISODate, formatMarkdownText } from '../helpers.js';
+import { getISODate, formatDateToChinese, formatMarkdownText } from '../helpers.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent } from '../contentUtils.js';
 import { getGitHubFileContent, getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
@@ -22,7 +22,8 @@ export async function handleCommitToGitHub(request, env) {
             const normalizedDailyMd = formatMarkdownText(dailyMd);
             const yearMonth = getYearMonth(dateStr);
             const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
-            const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, normalizedDailyMd);
+            const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+            const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, normalizedDailyMd, { title: dailyPageTitle });
 
             let existingHomeContent = '';
             try {
@@ -30,7 +31,8 @@ export async function handleCommitToGitHub(request, env) {
             } catch (error) {
                 console.warn('[commitToGitHub] Home page not found, will create a new one.');
             }
-            const homeContent = updateHomeIndexContent(existingHomeContent, normalizedDailyMd, dateStr);
+            const homeTitle = dailyPageTitle;
+            const homeContent = updateHomeIndexContent(existingHomeContent, normalizedDailyMd, dateStr, { title: homeTitle });
 
             filesToCommit.push({ path: `daily/${dateStr}.md`, content: normalizedDailyMd, description: "Daily Summary File" });
             filesToCommit.push({ path: dailyPagePath, content: dailyPageContent, description: "Daily Page File" });

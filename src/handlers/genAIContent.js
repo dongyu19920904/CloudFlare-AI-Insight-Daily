@@ -276,8 +276,7 @@ export async function handleGenAIContent(request, env) {
 
         const contentWithMidAd = insertMidAd(outputOfCall2);
 
-        let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
-        dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
+        let dailySummaryMarkdownContent = '';
 
         let fullPromptForCall3_System = getSystemPromptSummarizationStepThree(); // Re-using summarization prompt for now
         let fullPromptForCall3_User = outputOfCall2; // Input for Call 2 is output of Call 1
@@ -298,7 +297,7 @@ export async function handleGenAIContent(request, env) {
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         // 今日摘要板块
-        dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
+        dailySummaryMarkdownContent += `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
 
         // 快速导航
         dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';

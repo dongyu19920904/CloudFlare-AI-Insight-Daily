@@ -15,12 +15,14 @@ function computeWeight(dateStr) {
     return weight > 0 ? weight : 0;
 }
 
-export function buildDailyFrontMatter(dateStr, description = DEFAULT_DAILY_DESCRIPTION) {
+export function buildDailyFrontMatter(dateStr, options = {}) {
+    const { description = DEFAULT_DAILY_DESCRIPTION, title } = options;
     const monthDay = getMonthDay(dateStr);
     const weight = computeWeight(dateStr);
+    const resolvedTitle = title === undefined ? `${monthDay}-日报-AI资讯日报` : title;
     return `---
 linkTitle: ${monthDay}-日报
-title: ${monthDay}-日报-AI资讯日报
+title: ${resolvedTitle}
 weight: ${weight}
 breadcrumbs: false
 comments: true
@@ -32,16 +34,18 @@ function stripFrontMatter(content) {
     return String(content || '').replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/, '');
 }
 
-export function buildDailyContentWithFrontMatter(dateStr, content, description = DEFAULT_DAILY_DESCRIPTION) {
+export function buildDailyContentWithFrontMatter(dateStr, content, options = {}) {
     const body = stripFrontMatter(content).trimStart();
-    return `${buildDailyFrontMatter(dateStr, description)}\n\n${body}`;
+    return `${buildDailyFrontMatter(dateStr, options)}\n\n${body}`;
 }
 
-function buildDefaultHomeFrontMatter(dateStr, description = DEFAULT_DAILY_DESCRIPTION) {
+function buildDefaultHomeFrontMatter(dateStr, options = {}) {
+    const { description = DEFAULT_DAILY_DESCRIPTION, title } = options;
     const nextPath = `/${getYearMonth(dateStr)}/${dateStr}`;
+    const resolvedTitle = title === undefined ? 'AI Daily-AI资讯日报' : title;
     return `---
 linkTitle: AI Daily
-title: AI Daily-AI资讯日报
+title: ${resolvedTitle}
 breadcrumbs: false
 next: ${nextPath}
 description: "${description}"
@@ -51,7 +55,8 @@ cascade:
 `;
 }
 
-export function updateHomeIndexContent(existingContent, dailyContent, dateStr, description = DEFAULT_DAILY_DESCRIPTION) {
+export function updateHomeIndexContent(existingContent, dailyContent, dateStr, options = {}) {
+    const { description = DEFAULT_DAILY_DESCRIPTION, title } = options;
     const nextPath = `/${getYearMonth(dateStr)}/${dateStr}`;
     const frontMatterRegex = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
     let frontMatter = '';
@@ -63,8 +68,17 @@ export function updateHomeIndexContent(existingContent, dailyContent, dateStr, d
         } else {
             frontMatter = frontMatter.replace(/\r?\n---\s*\r?\n$/, `\nnext: ${nextPath}\n---\n`);
         }
+        if (title !== undefined) {
+            if (/^title:\s*.*$/m.test(frontMatter)) {
+                frontMatter = frontMatter.replace(/^title:\s*.*$/m, `title: ${title}`);
+            } else if (/^linkTitle:\s*.*$/m.test(frontMatter)) {
+                frontMatter = frontMatter.replace(/^linkTitle:\s*.*$/m, (match) => `${match}\ntitle: ${title}`);
+            } else {
+                frontMatter = frontMatter.replace(/^---\s*\r?\n/, (match) => `${match}title: ${title}\n`);
+            }
+        }
     } else {
-        frontMatter = buildDefaultHomeFrontMatter(dateStr, description);
+        frontMatter = buildDefaultHomeFrontMatter(dateStr, { description, title });
     }
 
     const body = stripFrontMatter(dailyContent).trimStart();

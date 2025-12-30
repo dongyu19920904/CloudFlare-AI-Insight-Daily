@@ -1,4 +1,4 @@
-import { getISODate, escapeHtml, formatDateToChinese, convertEnglishQuotesToChinese} from '../helpers.js';
+import { getISODate, escapeHtml, convertEnglishQuotesToChinese } from '../helpers.js';
 import { generateGenAiPageHtml } from '../htmlGenerators.js';
 import { insertFoot } from '../foot.js';
 import { insertAd } from '../ad.js';
@@ -10,10 +10,8 @@ export async function handleGenAIDailyPage(request, env) {
         const dateParam = url.searchParams.get('date');
         dateStr = dateParam ? dateParam : getISODate();
 
-        let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
-        dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
-        
-        dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + '这里输入内容摘要' + '\n```\n\n';
+        let dailySummaryMarkdownContent = '';
+        dailySummaryMarkdownContent += `## **今日摘要**\n\n\`\`\`\n这里输入内容摘要\n\`\`\`\n\n`;
         if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
 

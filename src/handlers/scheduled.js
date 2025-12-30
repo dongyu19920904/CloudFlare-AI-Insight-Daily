@@ -101,9 +101,7 @@ export async function handleScheduled(event, env, ctx) {
 
         // 5. Assemble Markdown
         const contentWithMidAd = insertMidAd(outputOfCall2);
-        let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
-        dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
-        dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
+        let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
         dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
         dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
         dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
@@ -117,7 +115,8 @@ export async function handleScheduled(event, env, ctx) {
         const dailyPagePath = `content/cn/${getYearMonth(dateStr)}/${dateStr}.md`;
         const homePath = 'content/cn/_index.md';
 
-        const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent);
+        const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+        const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, { title: dailyPageTitle });
 
         const existingDailySha = await getGitHubFileSha(env, dailyFilePath);
         const dailyCommitMessage = `${existingDailySha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
@@ -133,7 +132,8 @@ export async function handleScheduled(event, env, ctx) {
         } catch (error) {
             console.warn(`[Scheduled] Home page not found, will create a new one.`);
         }
-        const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr);
+        const homeTitle = dailyPageTitle;
+        const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr, { title: homeTitle });
         const existingHomeSha = await getGitHubFileSha(env, homePath);
         const homeCommitMessage = `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`;
         await createOrUpdateGitHubFile(env, homePath, homeContent, homeCommitMessage, existingHomeSha);
