@@ -163,61 +163,33 @@ npx wrangler deploy
 ```
 
 ### 4. 解决 "Unexpected export" 构建错误
-**问题描述：**
-在运行 `wrangler deploy` 时，可能遇到类似错误：
-```
-X [ERROR] Unexpected "export"
-     src/contentUtils.js:61:0:
-     61 │ export function buildDailyFrontMatter(dateStr, options = {}) {
-```
+在运行 `wrangler deploy` 时遇到 `Unexpected "export"` 错误，通常是因为**某个函数缺少闭合的大括号 `}`**，导致构建器误将下一个 `export` 语句识别为语法错误。
 
-**原因分析：**
-这通常是因为某个函数缺少闭合的大括号 `}`，导致构建器（esbuild）认为函数未正确结束，从而将下一个 `export` 语句误报为语法错误。
+**常见原因：**
+*   函数返回模板字符串后忘记闭合函数体
+*   多行模板字符串的结束反引号后缺少 `}`
 
-**常见场景：**
-- 函数返回模板字符串（template literal），但函数体忘记闭合
-- 在模板字符串结束后缺少函数闭合括号
-
-**解决方案：**
-1. **检查函数结构完整性**：确保每个函数都有正确的开始 `{` 和结束 `}`
-2. **特别注意模板字符串函数**：如果函数返回模板字符串，确保在模板字符串的结束反引号 `\`` 和分号 `;` 之后，还有函数的闭合括号 `}`
-   
-   示例修复：
-   ```javascript
-   // ❌ 错误：缺少闭合括号
-   export function buildMonthDirectoryIndex(yearMonth, options = {}) {
-       return `---
-   title: ${yearMonth}
-   ---
-   `;
-   // 这里缺少 }
-   
-   export function buildDailyFrontMatter(dateStr, options = {}) {
-       // ...
-   }
-   ```
-   
-   ```javascript
-   // ✅ 正确：函数结构完整
-   export function buildMonthDirectoryIndex(yearMonth, options = {}) {
-       return `---
-   title: ${yearMonth}
-   ---
-   `;
-   }  // 确保有闭合括号
-   
-   export function buildDailyFrontMatter(dateStr, options = {}) {
-       // ...
-   }
-   ```
-
-3. **使用代码格式化工具**：运行 `npm run format` 或使用 IDE 的格式化功能，可以帮助发现结构问题
-4. **检查语法**：在部署前运行 `npx wrangler deploy --dry-run` 或使用 ESLint 检查语法错误
-
-**预防措施：**
-- 使用支持 JavaScript 语法高亮的编辑器
-- 启用括号匹配功能，确保每个 `{` 都有对应的 `}`
-- 在提交代码前进行语法检查
+**快速修复：**
+*   **检查函数完整性**：确保每个函数都有配对的 `{` 和 `}`
+*   **特别注意模板字符串函数**：在模板字符串结束反引号 `\`` 后必须添加函数闭合括号 `}`
+    ```javascript
+    // ❌ 错误：缺少闭合括号
+    export function buildMonthDirectoryIndex(yearMonth) {
+        return `---
+    title: ${yearMonth}
+    ---
+    `;
+    // 缺少 }
+    
+    // ✅ 正确：函数结构完整
+    export function buildMonthDirectoryIndex(yearMonth) {
+        return `---
+    title: ${yearMonth}
+    ---
+    `;
+    }  // 确保有闭合括号
+    ```
+*   **使用工具检查**：运行 `npm run format` 或 `npx wrangler deploy --dry-run` 提前发现语法问题
 
 ---
 
@@ -225,10 +197,140 @@ X [ERROR] Unexpected "export"
 
 - **数据源与时效**：在 `wrangler.toml` 维护 `FOLO_NEWS_IDS`（去重追加），按需调整 `FOLO_NEWS_FETCH_PAGES` 与 `FOLO_FILTER_DAYS`；其他来源对应 `HGPAPERS_FETCH_PAGES`、`TWITTER_FETCH_PAGES`、`REDDIT_FETCH_PAGES`。
 - **输入上限控制**：用 `MAX_ITEMS_PER_TYPE` 控制每类输入上限，避免热点被截断或素材过少。
-- **日报成品化**：提示词仅在 TOP10 允许图片，分类速览/索引禁图；移除“无图/未入 TOP10/覆盖检查”等面向内部的字样。
+- **日报成品化**：提示词仅在 TOP10 允许图片，分类速览/索引禁图；移除"无图/未入 TOP10/覆盖检查"等面向内部的字样。
 - **网感风格一致**：日报正文采用 90/00 中文互联网语境（第一人称、情绪价值），但全量索引保持中性可检索。
 - **模型与中转切换**：通过 `USE_MODEL_PLATFORM` 切换；Gemini 使用 `GEMINI_API_URL`/`DEFAULT_GEMINI_MODEL`/`GEMINI_STREAM_MODE`/`GEMINI_API_VERSION`，密钥走 `wrangler secret`。
 - **部署与排错**：每次改动后重新部署（`npx wrangler deploy` 或控制台），在 `Observability → Logs` 查看抓取与生成日志，确认构建状态为 Success。
+
+---
+
+## 📋 项目优化改动总结
+
+基于用户需求分析，项目进行了以下核心优化，提升日报内容质量和用户体验：
+
+### 🎯 改动概览
+
+| 改动类别 | 具体内容 | 影响文件 | 改动规模 |
+|---------|---------|---------|---------|
+| **信息源扩展** | Folo信息源从13个扩展到28个 | `wrangler.toml` | 配置更新 |
+| **抓取配置优化** | 抓取页数从1页增加到2页，上限从50增加到80 | `wrangler.toml` | 配置更新 |
+| **日报内容增强** | 新增AI趣闻、趋势预测、产品推荐板块 | `src/prompt/summarizationPromptStepZero.js` | 提示词扩展 |
+
+---
+
+### 1️⃣ 信息源扩展与配置优化
+
+**目标**：扩大内容覆盖面，提升信息时效性和多样性
+
+**具体改动**：
+*   **Folo信息源扩展**：从13个增加到28个，新增包括：
+    *   Twitter账号聚合（OpenAI、Sam Altman、Anthropic、Google AI等）
+    *   更多AI资讯源（机器之心、量子位、掘金人工智能等）
+    *   技术博客（阮一峰网络日志、宝玉的博客等）
+*   **抓取配置调整**：
+    *   `FOLO_NEWS_FETCH_PAGES`: `1` → `2`（抓取更多历史内容）
+    *   `MAX_ITEMS_PER_TYPE`: `50` → `80`（容纳更多信息源内容）
+
+**预期效果**：
+*   ✅ 内容覆盖面更广，减少遗漏重要资讯
+*   ✅ 信息时效性提升，特别是Twitter/X等实时信息源
+*   ✅ 内容多样性增强，涵盖更多视角和观点
+
+---
+
+### 2️⃣ 日报内容结构优化
+
+**目标**：借鉴优秀AI日报，提升可读性和价值
+
+#### 2.1 新增"😄 AI趣闻"板块
+
+**位置**：在"更多动态"之后
+
+**功能**：
+*   从当日新闻中筛选最有趣/最幽默的1-2条内容
+*   用轻松幽默的语气重述，增加阅读趣味性
+*   如果当天没有合适的趣闻，自动省略此板块
+
+**格式示例**：
+```markdown
+## 😄 AI趣闻（1-2条）
+
+### [某公司AI产品出bug，把猫识别成狗](URL)
+今天最离谱的AI新闻：某公司的AI识别系统把一只橘猫识别成了"金毛犬"...
+```
+
+#### 2.2 新增"🔮 AI趋势预测"板块
+
+**位置**：在"AI趣闻"之后
+
+**功能**：
+*   基于今日新闻和近期动态，预测未来1-3个月AI领域可能发生的重要事件
+*   每个预测包含：事件名称、预测时间、预测概率、预测依据
+*   概率范围：40%-85%，确保预测合理性
+
+**格式示例**：
+```markdown
+## 🔮 AI趋势预测（3-5条）
+
+### GPT-5正式发布
+- **预测时间**：2025年Q2
+- **预测概率**：65%
+- **预测依据**：今日新闻[OpenAI正在测试新模型](链接) + 根据历史发布节奏...
+```
+
+#### 2.3 优化"❓ 相关问题"板块（SEO/GEO优化）
+
+**改动内容**：
+*   FAQ数量：从1-2条扩展到3-5条
+*   新增FAQ生成规则：优先选择热门AI工具，支持多角度FAQ
+*   新增"🛒 今日推荐产品"板块：基于当日新闻推荐aivora.cn相关产品
+
+**预期效果**：
+*   ✅ 提升SEO效果（更多FAQ关键词）
+*   ✅ 提升GEO效果（AI搜索引擎更容易推荐aivora.cn）
+*   ✅ 直接转化（产品推荐板块）
+
+---
+
+### 3️⃣ 技术实现特点
+
+**核心原则**：最小化改动，最大化效果
+
+*   **只修改提示词和配置**：不修改任何逻辑代码，风险极低
+*   **智能自适应**：新板块会根据内容质量自动生成或省略
+*   **向后兼容**：现有功能完全不受影响
+
+**修改文件清单**：
+*   `wrangler.toml`：3处配置更新
+*   `src/prompt/summarizationPromptStepZero.js`：新增约150行提示词
+
+---
+
+### 4️⃣ 预期效果与价值
+
+**短期效果（1周内）**：
+*   ✅ 信息源从13个增加到28个，内容更丰富
+*   ✅ 日报增加"AI趣闻"板块，提升可读性
+*   ✅ 日报增加"AI趋势预测"板块，增加价值
+*   ✅ FAQ从1-2条增加到3-5条，SEO效果更好
+*   ✅ 增加产品推荐板块，直接转化
+
+**长期价值（1个月后）**：
+*   ✅ 用户粘性提升（想看预测是否准确）
+*   ✅ SEO排名提升（更多FAQ关键词）
+*   ✅ 转化率提升（产品推荐）
+*   ✅ 品牌差异化（趣闻+预测，区别于其他日报）
+
+---
+
+### 5️⃣ 相关文档
+
+如需了解更详细的改动细节，可参考：
+*   📄 [需求分析与优化方案](docs/需求分析与优化方案.md)
+*   📄 [具体修改对比](docs/具体修改对比.md)
+*   📄 [最小修改实施方案](docs/最小修改实施方案.md)
+
+---
 
 ## ❓为什么生成日报需要手动勾选内容，而不是让 AI 自动筛选
 
