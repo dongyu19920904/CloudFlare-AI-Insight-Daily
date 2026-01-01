@@ -162,6 +162,63 @@
 npx wrangler deploy
 ```
 
+### 4. 解决 "Unexpected export" 构建错误
+**问题描述：**
+在运行 `wrangler deploy` 时，可能遇到类似错误：
+```
+X [ERROR] Unexpected "export"
+     src/contentUtils.js:61:0:
+     61 │ export function buildDailyFrontMatter(dateStr, options = {}) {
+```
+
+**原因分析：**
+这通常是因为某个函数缺少闭合的大括号 `}`，导致构建器（esbuild）认为函数未正确结束，从而将下一个 `export` 语句误报为语法错误。
+
+**常见场景：**
+- 函数返回模板字符串（template literal），但函数体忘记闭合
+- 在模板字符串结束后缺少函数闭合括号
+
+**解决方案：**
+1. **检查函数结构完整性**：确保每个函数都有正确的开始 `{` 和结束 `}`
+2. **特别注意模板字符串函数**：如果函数返回模板字符串，确保在模板字符串的结束反引号 `\`` 和分号 `;` 之后，还有函数的闭合括号 `}`
+   
+   示例修复：
+   ```javascript
+   // ❌ 错误：缺少闭合括号
+   export function buildMonthDirectoryIndex(yearMonth, options = {}) {
+       return `---
+   title: ${yearMonth}
+   ---
+   `;
+   // 这里缺少 }
+   
+   export function buildDailyFrontMatter(dateStr, options = {}) {
+       // ...
+   }
+   ```
+   
+   ```javascript
+   // ✅ 正确：函数结构完整
+   export function buildMonthDirectoryIndex(yearMonth, options = {}) {
+       return `---
+   title: ${yearMonth}
+   ---
+   `;
+   }  // 确保有闭合括号
+   
+   export function buildDailyFrontMatter(dateStr, options = {}) {
+       // ...
+   }
+   ```
+
+3. **使用代码格式化工具**：运行 `npm run format` 或使用 IDE 的格式化功能，可以帮助发现结构问题
+4. **检查语法**：在部署前运行 `npx wrangler deploy --dry-run` 或使用 ESLint 检查语法错误
+
+**预防措施：**
+- 使用支持 JavaScript 语法高亮的编辑器
+- 启用括号匹配功能，确保每个 `{` 都有对应的 `}`
+- 在提交代码前进行语法检查
+
 ---
 
 ## 🧭 优化修改方案（执行清单）

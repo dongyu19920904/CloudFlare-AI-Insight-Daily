@@ -1,5 +1,23 @@
 const DEFAULT_DAILY_DESCRIPTION = '每日自动汇总最新 AI 行业动态，帮中文用户用最低成本玩转ChatGPT、Claude、Cursor、Augment 等 AI 工具。由爱窝啦 AI 账号店提供支持。';
 
+// 辅助函数：获取月日
+function getMonthDay(dateStr) {
+    return typeof dateStr === 'string' ? dateStr.slice(5, 10) : '';
+}
+
+// 辅助函数：计算权重
+function computeWeight(dateStr) {
+    const day = Number.parseInt(String(dateStr).slice(8, 10), 10);
+    if (!Number.isFinite(day)) return 0;
+    const weight = 32 - day;
+    return weight > 0 ? weight : 0;
+}
+
+// 辅助函数：去除 Front Matter
+function stripFrontMatter(content) {
+    return String(content || '').replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/, '');
+}
+
 export function getYearMonth(dateStr) {
     return typeof dateStr === 'string' ? dateStr.slice(0, 7) : '';
 }
@@ -39,16 +57,6 @@ sidebar:
   open: ${sidebarOpen}
 ---
 `;
-
-function getMonthDay(dateStr) {
-    return typeof dateStr === 'string' ? dateStr.slice(5, 10) : '';
-}
-
-function computeWeight(dateStr) {
-    const day = Number.parseInt(String(dateStr).slice(8, 10), 10);
-    if (!Number.isFinite(day)) return 0;
-    const weight = 32 - day;
-    return weight > 0 ? weight : 0;
 }
 
 export function buildDailyFrontMatter(dateStr, options = {}) {
@@ -64,10 +72,6 @@ breadcrumbs: false
 comments: true
 description: "${description}"
 ---`;
-}
-
-function stripFrontMatter(content) {
-    return String(content || '').replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/, '');
 }
 
 export function buildDailyContentWithFrontMatter(dateStr, content, options = {}) {

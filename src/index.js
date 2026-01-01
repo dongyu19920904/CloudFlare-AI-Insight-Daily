@@ -101,6 +101,19 @@ export default {
                 response = await handleGenAIDailyPage(request, env);
             } else if (path === '/commitToGitHub' && request.method === 'POST') {
                 response = await handleCommitToGitHub(request, env);
+            } else if (path === '/triggerScheduled' && request.method === 'GET') {
+                // Manual trigger for scheduled task (for testing)
+                const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
+                const fakeCtx = { waitUntil: (promise) => promise };
+                await handleScheduled(fakeEvent, env, fakeCtx);
+                response = new Response(JSON.stringify({ 
+                    success: true, 
+                    message: 'Scheduled task triggered successfully',
+                    timestamp: new Date().toISOString()
+                }), { 
+                    status: 200, 
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                });
             } else {
                 return new Response(null, { status: 404, headers: {'Content-Type': 'text/plain; charset=utf-8'} });
             }
