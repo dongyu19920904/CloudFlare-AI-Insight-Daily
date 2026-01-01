@@ -1,6 +1,6 @@
 // src/handlers/commitToGitHub.js
 import { getISODate, formatDateToChinese, formatMarkdownText } from '../helpers.js';
-import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent } from '../contentUtils.js';
+import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { getGitHubFileContent, getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
@@ -22,6 +22,7 @@ export async function handleCommitToGitHub(request, env) {
             const normalizedDailyMd = formatMarkdownText(dailyMd);
             const yearMonth = getYearMonth(dateStr);
             const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
+            const monthDirectoryIndexPath = `content/cn/${yearMonth}/_index.md`;
             const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
             const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, normalizedDailyMd, { title: dailyPageTitle });
 
@@ -36,6 +37,7 @@ export async function handleCommitToGitHub(request, env) {
 
             filesToCommit.push({ path: `daily/${dateStr}.md`, content: normalizedDailyMd, description: "Daily Summary File" });
             filesToCommit.push({ path: dailyPagePath, content: dailyPageContent, description: "Daily Page File" });
+            filesToCommit.push({ path: monthDirectoryIndexPath, content: buildMonthDirectoryIndex(yearMonth, { sidebarOpen: true }), description: "Month Directory Index File" });
             filesToCommit.push({ path: 'content/cn/_index.md', content: homeContent, description: "Home Page File" });
         }
         if (podcastMd) {

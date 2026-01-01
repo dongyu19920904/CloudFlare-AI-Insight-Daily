@@ -4,6 +4,42 @@ export function getYearMonth(dateStr) {
     return typeof dateStr === 'string' ? dateStr.slice(0, 7) : '';
 }
 
+/**
+ * 计算月份目录的权重（递增公式，新月份权重更大）
+ * 使用足够大的基础值，确保新月份权重大于旧权重（97494）
+ * @param {string} yearMonth - 格式：YYYY-MM
+ * @returns {number} 权重值
+ */
+export function computeMonthDirectoryWeight(yearMonth) {
+    if (!yearMonth || typeof yearMonth !== 'string') return 0;
+    const parts = yearMonth.split('-');
+    if (parts.length !== 2) return 0;
+    const year = Number.parseInt(parts[0], 10);
+    const month = Number.parseInt(parts[1], 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return 0;
+    // 递增公式：新月份权重更大，会排在前面
+    // 使用基础值 100000，确保新月份（2026+）权重大于旧权重（97494）
+    return 100000 + (year - 2000) * 12 + month;
+}
+
+/**
+ * 创建月份目录的 _index.md 内容
+ * @param {string} yearMonth - 格式：YYYY-MM
+ * @param {object} options - 选项
+ * @returns {string} _index.md 文件内容
+ */
+export function buildMonthDirectoryIndex(yearMonth, options = {}) {
+    const { sidebarOpen = false } = options;
+    const weight = computeMonthDirectoryWeight(yearMonth);
+    return `---
+title: ${yearMonth}
+weight: ${weight}
+breadcrumbs: false
+sidebar:
+  open: ${sidebarOpen}
+---
+`;
+
 function getMonthDay(dateStr) {
     return typeof dateStr === 'string' ? dateStr.slice(5, 10) : '';
 }

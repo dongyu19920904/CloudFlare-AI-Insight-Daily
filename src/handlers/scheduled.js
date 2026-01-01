@@ -6,7 +6,7 @@ import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationProm
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
 import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
-import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent } from '../contentUtils.js';
+import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 
 export async function handleScheduled(event, env, ctx) {
@@ -111,8 +111,10 @@ export async function handleScheduled(event, env, ctx) {
 
         // 6. Commit to GitHub
         console.log(`[Scheduled] Committing to GitHub...`);
+        const yearMonth = getYearMonth(dateStr);
         const dailyFilePath = `daily/${dateStr}.md`;
-        const dailyPagePath = `content/cn/${getYearMonth(dateStr)}/${dateStr}.md`;
+        const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
+        const monthDirectoryIndexPath = `content/cn/${yearMonth}/_index.md`;
         const homePath = 'content/cn/_index.md';
 
         const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
@@ -125,6 +127,12 @@ export async function handleScheduled(event, env, ctx) {
         const existingDailyPageSha = await getGitHubFileSha(env, dailyPagePath);
         const dailyPageCommitMessage = `${existingDailyPageSha ? 'Update' : 'Create'} daily page for ${dateStr} (Scheduled)`;
         await createOrUpdateGitHubFile(env, dailyPagePath, dailyPageContent, dailyPageCommitMessage, existingDailyPageSha);
+
+        // Create or update month directory _index.md
+        const monthDirectoryIndexContent = buildMonthDirectoryIndex(yearMonth, { sidebarOpen: true });
+        const existingMonthIndexSha = await getGitHubFileSha(env, monthDirectoryIndexPath);
+        const monthIndexCommitMessage = `${existingMonthIndexSha ? 'Update' : 'Create'} month directory index for ${yearMonth} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, monthDirectoryIndexPath, monthDirectoryIndexContent, monthIndexCommitMessage, existingMonthIndexSha);
 
         let existingHomeContent = '';
         try {
