@@ -52,7 +52,17 @@ export async function fetchAndTransformDataForType(sourceType, env, foloCookie) 
     }
 
     // Sort by published_date in descending order for each type
+    // Priority: items with images/videos first, then by date
     allUnifiedDataForType.sort((a, b) => {
+        // Check if items have media (images or videos)
+        const aHasMedia = a.details?.content_html && /<img[^>]+>|<video[^>]+>/i.test(a.details.content_html);
+        const bHasMedia = b.details?.content_html && /<img[^>]+>|<video[^>]+>/i.test(b.details.content_html);
+        
+        // Items with media come first
+        if (aHasMedia && !bHasMedia) return -1;
+        if (!aHasMedia && bHasMedia) return 1;
+        
+        // If both have or both don't have media, sort by date
         const dateA = new Date(a.published_date);
         const dateB = new Date(b.published_date);
         return dateB.getTime() - dateA.getTime();

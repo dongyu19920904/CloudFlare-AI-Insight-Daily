@@ -84,6 +84,20 @@ export function removeMarkdownCodeBlock(text) {
 }
 
 /**
+ * Checks if HTML content contains images or videos.
+ * @param {string} html - The HTML string.
+ * @returns {boolean} True if the content contains images or videos.
+ */
+export function hasMedia(html) {
+    if (!html) return false;
+    // Check for img tags
+    if (/<img[^>]+>/i.test(html)) return true;
+    // Check for video tags
+    if (/<video[^>]+>/i.test(html)) return true;
+    return false;
+}
+
+/**
  * Strips HTML tags from a string and normalizes whitespace.
  * @param {string} html - The HTML string.
  * @returns {string} The text content without HTML tags.

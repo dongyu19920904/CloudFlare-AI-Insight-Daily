@@ -1,4 +1,4 @@
-import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate } from '../helpers.js';
+import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPIStream } from '../chatapi.js';
@@ -40,11 +40,16 @@ export async function handleScheduled(event, env, ctx) {
         console.log(`[Scheduled] Data fetched and stored.`);
 
         // 2. Prepare Content Items
+        // Priority: items with images/videos first
         const selectedContentItems = [];
+        const itemsWithMedia = [];
+        const itemsWithoutMedia = [];
+        
         for (const sourceType in allUnifiedData) {
             const items = allUnifiedData[sourceType];
             if (items && items.length > 0) {
                 for (const item of items) {
+                    const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
                     let itemText = "";
                     switch (item.type) {
                         case 'news':
@@ -66,9 +71,22 @@ export async function handleScheduled(event, env, ctx) {
                             if (item.details && item.details.content_html) itemText += `\nContent: ${stripHtml(item.details.content_html)}`;
                             break;
                     }
-                    if (itemText) selectedContentItems.push(itemText);
+                    if (itemText) {
+                        if (itemHasMedia) {
+                            itemsWithMedia.push(itemText);
+                        } else {
+                            itemsWithoutMedia.push(itemText);
+                        }
+                    }
                 }
             }
+        }
+        
+        // Combine: items with media first, then items without media
+        selectedContentItems.push(...itemsWithMedia, ...itemsWithoutMedia);
+        
+        if (itemsWithMedia.length > 0) {
+            console.log(`[Scheduled] Found ${itemsWithMedia.length} items with images/videos, ${itemsWithoutMedia.length} items without.`);
         }
 
         if (selectedContentItems.length === 0) {
