@@ -6,7 +6,8 @@ import { handleGenAIContent, handleGenAIPodcastScript, handleGenAIDailyAnalysis 
 import { handleGenAIDailyPage } from './handlers/genAIDailyPage.js'; // Import handleGenAIDailyPage
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
-import { handleWriteRssData } from './handlers/writeRssData.js'; 
+import { handleWriteRssData } from './handlers/writeRssData.js';
+import { handleUpdateAllMonthIndexes } from './handlers/updateAllMonthIndexes.js'; 
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { handleScheduled } from './handlers/scheduled.js';
@@ -68,6 +69,20 @@ export default {
             return await handleRss(request, env);
         } else if (path === '/writeRssData' && request.method === 'GET') {
             return await handleWriteRssData(request, env);
+        } else if (path === '/updateAllMonthIndexes' && request.method === 'GET') {
+            // Batch update all month directory _index.md files to fix sorting
+            // Protected by simple secret key check
+            const secretKey = url.searchParams.get('key');
+            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
+            if (secretKey !== expectedKey) {
+                return new Response(JSON.stringify({ 
+                    error: 'Unauthorized. Please provide correct secret key.' 
+                }), { 
+                    status: 401, 
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                });
+            }
+            return await handleUpdateAllMonthIndexes(request, env);
         } else if (path === '/testTriggerScheduled' && request.method === 'GET') {
             // Test endpoint for triggering scheduled task with date parameter
             // Protected by simple secret key check
