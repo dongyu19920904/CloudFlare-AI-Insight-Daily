@@ -1,4 +1,4 @@
-import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia } from '../helpers.js';
+import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia, replaceIncorrectDomainLinks } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPIStream } from '../chatapi.js';
@@ -9,10 +9,11 @@ import { insertAd, insertMidAd } from '../ad.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 
-export async function handleScheduled(event, env, ctx) {
-    const dateStr = getISODate();
+export async function handleScheduled(event, env, ctx, specifiedDate = null) {
+    // 如果指定了日期，使用指定日期；否则使用当前日期
+    const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
-    console.log(`[Scheduled] Starting daily automation for ${dateStr}`);
+    console.log(`[Scheduled] Starting daily automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
     try {
         // 1. Fetch Data
@@ -105,6 +106,8 @@ export async function handleScheduled(event, env, ctx) {
         }
         outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
         outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
+        // 替换错误的域名链接
+        outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
 
         // 4. Generate Summary (Call 3)
         console.log(`[Scheduled] Generating summary...`);

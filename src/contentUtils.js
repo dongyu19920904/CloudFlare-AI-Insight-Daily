@@ -23,8 +23,9 @@ export function getYearMonth(dateStr) {
 }
 
 /**
- * 计算月份目录的权重（递增公式，新月份权重更大）
- * 使用足够大的基础值，确保新月份权重大于旧权重（97494）
+ * 计算月份目录的权重（递减公式，新月份权重更小）
+ * 使用足够大的基础值，然后减去年份和月份，确保新月份权重更小
+ * 在 Hugo 的升序排序中，权重小的会排在前面，从而实现新月份排在最前
  * @param {string} yearMonth - 格式：YYYY-MM
  * @returns {number} 权重值
  */
@@ -35,9 +36,18 @@ export function computeMonthDirectoryWeight(yearMonth) {
     const year = Number.parseInt(parts[0], 10);
     const month = Number.parseInt(parts[1], 10);
     if (!Number.isFinite(year) || !Number.isFinite(month)) return 0;
-    // 递增公式：新月份权重更大，会排在前面
-    // 使用基础值 100000，确保新月份（2026+）权重大于旧权重（97494）
-    return 100000 + (year - 2000) * 12 + month;
+    
+    // 递减公式：新月份权重更小，在升序排序时会排在前面
+    // 使用足够大的基础值，确保所有月份的权重都是正数
+    const baseWeight = 1000000; // 基础值，足够大以容纳未来很多年
+    const yearWeight = (year - 2000) * 12; // 年份权重：2025=300, 2026=312, 2027=324...
+    const monthWeight = month; // 月份权重：1-12
+    
+    // 新月份权重 = 基础值 - 年份权重 - 月份权重
+    // 2026-01: 1000000 - 312 - 1 = 999687 (最小，排在最前)
+    // 2025-12: 1000000 - 300 - 12 = 999688
+    // 2025-06: 1000000 - 300 - 6 = 999694 (最大，排在最后)
+    return baseWeight - yearWeight - monthWeight;
 }
 
 /**

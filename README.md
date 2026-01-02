@@ -191,6 +191,241 @@ npx wrangler deploy
     ```
 *   **使用工具检查**：运行 `npm run format` 或 `npx wrangler deploy --dry-run` 提前发现语法问题
 
+### 5. 解决日报内容中链接域名错误的问题
+
+**问题描述：**
+生成的日报内容中，链接指向了错误的域名（如 `ai.hubtoday.app`），而实际应该使用正确的域名（如 `news.aivora.cn`）。这会导致：
+*   RSS 订阅中的链接无法正确跳转
+*   用户点击链接时访问到错误的页面
+*   影响日报内容的可用性和用户体验
+
+**问题原因分析：**
+1.  **RSS 配置缺失**：`wrangler.toml` 中的 `BOOK_LINK` 环境变量为空字符串或未正确配置，导致 RSS 生成时使用了错误的默认域名
+2.  **AI 模型误生成**：AI 模型在生成内容时，可能误将日报页面的内部链接（如 `https://ai.hubtoday.app/2025/01/15/`）作为素材的原始链接输出，而不是使用素材中提供的真实 URL
+3.  **缺少链接验证**：内容生成流程中缺少对链接域名的验证和替换机制
+
+**解决方案：**
+
+#### 5.1 更新 RSS 链接配置
+在 `wrangler.toml` 中正确配置 `BOOK_LINK` 环境变量：
+```toml
+[vars]
+BOOK_LINK = "https://news.aivora.cn"  # 替换为你的实际域名
+```
+
+#### 5.2 添加链接替换函数
+在 `src/helpers.js` 中添加自动替换错误域名的函数：
+```javascript
+/**
+ * 替换内容中错误的域名链接
+ * @param {string} content - 要处理的内容
+ * @param {string} correctDomain - 正确的域名（不含协议）
+ * @returns {string} 替换后的内容
+ */
+export function replaceIncorrectDomainLinks(content, correctDomain) {
+    if (!content || !correctDomain) return content;
+    
+    // 匹配 Markdown 链接格式 [text](url)
+    const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
+    
+    return content.replace(linkPattern, (match, text, url) => {
+        try {
+            const urlObj = new URL(url);
+            // 如果链接指向错误的域名（如 ai.hubtoday.app），替换为正确域名
+            if (urlObj.hostname === 'ai.hubtoday.app' || 
+                urlObj.hostname === 'news.aivora.cn' && urlObj.pathname.startsWith('/20')) {
+                // 保持路径和查询参数不变，只替换域名
+                urlObj.hostname = correctDomain;
+                return `[${text}](${urlObj.toString()})`;
+            }
+        } catch (e) {
+            // URL 解析失败，保持原样
+        }
+        return match;
+    });
+}
+```
+
+#### 5.3 在生成流程中应用替换
+在 `src/handlers/scheduled.js` 中，在内容生成后应用链接替换：
+```javascript
+import { replaceIncorrectDomainLinks } from '../helpers.js';
+
+// 在生成内容后
+outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
+outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
+// 替换错误的域名链接
+outputOfCall2 = replaceIncorrectDomainLinks(
+    outputOfCall2, 
+    env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+);
+```
+
+#### 5.4 更新 AI Prompt 指示
+在 `src/prompt/summarizationPromptStepZero.js` 中明确指示 AI 不要生成内部链接：
+```javascript
+// 在格式要求中添加：
+// **重要**：URL 必须是素材中提供的原始链接，不要生成指向日报页面的内部链接
+// （如 https://ai.hubtoday.app/... 或 https://news.aivora.cn/...），
+// 这些链接由前端自动处理。
+```
+
+**验证方法：**
+1.  部署后检查 RSS 输出：访问 `/rss?days=7` 端点，确认链接域名正确
+2.  检查生成的日报内容：确认所有链接都指向原始素材 URL，而非日报内部链接
+3.  测试链接跳转：点击日报中的链接，确认能正确跳转到原始内容
+
+**注意事项：**
+*   此修复只对**新生成的日报**生效
+*   对于**已生成的日报**，如需修复，可以：
+    *   重新生成这些日报（通过测试端点触发）
+    *   或手动批量替换 GitHub 仓库中的文件
+
+### 6. 解决日报无法正常生成的问题
+
+**问题描述：**
+定时任务执行后，日报文件未能正常生成，前端网页未显示当日的日报内容。任务可能看起来"成功"完成，但实际上失败了。
+
+**问题原因分析：**
+
+#### 6.1 数据抓取超时（高可能性）
+**症状：**
+*   定时任务在数据抓取阶段超时
+*   Cloudflare Workers 执行时间限制被触发
+
+**原因：**
+*   **配置变更影响**：当 `FOLO_NEWS_FETCH_PAGES` 从 1 增加到 2，`MAX_ITEMS_PER_TYPE` 从 50 增加到 80 时：
+    *   API 请求次数：27 个 ID × 2 页 = **54 次 API 请求**
+    *   预估总抓取时间：54 × (1-3秒 + 0.75秒延迟) ≈ **1.5 - 3.4 分钟**
+    *   如果某些 API 响应慢，可能超过 5 分钟，触发 Workers 执行时间限制
+*   **Cloudflare Workers 限制**：
+    *   免费版：30 秒 CPU 时间（I/O 等待不计入）
+    *   付费版：30 分钟总执行时间
+    *   Scheduled Events 可能有不同的限制
+
+#### 6.2 错误被静默捕获（高可能性）
+**症状：**
+*   任务看起来"成功"完成，但实际上失败了
+*   没有生成日报文件
+*   无法通过任务状态判断是否真的成功
+
+**原因：**
+查看 `src/handlers/scheduled.js` 的错误处理：
+```javascript
+} catch (error) {
+    console.error(`[Scheduled] Error:`, error);
+    // ⚠️ 注意：这里只是记录错误，没有抛出或返回错误状态
+}
+```
+*   如果任务失败，错误只是被 `console.error` 记录
+*   **没有抛出错误**，Cloudflare 可能认为任务"成功"完成
+*   无法及时发现任务失败，无法通过重试机制自动恢复
+
+#### 6.3 Prompt 过长导致 AI API 失败（中等可能性）
+**症状：**
+*   数据抓取成功，但 AI 生成内容失败
+*   错误日志可能显示 "Request too large" 或 "Token limit exceeded"
+
+**原因：**
+*   Prompt 长度计算：
+    *   系统提示词：~2,000 tokens
+    *   用户数据：80 条 × 平均 200 tokens/条 = 16,000 tokens
+    *   总计：~18,000 tokens
+*   如果使用较小的模型（如 gemini-1.5-flash），可能超过输入限制
+*   API 超时：`fetchWithTimeout` 设置为 180 秒（3 分钟），如果 prompt 很长，AI 处理时间可能超过 3 分钟
+
+#### 6.4 数据源为空导致跳过生成
+**症状：**
+*   任务执行但未生成日报
+*   日志显示 "No items found. Skipping generation."
+
+**原因：**
+*   所有数据源抓取失败或返回空数据
+*   `selectedContentItems.length === 0` 时，任务直接跳过生成
+
+**解决方案：**
+
+#### 6.1 临时解决方案（快速恢复）
+
+**方案 A：回滚配置**
+```toml
+# 在 wrangler.toml 中修改
+FOLO_NEWS_FETCH_PAGES = "1"  # 从 2 改回 1
+MAX_ITEMS_PER_TYPE = "50"    # 从 80 改回 50
+```
+*   ✅ 立即生效，风险最低
+*   ❌ 数据量减少，可能遗漏一些内容
+
+**方案 B：减少数据源数量**
+```toml
+# 在 wrangler.toml 中减少 FOLO_NEWS_IDS
+# 从 27 个减少到 15-20 个最重要的
+FOLO_NEWS_IDS = "156937358802651136,155494251060695040,..."  # 只保留最重要的
+```
+
+#### 6.2 改进错误处理
+
+**修改 `src/handlers/scheduled.js`：**
+```javascript
+} catch (error) {
+    console.error(`[Scheduled] Error:`, error);
+    // 抛出错误，让 Cloudflare 知道任务失败
+    throw error;
+}
+```
+
+**添加详细日志：**
+```javascript
+console.log(`[Scheduled] Starting daily automation for ${dateStr}`);
+console.log(`[Scheduled] Fetching data...`);
+console.log(`[Scheduled] Data fetched: ${Object.keys(allUnifiedData).length} types`);
+console.log(`[Scheduled] Total items: ${selectedContentItems.length}`);
+console.log(`[Scheduled] Generating content...`);
+console.log(`[Scheduled] Success!`);
+```
+
+#### 6.3 优化数据抓取策略
+
+1.  **分批抓取**：将多个 ID 分成 2-3 批，每批之间增加延迟
+2.  **并行抓取优化**：同时抓取 5 个 ID，完成后再抓取下一批（需要控制并发数）
+3.  **增加超时和重试机制**：为每个 API 请求设置合理的超时时间，失败时自动重试（最多 3 次）
+
+#### 6.4 优化 Prompt 长度
+
+1.  **智能截断**：如果数据量过大，优先保留最重要的数据，按发布时间、相关性等排序后截断
+2.  **分批处理**：将数据分成多个批次，每批生成部分内容，最后合并
+3.  **压缩数据**：在发送给 AI 之前，先对数据进行摘要，只保留关键信息
+
+#### 6.5 检查与验证
+
+**检查 Cloudflare Workers 日志：**
+1.  登录 Cloudflare Dashboard
+2.  进入 Workers & Pages → 你的 Worker
+3.  查看 `Observability → Logs`
+4.  查找关键日志：
+    *   `[Scheduled] Starting daily automation for YYYY-MM-DD`
+    *   `[Scheduled] Fetching data...`
+    *   `[Scheduled] Data fetched and stored.`
+    *   `[Scheduled] Generating content...`
+    *   `[Scheduled] Error:` (如果有错误)
+
+**检查 GitHub 仓库：**
+1.  检查 `daily/YYYY-MM-DD.md` 是否存在
+2.  检查 `content/cn/YYYY-MM/YYYY-MM-DD.md` 是否存在
+3.  检查文件内容是否完整
+
+**手动触发测试：**
+```bash
+# 访问测试端点
+curl "https://your-worker.workers.dev/triggerScheduled?date=2026-01-02"
+```
+
+**预防措施：**
+*   ✅ 在增加配置值（如 `FOLO_NEWS_FETCH_PAGES`、`MAX_ITEMS_PER_TYPE`）前，先测试执行时间
+*   ✅ 定期检查 Cloudflare Workers 日志，及时发现异常
+*   ✅ 设置监控告警，任务失败时发送通知
+*   ✅ 保持错误处理代码能够正确抛出错误，而不是静默捕获
+
 ---
 
 ## 🧭 优化修改方案（执行清单）

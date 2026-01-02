@@ -68,6 +68,46 @@ export default {
             return await handleRss(request, env);
         } else if (path === '/writeRssData' && request.method === 'GET') {
             return await handleWriteRssData(request, env);
+        } else if (path === '/testTriggerScheduled' && request.method === 'GET') {
+            // Test endpoint for triggering scheduled task with date parameter
+            // Protected by simple secret key check
+            const secretKey = url.searchParams.get('key');
+            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
+            if (secretKey !== expectedKey) {
+                return new Response(JSON.stringify({ 
+                    error: 'Unauthorized. Please provide correct secret key.' 
+                }), { 
+                    status: 401, 
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                });
+            }
+            const dateParam = url.searchParams.get('date');
+            const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+            const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
+            const fakeCtx = { waitUntil: (promise) => promise };
+            // Run synchronously (this may take a while)
+            try {
+                await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
+                return new Response(JSON.stringify({ 
+                    success: true, 
+                    message: `Scheduled task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
+                    date: specifiedDate || 'current date',
+                    timestamp: new Date().toISOString()
+                }), { 
+                    status: 200, 
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                });
+            } catch (error) {
+                return new Response(JSON.stringify({ 
+                    success: false, 
+                    error: error.message,
+                    date: specifiedDate || 'current date',
+                    timestamp: new Date().toISOString()
+                }), { 
+                    status: 500, 
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                });
+            }
         }
 
         // Authentication check for all other paths
@@ -103,12 +143,16 @@ export default {
                 response = await handleCommitToGitHub(request, env);
             } else if (path === '/triggerScheduled' && request.method === 'GET') {
                 // Manual trigger for scheduled task (for testing)
+                // Support date parameter: ?date=2026-01-02
+                const dateParam = url.searchParams.get('date');
+                const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
                 const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
                 const fakeCtx = { waitUntil: (promise) => promise };
-                await handleScheduled(fakeEvent, env, fakeCtx);
+                await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
                 response = new Response(JSON.stringify({ 
                     success: true, 
-                    message: 'Scheduled task triggered successfully',
+                    message: `Scheduled task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                    date: specifiedDate || 'current date',
                     timestamp: new Date().toISOString()
                 }), { 
                     status: 200, 

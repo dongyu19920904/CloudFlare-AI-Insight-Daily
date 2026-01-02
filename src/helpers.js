@@ -360,3 +360,24 @@ export function replaceImageProxy(proxy, content) {
     const str = String(content);
     return str.replace(/upload.chinaz.com/g, 'pic.chinaz.com').replace(/https:\/\/pic.chinaz.com/g, proxy+'https:\/\/pic.chinaz.com');
 }
+
+/**
+ * 替换内容中错误的域名链接
+ * 将 ai.hubtoday.app 替换为 news.aivora.cn
+ * @param {string} content - 要处理的内容
+ * @param {string} correctDomain - 正确的域名，默认为 news.aivora.cn
+ * @returns {string} 替换后的内容
+ */
+export function replaceIncorrectDomainLinks(content, correctDomain = 'news.aivora.cn') {
+    if (!content || typeof content !== 'string') {
+        return content;
+    }
+    
+    // 替换 Markdown 链接格式: [text](https://ai.hubtoday.app/...)
+    content = content.replace(/https:\/\/ai\.hubtoday\.app\//g, `https://${correctDomain}/`);
+    
+    // 替换纯 URL 格式: https://ai.hubtoday.app/...
+    content = content.replace(/https:\/\/ai\.hubtoday\.app\//g, `https://${correctDomain}/`);
+    
+    return content;
+}
