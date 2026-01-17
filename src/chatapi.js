@@ -916,7 +916,7 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
     if (!env.ANTHROPIC_API_URL || !env.ANTHROPIC_API_KEY) {
         throw new Error("ANTHROPIC_API_URL or ANTHROPIC_API_KEY not set.");
     }
-    const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+    const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-sonnet-4-5";
     const url = `${env.ANTHROPIC_API_URL}/v1/messages`;
 
     const messages = [{ role: "user", content: promptText }];
@@ -982,7 +982,7 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
     if (!env.ANTHROPIC_API_URL || !env.ANTHROPIC_API_KEY) {
         throw new Error("ANTHROPIC_API_URL or ANTHROPIC_API_KEY not set.");
     }
-    const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+    const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-sonnet-4-5";
     const url = `${env.ANTHROPIC_API_URL}/v1/messages`;
 
     const messages = [{ role: "user", content: promptText }];
