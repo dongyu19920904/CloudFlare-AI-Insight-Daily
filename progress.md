@@ -15,6 +15,13 @@
   - Added homepage date guard and new normalizeDailyBody helper in CloudFlare-BioAI-Daily
   - Added blog cron retry (0 10 UTC) handling in CloudFlare-BioAI-Daily and updated wrangler cron list
   - Wrote/reran TDD scripts in `d:\GitHub\CloudFlare-BioAI-Daily\tmp` for home guard, daily-body normalization, and blog cron text checks
+  - Checked BioAI-Daily-Web content and commit history (latest daily update 2026-01-14)
+  - Checked astro-paper blog files (no 2026-01-16 post)
+  - Verified BioAI worker secrets list and inspected scheduledBlog timezone logic
+  - Triggered BioAI scheduled daily sync for 2026-01-16 via test endpoint (success, selectedCount 55)
+  - Added image proxy handling for Hextra/BioAI frontends and Astro blog (public proxy via weserv)
+  - Ran temporary node checks to enforce proxy logic (fail then pass)
+  - Pushed image proxy changes to Hextra-AI-Insight-Daily, BioAI-Daily-Web, astro-paper
 - Files created/modified:
   - d:\GitHub\CloudFlare-AI-Insight-Daily\task_plan.md (created)
   - d:\GitHub\CloudFlare-AI-Insight-Daily\findings.md (created)
@@ -31,7 +38,9 @@
 ## Test Results
 | Test | Input | Expected | Actual | Status |
 |------|-------|----------|--------|--------|
-|      |       |          |        |        |
+| image-proxy-check (Hextra) | tmp/image-proxy-check.js | fail before, pass after | ok | pass |
+| image-proxy-check (BioAI) | tmp/image-proxy-check.js | fail before, pass after | ok | pass |
+| image-proxy-check (astro) | tmp/image-proxy-check.cjs | fail before, pass after | ok | pass |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
@@ -58,3 +67,20 @@
 | What's the goal? | Confirm issue status and blog automation wiring |
 | What have I learned? | See findings.md |
 | What have I done? | Created planning files, loaded skills |
+
+## 2026-01-16 - Claude model switch
+- Ran model switch TDD in CloudFlare-AI-Insight-Daily (tmp/model-switch.test.mjs): red then green.
+- Updated CloudFlare-AI-Insight-Daily: wrangler.toml + src/chatapi.js + docs/PROJECT_FEATURES.md + README.md to claude-sonnet-4-5.
+- Updated CloudFlare-BioAI-Daily: wrangler.toml + src/chatapi.js + docs/PROJECT_FEATURES.md to claude-sonnet-4-5.
+- Verified translation workflows in Hextra-AI-Insight-Daily and BioAI-Daily-Web use claude-haiku-4-5-20251001 and kept unchanged.
+- No Claude model references found in astro-paper.
+- Cleanup attempt: failed to delete tmp/model-switch.test.mjs due to access denied (3 attempts).
+
+## 2026-01-16 - Commit/Push
+- BioAI backend committed model switch; push retried with -v after timeout and reported up-to-date.
+- AI-Insight backend commit blocked by .git ACL deny (index.lock permission denied).
+
+## 2026-01-16 - Commit/Push (AI-Insight)
+- Reset .git ACLs; git add/commit/push succeeded for AI-Insight backend.
+- Removed tmp/model-switch.test.mjs after ACL reset.
+- BioAI backend push confirmed up-to-date.
