@@ -1,6 +1,6 @@
 // src/dataSources/projects.js
 import { fetchData, getISODate, removeMarkdownCodeBlock, formatDateToChineseWithTime, escapeHtml} from '../helpers.js';
-import { callChatAPI } from '../chatapi.js';
+import { callTranslateAPI } from '../chatapi.js';
 
 const ProjectsDataSource = {
     fetch: async (env) => {
@@ -48,7 +48,7 @@ JSON Array of Chinese Translations:`;
         let translatedTexts = [];
         try {
             console.log(`Requesting translation for ${descriptionsToTranslate.length} project descriptions.`);
-            const chatResponse = await callChatAPI(env, promptText);
+            const chatResponse = await callTranslateAPI(env, promptText);
             const parsedTranslations = JSON.parse(removeMarkdownCodeBlock(chatResponse)); // Assuming direct JSON array response
 
             if (parsedTranslations && Array.isArray(parsedTranslations) && parsedTranslations.length === descriptionsToTranslate.length) {

@@ -11,13 +11,14 @@ import { handleUpdateAllMonthIndexes } from './handlers/updateAllMonthIndexes.js
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { handleScheduled } from './handlers/scheduled.js';
+import { handleTestTriggerScheduled } from './handlers/testTriggerScheduled.js';
 
 export default {
     async scheduled(event, env, ctx) {
         // 每日任务 - 生成日报
         await handleScheduled(event, env, ctx);
     },
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         // Check essential environment variables
         const requiredEnvVars = [
             'DATA_KV', 'OPEN_TRANSLATE', 'USE_MODEL_PLATFORM',
@@ -84,43 +85,16 @@ export default {
             }
             return await handleUpdateAllMonthIndexes(request, env);
         } else if (path === '/testTriggerScheduled' && request.method === 'GET') {
-            // Test endpoint for triggering scheduled task with date parameter
-            // Protected by simple secret key check
-            const secretKey = url.searchParams.get('key');
-            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
-            if (secretKey !== expectedKey) {
-                return new Response(JSON.stringify({ 
-                    error: 'Unauthorized. Please provide correct secret key.' 
-                }), { 
-                    status: 401, 
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
-                });
-            }
-            const dateParam = url.searchParams.get('date');
-            const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
-            const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
-            const fakeCtx = { waitUntil: (promise) => promise };
-            // Run synchronously (this may take a while)
             try {
-                await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
-                return new Response(JSON.stringify({ 
-                    success: true, 
-                    message: `Scheduled task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
-                    date: specifiedDate || 'current date',
-                    timestamp: new Date().toISOString()
-                }), { 
-                    status: 200, 
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
-                });
+                return await handleTestTriggerScheduled(request, env, ctx, handleScheduled);
             } catch (error) {
-                return new Response(JSON.stringify({ 
-                    success: false, 
+                return new Response(JSON.stringify({
+                    success: false,
                     error: error.message,
-                    date: specifiedDate || 'current date',
                     timestamp: new Date().toISOString()
-                }), { 
-                    status: 500, 
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                }), {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
                 });
             }
         }
