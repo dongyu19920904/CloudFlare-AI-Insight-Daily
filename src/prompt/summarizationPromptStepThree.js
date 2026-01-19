@@ -1,4 +1,4 @@
-export function getSystemPromptSummarizationStepThree() {
+﻿export function getSystemPromptSummarizationStepThree() {
     return `
 你是一个极简主义的 AI 资讯主编。你的任务是将繁杂的日报内容，提炼成 **3 行高浓度的"人话"摘要**。
 
@@ -25,7 +25,6 @@ export function getSystemPromptSummarizationStepThree() {
 **三行结构（严格执行）：**
 1.  **大事件**：今天最大的那个新闻是啥？（用动词开头，比如“OpenAI 发布...”，“谷歌开源...”）
 2.  **新趋势**：有什么好玩的项目或风向？（比如“AI 绘画开始内卷...”，“手机跑大模型成真...”）
-3.  **一句话总结**：给读者的行动建议或犀利点评。（比如“开发者赶紧更新代码。”，“等等党又赢了。”）
 
 **要求：**
 - 每行控制在 40 字以内。

@@ -17,7 +17,7 @@ export default {
         // 每日任务 - 生成日报
         await handleScheduled(event, env, ctx);
     },
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         // Check essential environment variables
         const requiredEnvVars = [
             'DATA_KV', 'OPEN_TRANSLATE', 'USE_MODEL_PLATFORM',
@@ -97,16 +97,31 @@ export default {
                 });
             }
             const dateParam = url.searchParams.get('date');
+            const forceSync = url.searchParams.get('sync') === '1';
             const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
             const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
-            const fakeCtx = { waitUntil: (promise) => promise };
-            // Run synchronously (this may take a while)
             try {
+                const waitUntil = ctx && typeof ctx.waitUntil === 'function' ? ctx.waitUntil.bind(ctx) : null;
+                if (waitUntil && !forceSync) {
+                    waitUntil(handleScheduled(fakeEvent, env, ctx, specifiedDate));
+                    return new Response(JSON.stringify({ 
+                        success: true, 
+                        message: `Scheduled task started${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                        date: specifiedDate || 'current date',
+                        async: true,
+                        timestamp: new Date().toISOString()
+                    }), { 
+                        status: 202, 
+                        headers: { 'Content-Type': 'application/json; charset=utf-8' } 
+                    });
+                }
+                const fakeCtx = { waitUntil: (promise) => promise };
                 await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
                 return new Response(JSON.stringify({ 
                     success: true, 
                     message: `Scheduled task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
                     date: specifiedDate || 'current date',
+                    async: false,
                     timestamp: new Date().toISOString()
                 }), { 
                     status: 200, 
