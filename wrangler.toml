@@ -9,7 +9,7 @@ kv_namespaces = [
 ]
 
 [vars]
-IMG_PROXY = "https://images.weserv.nl/?url="  #图片代理链接，用于处理图片不显示
+IMG_PROXY = ""  # 图片代理禁用
 OPEN_TRANSLATE = "true"
 USE_MODEL_PLATFORM = "ANTHROPIC" #ANTHROPIC, OPEN, GEMINI
 # ANTHROPIC_API_KEY = 通过 wrangler secret 设置
