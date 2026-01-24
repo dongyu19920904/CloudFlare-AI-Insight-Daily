@@ -103,7 +103,7 @@
         return match ? match[1].trim() : text.trim();
     }
     ```
-*   **妯″瀷閫夋嫨**锛氬鏋?Prompt 闅句互鎺у埗锛屽彲鍒囨崲鑷?Claude 绯诲垪锛堝 `claude-sonnet-4-5`锛夛紝閫氬父杈撳嚭鏇寸函鍑€銆?
+*   **妯″瀷閫夋嫨**锛氬鏋?Prompt 闅句互鎺у埗锛屽彲鍒囨崲鑷?Claude 绯诲垪锛堝 `claude-opus-4-5`锛夛紝閫氬父杈撳嚭鏇寸函鍑€銆?
 ### 2. Prompt 缂栧啓涓殑璇硶闄烽槺
 鍦?JavaScript 鏂囦欢涓紪鍐?Prompt 鏃讹紝濡傛灉 Prompt 鏈韩鍖呭惈 Markdown 浠ｇ爜鍧楁爣璁帮紙```锛夛紝蹇呴』杩涜杞箟锛屽惁鍒欎細瀵艰嚧鏋勫缓澶辫触銆?*   鉂?閿欒锛歚return \`璇峰寘瑁瑰湪 ```markdown 涓璡`;`
 *   鉁?姝ｇ‘锛歚return \`璇峰寘瑁瑰湪 \`\`\`markdown 涓璡`;`
