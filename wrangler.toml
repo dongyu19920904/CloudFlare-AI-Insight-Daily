@@ -47,6 +47,11 @@ PROJECTS_API_URL = "https://git-trending.justlikemaki.vip/topone/?since=daily"
 
 # 抓取量上限（防止 prompt 过长）。可按需调大/调小
 MAX_ITEMS_PER_TYPE = "50"
+# linux.do 来源兜底策略：
+# - 默认最多保留 2 条（若你确认图片稳定可改为 3）
+# - 默认去掉 linux.do 媒体标签，避免反盗链导致前端破图
+LINUXDO_MAX_ITEMS = "2"
+LINUXDO_KEEP_MEDIA = "false"
 
 # 无法创建 Folo 列表时，可直接配置多个信息源 ID（逗号/空格分隔）
 # 这些 ID 对应 timeline/articles/<ID> 的数字，一般是 feedId。
