@@ -1,0 +1,51 @@
+name: Remote Worker Smoke Test
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Test date in YYYY-MM-DD
+        required: true
+        default: '2026-03-11'
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger worker
+        run: |
+          set -euo pipefail
+          URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled?key=test-secret-key-change-me&date=${{ inputs.date }}"
+          echo "Triggering $URL"
+          curl -fsSL "$URL" | tee response.json
+      - name: Wait for daily file in frontend repo
+        run: |
+          set -euo pipefail
+          DATE="${{ inputs.date }}"
+          RAW_URL="https://raw.githubusercontent.com/dongyu19920904/Hextra-AI-Insight-Daily/main/daily/${DATE}.md"
+          for i in {1..20}; do
+            code=$(curl -sS -o daily.md -w '%{http_code}' "$RAW_URL" || true)
+            echo "Attempt $i daily file HTTP $code"
+            if [ "$code" = "200" ]; then
+              test -s daily.md
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Daily file was not written to frontend repo in time" >&2
+          exit 1
+      - name: Wait for public page
+        run: |
+          set -euo pipefail
+          DATE="${{ inputs.date }}"
+          YM="${DATE:0:7}"
+          PAGE_URL="https://news.aivora.cn/${YM}/${DATE}/"
+          for i in {1..30}; do
+            code=$(curl -sS -o page.html -w '%{http_code}' "$PAGE_URL" || true)
+            echo "Attempt $i page HTTP $code"
+            if [ "$code" = "200" ]; then
+              grep -q "AI" page.html || true
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Public page was not deployed in time" >&2
+          exit 1
