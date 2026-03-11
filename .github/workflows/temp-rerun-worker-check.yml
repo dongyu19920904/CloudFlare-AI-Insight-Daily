@@ -1,5 +1,5 @@
 name: Temp Rerun Worker Check
-# rerun after prompt truncation
+# rerun after stream fallback
 
 on:
   push:
