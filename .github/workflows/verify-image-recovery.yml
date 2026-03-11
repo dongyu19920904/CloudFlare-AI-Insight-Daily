@@ -1,0 +1,52 @@
+name: Verify Image Recovery
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: verify date
+        required: true
+        default: "2026-03-11"
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger worker
+        run: |
+          set -euo pipefail
+          DATE='${{ github.event.inputs.date }}'
+          URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled?key=test-secret-key-change-me&date=${DATE}"
+          curl -fsSL "$URL" | tee trigger.json
+      - name: Wait for markdown images
+        run: |
+          set -euo pipefail
+          DATE='${{ github.event.inputs.date }}'
+          RAW_URL="https://raw.githubusercontent.com/dongyu19920904/Hextra-AI-Insight-Daily/main/daily/${DATE}.md"
+          for i in {1..20}; do
+            curl -fsSL "$RAW_URL" > daily.md
+            if grep -q '!\[' daily.md; then
+              echo "IMAGES_RECOVERED"
+              grep -n '!\[' daily.md | head -n 10
+              exit 0
+            fi
+            echo "Attempt $i: no markdown image yet"
+            sleep 20
+          done
+          echo "Images did not recover in time" >&2
+          exit 1
+      - name: Wait for public page images
+        run: |
+          set -euo pipefail
+          DATE='${{ github.event.inputs.date }}'
+          YM="${DATE:0:7}"
+          PAGE_URL="https://news.aivora.cn/${YM}/${DATE}/"
+          for i in {1..20}; do
+            curl -fsSL "$PAGE_URL" > page.html
+            count=$(grep -o '<img\b' page.html | wc -l || true)
+            echo "Attempt $i: page img count $count"
+            if [ "${count:-0}" -gt 0 ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Public page still has no images" >&2
+          exit 1
