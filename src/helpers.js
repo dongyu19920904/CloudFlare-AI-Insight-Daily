@@ -74,21 +74,27 @@ export async function fetchData(url, options = {}) {
  */
 export function removeMarkdownCodeBlock(text) {
     if (!text) return '';
-    let cleanedText = text.trim();
-
-    const jsonFence = "```json";
-    const genericFence = "```";
-
-    if (cleanedText.startsWith(jsonFence)) {
-        cleanedText = cleanedText.substring(jsonFence.length);
-    } else if (cleanedText.startsWith(genericFence)) {
-        cleanedText = cleanedText.substring(genericFence.length);
+    const cleanedText = text.trim();
+    // Match first code block (```...```) and capture content inside
+    const match = cleanedText.match(/```(?:\w*)\s*([\s\S]*?)\s*```/);
+    if (match) {
+        return match[1].trim();
     }
+    return cleanedText;
+}
 
-    if (cleanedText.endsWith(genericFence)) {
-        cleanedText = cleanedText.substring(0, cleanedText.length - genericFence.length);
-    }
-    return cleanedText.trim();
+/**
+ * Checks if HTML content contains images or videos.
+ * @param {string} html - The HTML string.
+ * @returns {boolean} True if the content contains images or videos.
+ */
+export function hasMedia(html) {
+    if (!html) return false;
+    // Check for img tags
+    if (/<img[^>]+>/i.test(html)) return true;
+    // Check for video tags
+    if (/<video[^>]+>/i.test(html)) return true;
+    return false;
 }
 
 /**
@@ -110,6 +116,35 @@ export function stripHtml(html) {
 
     // 移除所有其他 HTML 标签，并规范化空白
     return processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 将 stripHtml 产生的媒体占位符转换为 Markdown 图片。
+ * 形如：
+ *  - [图片: https://xx/1.png]
+ *  - [图片: 描述 https://xx/1.png]
+ */
+export function convertPlaceholdersToMarkdownImages(text) {
+    if (!text) return '';
+    const str = String(text);
+    const isVideoUrl = (url) => /\.(mp4|mov|webm)(\?|#|$)/i.test(url);
+    const toVideoTag = (url) => `<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${url}"></video>`;
+    const withVideos = str.replace(/\[视频:\s*([^\]]+?)\]/g, (match, inner) => {
+        const parts = inner.trim().split(/\s+/);
+        const url = parts[parts.length - 1];
+        if (!/^https?:\/\//i.test(url)) return match;
+        if (isVideoUrl(url)) return toVideoTag(url);
+        const label = parts.slice(0, -1).join(' ') || '视频';
+        return `[${label}](${url})`;
+    });
+    return withVideos.replace(/\[图片:\s*([^\]]+?)\]/g, (match, inner) => {
+        const parts = inner.trim().split(/\s+/);
+        const url = parts[parts.length - 1];
+        if (!/^https?:\/\//i.test(url)) return match;
+        if (isVideoUrl(url)) return toVideoTag(url);
+        const alt = parts.slice(0, -1).join(' ') || 'AI资讯图片';
+        return `![${alt}](${url})`;
+    });
 }
 
 /**
@@ -169,23 +204,27 @@ export function getShanghaiTime() {
 }
 
 /**
- * Checks if a given date string is within the last specified number of days (inclusive of today).
+ * Checks if a given date string is within the last specified number of hours from current time.
  * @param {string} dateString - The date string to check (YYYY-MM-DD or ISO format).
- * @param {number} days - The number of days to look back (e.g., 3 for today and the past 2 days).
- * @returns {boolean} True if the date is within the last 'days', false otherwise.
+ * @param {number} days - The number of days to look back (will be converted to hours: days * 24).
+ * @returns {boolean} True if the date is within the specified time window, false otherwise.
  */
 export function isDateWithinLastDays(dateString, days) {
-    // Convert both dates to Shanghai time for consistent comparison
-    const itemDate = convertToShanghaiTime(dateString);
-    const today = new Date(fetchDate);
+    if (!dateString || !days) return false;
 
-    // Normalize today to the start of its day in Shanghai time
-    today.setHours(0, 0, 0, 0);
+    const itemTime = new Date(dateString).getTime();
+    if (Number.isNaN(itemTime)) return false;
 
-    const diffTime = today.getTime() - itemDate.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // Get current time in Asia/Shanghai timezone
+    const now = getShanghaiTime();
+    const currentTimeMs = now.getTime();
 
-    return diffDays >= 0 && diffDays < days;
+    // Calculate time window: from (now - days*24 hours) to now
+    const hoursToLookBack = Math.max(days, 1) * 24;
+    const windowStartMs = currentTimeMs - (hoursToLookBack * 60 * 60 * 1000);
+    const windowEndMs = currentTimeMs;
+
+    return itemTime >= windowStartMs && itemTime <= windowEndMs;
 }
 
 /**
@@ -320,4 +359,25 @@ export function sleep(ms) {
 export function replaceImageProxy(proxy, content) {
     const str = String(content);
     return str.replace(/upload.chinaz.com/g, 'pic.chinaz.com').replace(/https:\/\/pic.chinaz.com/g, proxy+'https:\/\/pic.chinaz.com');
+}
+
+/**
+ * 替换内容中错误的域名链接
+ * 将 ai.hubtoday.app 替换为 news.aivora.cn
+ * @param {string} content - 要处理的内容
+ * @param {string} correctDomain - 正确的域名，默认为 news.aivora.cn
+ * @returns {string} 替换后的内容
+ */
+export function replaceIncorrectDomainLinks(content, correctDomain = 'news.aivora.cn') {
+    if (!content || typeof content !== 'string') {
+        return content;
+    }
+    
+    // 替换 Markdown 链接格式: [text](https://ai.hubtoday.app/...)
+    content = content.replace(/https:\/\/ai\.hubtoday\.app\//g, `https://${correctDomain}/`);
+    
+    // 替换纯 URL 格式: https://ai.hubtoday.app/...
+    content = content.replace(/https:\/\/ai\.hubtoday\.app\//g, `https://${correctDomain}/`);
+    
+    return content;
 }

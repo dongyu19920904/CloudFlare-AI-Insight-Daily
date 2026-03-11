@@ -2,18 +2,30 @@ export function insertAd() {
     return `
 ---
 
-## **AI产品自荐: [AIClient2API ↗️](https://github.com/justlovemaki/AIClient-2-API)**
+## **AI 账号极速发货: [爱窝啦 Aivora ⬆️](https://aivora.cn)**
 
-厌倦了在各种AI模型间来回切换，被烦人的API额度限制束缚手脚？现在，你有了一个终极解决方案！🎉 'AIClient-2-API' 不仅仅是一个普通的API代理，它是一个能将 Gemini CLI 和 Kiro 客户端等工具“点石成金”，变为强大 OpenAI 兼容 API 的魔法盒子。
+还在为 ChatGPT Plus、Claude 4.5、Gemini 3 Pro、Claude Pro、Midjourney 的支付问题烦恼？**爱窝啦 Aivora** 为您提供一站式 AI 账号解决方案！
 
-这个项目的核心魅力在于它的“逆向思维”和强大功能：
+✅ **极速发货**：下单即发，无需等待，即刻开启 AI 之旅。
+✅ **稳定可靠**：精选优质独享账号，拒绝封号焦虑，售后无忧。
+✅ **超全品类**：ChatGPT Plus、Claude 4.5、Gemini 3 Pro、Claude Pro、Midjourney、Poe、Sunno 等热门 AI 工具账号应有尽有。
+✅ **超高性价比**：比官方订阅更优惠的价格，享受同等尊贵服务。
 
-✨ **客户端变API，解锁新姿势**：我们巧妙地利用 Gemini CLI 的 OAuth 登录，让你轻松**突破官方免费API的速率和额度限制**。更令人兴奋的是，通过封装 Kiro 客户端的接口，我们成功**破解其API，让你能免费丝滑地调用强大的 Claude 模型**！这为你提供了 **“使用免费Claude API加 Claude Code，开发编程的经济实用方案”**。
-
-🔧 **系统提示词，由你掌控**：想让AI更听话？我们提供了强大的系统提示词（System Prompt）管理功能。你可以轻松**提取、替换（'overwrite'）或追加（'append'）**任何请求中的系统提示词，在服务端精细地调整AI的行为，而无需修改客户端代码。
-
-💡 **顶级体验，平民成本**：想象一下，**在你的编辑器里用 Kilo 代码助手，加上 Cursor 的高效提示词，再配上任意顶级大模型——用 Cursor，又何必是 Cursor？** 本项目让你能以极低的成本，组合出媲美付费工具的开发体验。同时支持MCP协议和图片、文档等多模态输入，让你的创意不再受限。
-
-告别繁琐配置和昂贵账单，拥抱这个集免费、强大、灵活于一身的AI开发新范式吧！
+🚀 **立即访问 [aivora.cn](https://aivora.cn) 选购您的 AI 助手，释放无限创造力！**
     `;
+}
+
+const MID_SOFT_AD = `> 💡 **提示**：想第一时间体验文中提到的最新 AI 模型（Claude 4.5、GPT、Gemini 3 Pro）？没有账号？来 [**爱窝啦 Aivora**](https://aivora.cn?utm_source=daily_news&utm_medium=mid_ad&utm_campaign=content) 领个号，一分钟上手，售后无忧。`;
+
+export function insertMidAd(markdown = '') {
+    if (typeof markdown !== 'string' || markdown.includes('utm_medium=mid_ad')) {
+        return markdown;
+    }
+    const heading = '### **产品与功能更新**';
+    const midAdBlock = `${heading}\n\n${MID_SOFT_AD}\n`;
+
+    if (markdown.includes(heading)) {
+        return markdown.replace(heading, midAdBlock);
+    }
+    return `${MID_SOFT_AD}\n\n${markdown}`;
 }

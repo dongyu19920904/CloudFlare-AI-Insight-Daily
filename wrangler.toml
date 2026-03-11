@@ -1,47 +1,74 @@
 # wrangler.toml
-name = "ai-daily"
-main = "src/index.js" # <-- Important: path to your main worker script
-compatibility_date = "2025-05-20" # Or your project's compatibility date
+name = "cloudflare-ai-lnsight-daily"
+main = "src/index.js"
+compatibility_date = "2025-05-20"
 workers_dev = true
 
 kv_namespaces = [
-  { binding = "DATA_KV", id = "kv数据库的ID" }
+  { binding = "DATA_KV", id = "bd98e664917441a08118edc88790bf3f", preview_id = "75532562ea6341369743021145bf6100" }
 ]
 
 [vars]
-IMG_PROXY = ""  #图片代理链接，用于处理图片不显示
+IMG_PROXY = ""
 OPEN_TRANSLATE = "true"
-USE_MODEL_PLATFORM = "GEMINI" #GEMINI, OPEN
-GEMINI_API_KEY = "xxxxxx-xxxxxx"
-GEMINI_API_URL = "https://api-proxy.me/gemini" #网上公共的代理api
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"
-OPENAI_API_KEY = "sk-xxxxxx" # Replace with your actual OpenAI API Key
-OPENAI_API_URL = "https://api.deepseek.com" # Or your OpenAI compatible API URL
-DEFAULT_OPEN_MODEL = "deepseek-chat"
-FOLO_COOKIE_KV_KEY = "folo_auth_cookie" 
+
+USE_MODEL_PLATFORM = "ANTHROPIC"
+ANTHROPIC_BASE_URL = "https://code.newcli.com/claude/aws"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-5"
+
+OPENAI_API_URL = "https://code.newcli.com/codex"
+DEFAULT_OPEN_MODEL = "gpt-5.2"
+
+GEMINI_API_URL = "https://code.newcli.com/gemini"
+DEFAULT_GEMINI_MODEL = "gemini-3-pro"
+GEMINI_STREAM_MODE = "auto"
+GEMINI_API_VERSION = "auto"
+GEMINI_DEBUG = "false"
+GEMINI_RETRY_MAX = "3"
+GEMINI_RETRY_BASE_MS = "2000"
+
+FOLO_COOKIE_KV_KEY = "folo_auth_cookie"
 FOLO_DATA_API = "https://api.follow.is/entries"
 FOLO_FILTER_DAYS = 1
-NEWS_AGGREGATOR_LIST_ID = "158437828119024640" 
-NEWS_AGGREGATOR_FETCH_PAGES = "1" 
+
+NEWS_AGGREGATOR_LIST_ID = "220872364473472000"
+NEWS_AGGREGATOR_FETCH_PAGES = "1"
 HGPAPERS_LIST_ID = "158437917409783808"
 HGPAPERS_FETCH_PAGES = "1"
-TWITTER_LIST_ID = "153028784690326528" 
-TWITTER_FETCH_PAGES = "1" 
-REDDIT_LIST_ID = "167576006499975168" 
-REDDIT_FETCH_PAGES = "1" 
+TWITTER_LIST_ID = ""
+TWITTER_FETCH_PAGES = "0"
+REDDIT_LIST_ID = ""
+REDDIT_FETCH_PAGES = "0"
+
 PROJECTS_API_URL = "https://git-trending.justlikemaki.vip/topone/?since=daily"
-GITHUB_TOKEN = "github_pat_xxxxxx"
-GITHUB_REPO_OWNER = "justlovemaki"
-GITHUB_REPO_NAME = "CloudFlare-AI-Insight-Daily"
+
+MAX_ITEMS_PER_TYPE = "50"
+MAX_ITEMS_PAPER = "8"
+LINUXDO_MAX_ITEMS = "2"
+LINUXDO_KEEP_MEDIA = "false"
+
+FOLO_NEWS_IDS = "156937358802651136,155494251060695040,41359648684677187,41795937307751551,56251875145503744,111455897123858432,100023840905641984,71118775994989568,52357479509098509,41374113210459144,41373653871256584,42034394558772224,63359584376654848,54889565031071744,58862919665460224,41374113210459148,76398619014644736,55258134323494964,187702008979989514,53641991802971136,196213526630503424,55620059789031425,41725864077541376,55441417631126528,71075630994113547,41359648684677205,41215011978385465,156627007566415884"
+FOLO_NEWS_ID_TYPE = "feed"
+FOLO_NEWS_FETCH_PAGES = "1"
+
+GITHUB_REPO_OWNER = "dongyu19920904"
+GITHUB_REPO_NAME = "Hextra-AI-Insight-Daily"
 GITHUB_BRANCH = "main"
-LOGIN_USERNAME = "root"
-LOGIN_PASSWORD = "toor"
-DAILY_TITLE = "AI洞察日报"
-DAILY_TITLE_MIN = " `AI 日报` "
-PODCAST_TITLE = "来生小酒馆"
-PODCAST_BEGIN = "嘿，亲爱的V，欢迎收听新一期的来生情报站，我是你们的老朋友，何夕2077"
-PODCAST_END = "今天的情报就到这里，注意隐蔽，赶紧撤离"
-BOOK_LINK = ""
+
+LOGIN_USERNAME = "qqee1133"
+
+DAILY_TITLE = "爱窝啦 AI 日报"
+DAILY_TITLE_MIN = " `爱窝啦 AI 日报` "
+PODCAST_TITLE = "爱窝啦播报"
+PODCAST_BEGIN = "欢迎收听爱窝啦 AI 日报，每天为你精选 AI 领域最值得关注的动态"
+PODCAST_END = "感谢收听，我们下期再见"
+
+BOOK_LINK = "https://news.aivora.cn"
 INSERT_FOOT = "false"
 INSERT_AD = "false"
-INSERT_APP_URL = "<h3>[查看完整版AI日报↗️ https://ai.hubtoday.app/](https://ai.hubtoday.app/)</h3>"
+INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)</h3>"
+
+[triggers]
+crons = [
+  "0 23 * * *"
+]

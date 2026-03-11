@@ -1,0 +1,358 @@
+﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia, replaceIncorrectDomainLinks } from '../helpers.js';
+import { fetchAllData, dataSources } from '../dataFetchers.js';
+import { storeInKV, getFromKV } from '../kv.js';
+import { callChatAPI, callChatAPIStream } from '../chatapi.js';
+import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero";
+import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
+import { insertFoot } from '../foot.js';
+import { insertAd, insertMidAd } from '../ad.js';
+import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
+import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
+
+function extractMediaPlaceholdersFromHtml(html, limit = 3) {
+    if (!html) return [];
+
+    const placeholders = [];
+    const seen = new Set();
+    const str = String(html);
+
+    const addPlaceholder = (placeholder) => {
+        if (!placeholder || seen.has(placeholder)) return;
+        seen.add(placeholder);
+        placeholders.push(placeholder);
+    };
+
+    for (const match of str.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*alt="([^"]*)"[^>]*>/gi)) {
+        const src = match[1]?.trim();
+        const alt = match[2]?.trim();
+        if (src) addPlaceholder(`![${alt || 'image'}](${src})`);
+        if (placeholders.length >= limit) return placeholders;
+    }
+
+    for (const match of str.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*>/gi)) {
+        const src = match[1]?.trim();
+        if (src) addPlaceholder(`![image](${src})`);
+        if (placeholders.length >= limit) return placeholders;
+    }
+
+    for (const match of str.matchAll(/<video\b[^>]*src="([^"]+)"[^>]*>/gi)) {
+        const src = match[1]?.trim();
+        if (src) addPlaceholder(`<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`);
+        if (placeholders.length >= limit) return placeholders;
+    }
+
+    return placeholders;
+}
+
+function containsRenderedMedia(markdown) {
+    if (!markdown) return false;
+    return /!\[[^\]]*\]\([^)]+\)|<img\b|<video\b/i.test(markdown);
+}
+
+function truncatePromptText(text, maxChars = 900) {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxChars) return normalized;
+    return `${normalized.slice(0, maxChars)}…`;
+}
+
+async function generateContentWithTransportFallback(env, userPrompt, systemPrompt) {
+    try {
+        let output = "";
+        for await (const chunk of callChatAPIStream(env, userPrompt, systemPrompt)) {
+            output += chunk;
+        }
+        return output;
+    } catch (error) {
+        const message = String(error?.message || error);
+        if (!/(524|timeout|timed out)/i.test(message)) {
+            throw error;
+        }
+        console.warn(`[Scheduled] Stream generation failed, retrying non-stream: ${message}`);
+        return await callChatAPI(env, userPrompt, systemPrompt);
+    }
+}
+
+function extractMatchTokens(item) {
+    const text = [
+        item?.title || '',
+        item?.description || '',
+        item?.source || '',
+        item?.plainText || '',
+    ].join(' ');
+    const tokens = new Set();
+
+    for (const match of text.match(/[A-Za-z][A-Za-z0-9.+_-]{2,}/g) || []) {
+        tokens.add(match.toLowerCase());
+    }
+
+    const curated = [
+        'openai', 'karpathy', 'metanovas', 'workbuddy', 'agenthub',
+        'autoclaw', 'openclaw', 'kimi', 'skillhub', 'songgeneration',
+        'jeff', 'dean', 'yann', 'lecun', 'tencent', 'zhipu', 'netease',
+    ];
+
+    const lowerText = text.toLowerCase();
+    for (const token of curated) {
+        if (lowerText.includes(token)) {
+            tokens.add(token);
+        }
+    }
+
+    return [...tokens];
+}
+
+function scoreMediaCandidate(output, candidate) {
+    const lowerOutput = String(output || '').toLowerCase();
+    let score = 0;
+
+    if (candidate.url && lowerOutput.includes(String(candidate.url).toLowerCase())) score += 20;
+    if (candidate.title && lowerOutput.includes(String(candidate.title).toLowerCase())) score += 12;
+
+    for (const token of candidate.matchTokens || []) {
+        if (token && lowerOutput.includes(token)) {
+            score += token.length >= 6 ? 4 : 2;
+        }
+    }
+
+    if (/(aibase|ai base|openai|karpathy|metanovas|workbuddy|autoclaw|openclaw|skillhub|kimi|tencent|zhipu|netease)/i.test(candidate.searchText || '')) {
+        score += 3;
+    }
+
+    if (/t\.me|okjike\.com/i.test(candidate.url || '')) {
+        score -= 2;
+    } else {
+        score += 1;
+    }
+
+    return score;
+}
+
+function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
+    if (containsRenderedMedia(markdown)) return markdown;
+
+    const ranked = [...(mediaCandidates || [])]
+        .map((candidate) => ({ candidate, score: scoreMediaCandidate(markdown, candidate) }))
+        .filter(({ candidate }) => Array.isArray(candidate.placeholders) && candidate.placeholders.length > 0)
+        .sort((a, b) => b.score - a.score);
+
+    const placeholders = [];
+    const seen = new Set();
+
+    for (const { candidate } of ranked) {
+        for (const placeholder of candidate.placeholders) {
+            if (!seen.has(placeholder)) {
+                seen.add(placeholder);
+                placeholders.push(placeholder);
+                break;
+            }
+        }
+        if (placeholders.length >= limit) break;
+    }
+
+    if (placeholders.length === 0) return markdown;
+
+    const rendered = placeholders.join('\n\n');
+
+    return `${markdown}\n\n### **相关配图**\n\n${rendered}`;
+}
+
+export async function handleScheduled(event, env, ctx, specifiedDate = null) {
+    // 濡傛灉鎸囧畾浜嗘棩鏈燂紝浣跨敤鎸囧畾鏃ユ湡锛涘惁鍒欎娇鐢ㄥ綋鍓嶆棩鏈?
+    const dateStr = specifiedDate || getISODate();
+    setFetchDate(dateStr);
+    console.log(`[Scheduled] Starting daily automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+    const debugInfo = {
+        date: dateStr,
+        itemsWithMedia: 0,
+        itemsWithoutMedia: 0,
+        mediaCandidates: 0,
+        outputHasMediaBeforeFallback: false,
+        outputHasMediaAfterFallback: false,
+        fallbackInserted: false,
+        labelsVersion: 'headings-v2',
+    };
+
+    try {
+        // 1. Fetch Data
+        console.log(`[Scheduled] Fetching data...`);
+        // 瀹氭椂浠诲姟鏃犳硶浠庢祻瑙堝櫒 localStorage 鑾峰彇 Cookie锛岃繖閲屼紭鍏堜娇鐢ㄧ幆澧冨彉閲?FOLO_COOKIE锛?
+        // 濡傛灉鏈缃垯灏濊瘯浠?KV(FOLO_COOKIE_KV_KEY) 璇诲彇銆?
+        let foloCookie = env.FOLO_COOKIE;
+        if (!foloCookie && env.FOLO_COOKIE_KV_KEY) {
+            try {
+                foloCookie = await getFromKV(env.DATA_KV, env.FOLO_COOKIE_KV_KEY);
+                if (foloCookie) console.log(`[Scheduled] Loaded Folo cookie from KV (${env.FOLO_COOKIE_KV_KEY}).`);
+            } catch (err) {
+                console.warn(`[Scheduled] Failed to load Folo cookie from KV: ${err.message}`);
+            }
+        }
+
+        const allUnifiedData = await fetchAllData(env, foloCookie);
+        const fetchPromises = [];
+        for (const sourceType in dataSources) {
+            if (Object.hasOwnProperty.call(dataSources, sourceType)) {
+                fetchPromises.push(storeInKV(env.DATA_KV, `${dateStr}-${sourceType}`, allUnifiedData[sourceType] || []));
+            }
+        }
+        await Promise.all(fetchPromises);
+        console.log(`[Scheduled] Data fetched and stored.`);
+
+        // 2. Prepare Content Items
+        // Priority: items with images/videos first
+        const selectedContentItems = [];
+        const itemsWithMedia = [];
+        const itemsWithoutMedia = [];
+        const mediaCandidates = [];
+        
+        for (const sourceType in allUnifiedData) {
+            const items = allUnifiedData[sourceType];
+            if (items && items.length > 0) {
+                for (const item of items) {
+                    const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
+                    const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
+                    const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
+                    let itemText = "";
+                    switch (item.type) {
+                        case 'news':
+                            itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
+                            break;
+                        case 'project':
+                            itemText = `Project Name: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nDescription: ${truncatePromptText(item.description)}\nStars: ${item.details.totalStars}`;
+                            break;
+                        case 'paper':
+                            itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
+                            break;
+                        case 'socialMedia':
+                            itemText = `socialMedia Post by ${item.authors}锛歅ublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${truncatePromptText(stripHtml(item.details.content_html))}`;
+                            break;
+                        default:
+                            itemText = `Type: ${item.type}\nTitle: ${item.title || 'N/A'}\nDescription: ${truncatePromptText(item.description || 'N/A')}\nURL: ${item.url || 'N/A'}`;
+                            if (item.published_date) itemText += `\nPublished: ${item.published_date}`;
+                            if (item.source) itemText += `\nSource: ${item.source}`;
+                            if (item.details && item.details.content_html) itemText += `\nContent: ${plainTextContent}`;
+                            break;
+                    }
+                    if (mediaPlaceholders.length > 0) {
+                        itemText += `\nMedia References: ${mediaPlaceholders.join(' ')}`;
+                    }
+                    if (itemText) {
+                        if (itemHasMedia) {
+                            itemsWithMedia.push(itemText);
+                            mediaCandidates.push({
+                                title: item.title,
+                                description: item.description,
+                                source: item.source,
+                                url: item.url,
+                                plainText: plainTextContent,
+                                placeholders: mediaPlaceholders,
+                                searchText: [item.title, item.description, item.source, plainTextContent].filter(Boolean).join(' '),
+                                matchTokens: extractMatchTokens({
+                                    title: item.title,
+                                    description: item.description,
+                                    source: item.source,
+                                    plainText: plainTextContent,
+                                }),
+                            });
+                        } else {
+                            itemsWithoutMedia.push(itemText);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Combine: items with media first, then items without media
+        selectedContentItems.push(...itemsWithMedia, ...itemsWithoutMedia);
+        
+        if (itemsWithMedia.length > 0) {
+            console.log(`[Scheduled] Found ${itemsWithMedia.length} items with images/videos, ${itemsWithoutMedia.length} items without.`);
+        }
+        debugInfo.itemsWithMedia = itemsWithMedia.length;
+        debugInfo.itemsWithoutMedia = itemsWithoutMedia.length;
+        debugInfo.mediaCandidates = mediaCandidates.length;
+
+        if (selectedContentItems.length === 0) {
+            console.log(`[Scheduled] No items found. Skipping generation.`);
+            return;
+        }
+
+        // 3. Generate Content (Call 2)
+        console.log(`[Scheduled] Generating content...`);
+        let fullPromptForCall2_System = getSystemPromptSummarizationStepOne(dateStr);
+        let fullPromptForCall2_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n';
+        
+        let outputOfCall2 = await generateContentWithTransportFallback(env, fullPromptForCall2_User, fullPromptForCall2_System);
+        outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
+        outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
+        debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
+        const outputBeforeFallback = outputOfCall2;
+        outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
+        debugInfo.fallbackInserted = outputBeforeFallback !== outputOfCall2;
+        debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
+        // 鏇挎崲閿欒鐨勫煙鍚嶉摼鎺?
+        outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
+
+        // 4. Generate Summary (Call 3)
+        console.log(`[Scheduled] Generating summary...`);
+        let fullPromptForCall3_System = getSystemPromptSummarizationStepThree();
+        let fullPromptForCall3_User = outputOfCall2;
+        
+        let outputOfCall3 = await generateContentWithTransportFallback(env, fullPromptForCall3_User, fullPromptForCall3_System);
+        outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
+
+        // 5. Assemble Markdown
+        const contentWithMidAd = insertMidAd(outputOfCall2);
+        let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
+        dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
+        dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
+        
+        if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
+        if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
+
+        // 6. Commit to GitHub
+        console.log(`[Scheduled] Committing to GitHub...`);
+        const yearMonth = getYearMonth(dateStr);
+        const dailyFilePath = `daily/${dateStr}.md`;
+        const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
+        const monthDirectoryIndexPath = `content/cn/${yearMonth}/_index.md`;
+        const homePath = 'content/cn/_index.md';
+
+        const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+        const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, { title: dailyPageTitle });
+
+        const existingDailySha = await getGitHubFileSha(env, dailyFilePath);
+        const dailyCommitMessage = `${existingDailySha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, dailyFilePath, dailySummaryMarkdownContent, dailyCommitMessage, existingDailySha);
+
+        const existingDailyPageSha = await getGitHubFileSha(env, dailyPagePath);
+        const dailyPageCommitMessage = `${existingDailyPageSha ? 'Update' : 'Create'} daily page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, dailyPagePath, dailyPageContent, dailyPageCommitMessage, existingDailyPageSha);
+
+        // Create or update month directory _index.md
+        const monthDirectoryIndexContent = buildMonthDirectoryIndex(yearMonth, { sidebarOpen: true });
+        const existingMonthIndexSha = await getGitHubFileSha(env, monthDirectoryIndexPath);
+        const monthIndexCommitMessage = `${existingMonthIndexSha ? 'Update' : 'Create'} month directory index for ${yearMonth} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, monthDirectoryIndexPath, monthDirectoryIndexContent, monthIndexCommitMessage, existingMonthIndexSha);
+
+        let existingHomeContent = '';
+        try {
+            existingHomeContent = await getGitHubFileContent(env, homePath);
+        } catch (error) {
+            console.warn(`[Scheduled] Home page not found, will create a new one.`);
+        }
+        const homeTitle = dailyPageTitle;
+        const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr, { title: homeTitle });
+        const existingHomeSha = await getGitHubFileSha(env, homePath);
+        const homeCommitMessage = `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, homePath, homeContent, homeCommitMessage, existingHomeSha);
+
+        console.log(`[Scheduled] Success!`);
+        return debugInfo;
+
+    } catch (error) {
+        console.error(`[Scheduled] Error:`, error);
+        throw error;
+    }
+}
+

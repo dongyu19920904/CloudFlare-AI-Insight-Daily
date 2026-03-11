@@ -1,5 +1,326 @@
 // src/chatapi.js
 
+const GEMINI_API_VERSIONS = ["v1beta", "v1", ""];
+
+function normalizeBaseUrl(url) {
+    return String(url || "").replace(/\/+$/, "");
+}
+
+function getAnthropicBaseUrl(env) {
+    return normalizeBaseUrl(env.ANTHROPIC_BASE_URL || env.ANTHROPIC_API_URL);
+}
+
+function getGeminiApiKey(env) {
+    return env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY;
+}
+
+function getGeminiModelName(env) {
+    return env.DEFAULT_GEMINI_MODEL || env.GEMINI_MODEL;
+}
+
+function getGeminiApiVersionCandidates(env, baseUrl) {
+    const configured = String(env.GEMINI_API_VERSION ?? "auto").trim().toLowerCase();
+    const base = normalizeBaseUrl(baseUrl);
+    const baseHasVersion = /\/v1beta$|\/v1$/i.test(base);
+    if (baseHasVersion) {
+        return [""];
+    }
+
+    if (configured === "" || configured === "auto" || configured === "default") {
+        return GEMINI_API_VERSIONS;
+    }
+    if (configured === "v1beta" || configured === "v1") {
+        return [configured];
+    }
+    if (
+        configured === "noversion" ||
+        configured === "no-version" ||
+        configured === "no_version" ||
+        configured === "none" ||
+        configured === "off" ||
+        configured === "0"
+    ) {
+        return [""];
+    }
+
+    return GEMINI_API_VERSIONS;
+}
+
+function isGeminiDebug(env) {
+    const value = String(env.GEMINI_DEBUG ?? "").trim().toLowerCase();
+    return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function redactGeminiUrl(url) {
+    return String(url || "").replace(/([?&]key=)[^&]+/gi, "$1***");
+}
+
+function logGeminiDebug(env, message, meta) {
+    if (!isGeminiDebug(env)) return;
+    if (meta) {
+        console.log(message, meta);
+        return;
+    }
+    console.log(message);
+}
+
+function isInvalidArgumentError(status, message) {
+    if (status !== 400) return false;
+    const text = String(message || "").toLowerCase();
+    return text.includes("invalid argument") || text.includes("invalid_argument");
+}
+
+function isRateLimitError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return (
+        message.includes("429") ||
+        message.includes("too many requests") ||
+        message.includes("resource_exhausted") ||
+        message.includes("并发请求数量过多")
+    );
+}
+
+function canUseAnthropicFallback(env) {
+    return Boolean(getAnthropicBaseUrl(env) && env.ANTHROPIC_API_KEY);
+}
+
+function canUseOpenAIFallback(env) {
+    return Boolean(env.OPENAI_API_URL && env.OPENAI_API_KEY);
+}
+
+function getAnthropicRetryConfig(env) {
+    const maxRetries = Number.parseInt(env.ANTHROPIC_RETRY_MAX ?? "1", 10);
+    const baseDelayMs = Number.parseInt(env.ANTHROPIC_RETRY_BASE_MS ?? "2500", 10);
+    return {
+        maxRetries: Number.isFinite(maxRetries) && maxRetries >= 0 ? maxRetries : 1,
+        baseDelayMs: Number.isFinite(baseDelayMs) && baseDelayMs >= 0 ? baseDelayMs : 2500,
+        retryStatuses: new Set([524])
+    };
+}
+
+function isRetriableAnthropicError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return (
+        error?.name === "AbortError" ||
+        message.includes("timeout") ||
+        message.includes("timed out") ||
+        message.includes("524")
+    );
+}
+
+function formatGeminiVariant(variant) {
+    return `system=${variant.useSystemInstruction ? "on" : "off"}, merge=${variant.mergeSystem ? "on" : "off"}, role=${variant.useRole ? "on" : "off"}, gen=${variant.includeGenerationConfig ? "on" : "off"}`;
+}
+
+function getGeminiPayloadVariants(hasSystem, allowGenerationConfig) {
+    const variants = [];
+    const genOptions = allowGenerationConfig ? [true, false] : [false];
+
+    if (hasSystem) {
+        for (const includeGenerationConfig of genOptions) {
+            variants.push({ useSystemInstruction: true, mergeSystem: false, useRole: true, includeGenerationConfig });
+            variants.push({ useSystemInstruction: true, mergeSystem: false, useRole: false, includeGenerationConfig });
+            variants.push({ useSystemInstruction: false, mergeSystem: true, useRole: true, includeGenerationConfig });
+            variants.push({ useSystemInstruction: false, mergeSystem: true, useRole: false, includeGenerationConfig });
+        }
+    } else {
+        for (const includeGenerationConfig of genOptions) {
+            variants.push({ useSystemInstruction: false, mergeSystem: false, useRole: true, includeGenerationConfig });
+            variants.push({ useSystemInstruction: false, mergeSystem: false, useRole: false, includeGenerationConfig });
+        }
+    }
+
+    return variants;
+}
+
+function buildGeminiPayload(promptText, systemPromptText, variant) {
+    const hasSystem = systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '';
+    const useSystemInstruction = variant.useSystemInstruction && hasSystem;
+    const shouldMergeSystem = variant.mergeSystem && hasSystem && !useSystemInstruction;
+    const effectivePromptText = shouldMergeSystem ? `${systemPromptText}\n\n${promptText}` : promptText;
+    const parts = [{ text: effectivePromptText }];
+    const content = variant.useRole ? { role: "user", parts } : { parts };
+    const payload = { contents: [content] };
+
+    if (useSystemInstruction) {
+        payload.systemInstruction = { parts: [{ text: systemPromptText }] };
+    }
+    if (variant.includeGenerationConfig) {
+        payload.generationConfig = {
+            temperature: 1,
+            topP: 0.95
+        };
+    }
+
+    return { payload };
+}
+
+function getGeminiStreamMode(env) {
+    const mode = String(env.GEMINI_STREAM_MODE ?? "auto").trim().toLowerCase();
+    if (
+        mode === "off" ||
+        mode === "false" ||
+        mode === "0" ||
+        mode === "no" ||
+        mode === "none" ||
+        mode === "disable" ||
+        mode === "disabled" ||
+        mode === "nostream" ||
+        mode === "nonstream" ||
+        mode === "non-stream" ||
+        mode === "non_stream"
+    ) {
+        return "off";
+    }
+    if (mode === "force" || mode === "on" || mode === "true" || mode === "1") {
+        return "force";
+    }
+    return "auto";
+}
+
+function buildGeminiHeaders(apiKey, useHeaderAuth) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (useHeaderAuth && apiKey) {
+        headers['x-goog-api-key'] = apiKey;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    return headers;
+}
+
+function getGeminiRetryConfig(env) {
+    const maxRetries = Number.parseInt(env.GEMINI_RETRY_MAX ?? "2", 10);
+    const baseDelayMs = Number.parseInt(env.GEMINI_RETRY_BASE_MS ?? "1000", 10);
+    return {
+        maxRetries: Number.isFinite(maxRetries) && maxRetries >= 0 ? maxRetries : 2,
+        baseDelayMs: Number.isFinite(baseDelayMs) && baseDelayMs >= 0 ? baseDelayMs : 1000,
+        retryStatuses: new Set([429])
+    };
+}
+
+function parseRetryAfterMillis(retryAfter) {
+    if (!retryAfter) return null;
+    const trimmed = String(retryAfter).trim();
+    if (!trimmed) return null;
+    const seconds = Number.parseInt(trimmed, 10);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+        return seconds * 1000;
+    }
+    const parsedDate = Date.parse(trimmed);
+    if (Number.isFinite(parsedDate)) {
+        const diff = parsedDate - Date.now();
+        return diff > 0 ? diff : 0;
+    }
+    return null;
+}
+
+async function sleep(ms) {
+    if (!ms || ms <= 0) return;
+    await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options, timeout, retryConfig, debugLog) {
+    const { maxRetries, baseDelayMs, retryStatuses } = retryConfig;
+    let attempt = 0;
+    while (true) {
+        const response = await fetchWithTimeout(url, options, timeout);
+        if (!retryStatuses.has(response.status) || attempt >= maxRetries) {
+            return response;
+        }
+        const retryAfter = parseRetryAfterMillis(response.headers?.get?.("retry-after"));
+        const delayMs = retryAfter ?? (baseDelayMs * Math.pow(2, attempt));
+        if (debugLog) {
+            debugLog(`Gemini retrying after ${response.status}`, { delayMs, attempt });
+        }
+        try {
+            response.body?.cancel?.();
+        } catch (e) {
+            // Best-effort cleanup before retry.
+        }
+        await sleep(delayMs);
+        attempt += 1;
+    }
+}
+
+async function fetchWithRetryOnError(url, options, timeout, retryConfig, isRetriableError, debugLog) {
+    const { maxRetries, baseDelayMs, retryStatuses } = retryConfig;
+    let attempt = 0;
+    while (true) {
+        try {
+            const response = await fetchWithTimeout(url, options, timeout);
+            if (!retryStatuses.has(response.status) || attempt >= maxRetries) {
+                return response;
+            }
+            const retryAfter = parseRetryAfterMillis(response.headers?.get?.("retry-after"));
+            const delayMs = retryAfter ?? (baseDelayMs * Math.pow(2, attempt));
+            if (debugLog) {
+                debugLog(`Retrying after ${response.status}`, { delayMs, attempt });
+            }
+            try {
+                response.body?.cancel?.();
+            } catch (e) {
+                // Best-effort cleanup before retry.
+            }
+            await sleep(delayMs);
+            attempt += 1;
+        } catch (error) {
+            if (!isRetriableError?.(error) || attempt >= maxRetries) {
+                throw error;
+            }
+            const delayMs = baseDelayMs * Math.pow(2, attempt);
+            if (debugLog) {
+                debugLog("Retrying after request error", { delayMs, attempt, message: String(error?.message || error) });
+            }
+            await sleep(delayMs);
+            attempt += 1;
+        }
+    }
+}
+
+function buildGeminiUrl(baseUrl, apiVersion, modelName, method, apiKey, useQueryKey, extraQuery = "") {
+    const base = normalizeBaseUrl(baseUrl);
+    const versionSegment = apiVersion ? `/${apiVersion}` : "";
+    const path = `${base}${versionSegment}/models/${modelName}:${method}`;
+    const queryParts = [];
+    if (useQueryKey && apiKey) queryParts.push(`key=${encodeURIComponent(apiKey)}`);
+    if (extraQuery) queryParts.push(extraQuery.replace(/^[?&]/, ""));
+    return queryParts.length ? `${path}?${queryParts.join("&")}` : path;
+}
+
+function shouldFallbackToMergedSystem(systemPromptText, errorBodyText) {
+    if (!systemPromptText || typeof systemPromptText !== 'string' || systemPromptText.trim() === '') return false;
+    const t = String(errorBodyText || "").toLowerCase();
+    return t.includes("systeminstruction") || t.includes("system_instruction") || t.includes("system instruction");
+}
+
+function extractGeminiTextFromResponse(data) {
+    if (data?.promptFeedback?.blockReason) {
+        const blockReason = data.promptFeedback.blockReason;
+        const safetyRatings = data.promptFeedback.safetyRatings ? JSON.stringify(data.promptFeedback.safetyRatings) : 'N/A';
+        throw new Error(`Gemini Chat prompt blocked: ${blockReason}. Safety ratings: ${safetyRatings}`);
+    }
+
+    if (data?.candidates?.length > 0) {
+        const candidate = data.candidates[0];
+
+        if (candidate.finishReason && candidate.finishReason !== "STOP") {
+            const reason = candidate.finishReason;
+            const safetyRatings = candidate.safetyRatings ? JSON.stringify(candidate.safetyRatings) : 'N/A';
+            if (reason === "SAFETY") {
+                throw new Error(`Gemini Chat content generation blocked due to safety (${reason}). Safety ratings: ${safetyRatings}`);
+            }
+            throw new Error(`Gemini Chat content generation finished due to: ${reason}. Safety ratings: ${safetyRatings}`);
+        }
+
+        const text = candidate?.content?.parts?.[0]?.text;
+        if (text && typeof text === 'string') {
+            return text;
+        }
+        throw new Error("Gemini Chat API returned a candidate with 'STOP' finishReason but no text content.");
+    }
+
+    throw new Error("Gemini Chat API returned an empty or malformed response with no candidates.");
+}
+
 /**
  * Calls the Gemini Chat API (non-streaming).
  *
@@ -13,86 +334,113 @@ async function callGeminiChatAPI(env, promptText, systemPromptText = null) {
     if (!env.GEMINI_API_URL) {
         throw new Error("GEMINI_API_URL environment variable is not set.");
     }
-    if (!env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY environment variable is not set for Gemini models.");
+    const apiKey = getGeminiApiKey(env);
+    if (!apiKey) {
+        throw new Error("Gemini API key is not set (set GEMINI_API_KEY, or reuse ANTHROPIC_API_KEY/OPENAI_API_KEY).");
     }
-    const modelName = env.DEFAULT_GEMINI_MODEL;
-    const url = `${env.GEMINI_API_URL}/v1beta/models/${modelName}:generateContent?key=${env.GEMINI_API_KEY}`;
-    const payload = {
-        contents: [{
-            parts: [{ text: promptText }]
-        }],
-    };
+    const modelName = getGeminiModelName(env);
+    if (!modelName) {
+        throw new Error("DEFAULT_GEMINI_MODEL environment variable is not set.");
+    }
 
-    if (systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '') {
-        payload.systemInstruction = {
-            parts: [{ text: systemPromptText }]
-        };
-        console.log("System instruction included in Chat API call.");
-    }
+    const baseUrl = normalizeBaseUrl(env.GEMINI_API_URL);
+    const authModes = [
+        { useQueryKey: true, useHeaderAuth: false },
+        { useQueryKey: false, useHeaderAuth: true },
+    ];
+
+    const hasSystem = systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '';
+    const payloadVariants = getGeminiPayloadVariants(hasSystem, false);
+    let lastCompatibilityError = null;
 
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        versionLoop:
+        for (const apiVersion of getGeminiApiVersionCandidates(env, baseUrl)) {
+            authLoop:
+            for (const auth of authModes) {
+                for (const variant of payloadVariants) {
+                    const { payload } = buildGeminiPayload(promptText, systemPromptText, variant);
+                    const url = buildGeminiUrl(baseUrl, apiVersion, modelName, "generateContent", apiKey, auth.useQueryKey);
+                    logGeminiDebug(env, "Gemini non-stream request", { url: redactGeminiUrl(url), variant: formatGeminiVariant(variant) });
 
-        if (!response.ok) {
-            const errorBodyText = await response.text();
-            let errorData;
-            try {
-                errorData = JSON.parse(errorBodyText);
-            } catch (e) {
-                errorData = errorBodyText;
-            }
-            console.error("Gemini Chat API Error Response Body:", typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData);
-            const message = typeof errorData === 'object' && errorData.error?.message
-                ? errorData.error.message
-                : (typeof errorData === 'string' ? errorData : 'Unknown Gemini Chat API error');
-            throw new Error(`Gemini Chat API error (${response.status}): ${message}`);
-        }
+                    const response = await fetchWithRetry(
+                        url,
+                        {
+                            method: 'POST',
+                            headers: buildGeminiHeaders(apiKey, auth.useHeaderAuth),
+                            body: JSON.stringify(payload)
+                        },
+                        180000,
+                        getGeminiRetryConfig(env),
+                        (message, meta) => logGeminiDebug(env, message, meta)
+                    );
 
-        const data = await response.json();
+                    const contentType = response.headers.get('content-type') || '';
+                    if (!response.ok) {
+                        const errorBodyText = await response.text();
+                        let errorData;
+                        try {
+                            errorData = JSON.parse(errorBodyText);
+                        } catch (e) {
+                            errorData = errorBodyText;
+                        }
+                        const message = typeof errorData === 'object' && errorData.error?.message
+                            ? errorData.error.message
+                            : (typeof errorData === 'string' ? errorData : 'Unknown Gemini Chat API error');
 
-        // 1. Check for prompt-level blocking first
-        if (data.promptFeedback && data.promptFeedback.blockReason) {
-            const blockReason = data.promptFeedback.blockReason;
-            const safetyRatings = data.promptFeedback.safetyRatings ? JSON.stringify(data.promptFeedback.safetyRatings) : 'N/A';
-            console.error(`Gemini Chat prompt blocked: ${blockReason}. Safety ratings: ${safetyRatings}`, JSON.stringify(data, null, 2));
-            throw new Error(`Gemini Chat prompt blocked: ${blockReason}. Safety ratings: ${safetyRatings}`);
-        }
+                        logGeminiDebug(env, "Gemini non-stream error response", {
+                            url: redactGeminiUrl(url),
+                            status: response.status,
+                            contentType,
+                            variant: formatGeminiVariant(variant),
+                            bodyPreview: String(errorBodyText || "").slice(0, 200)
+                        });
 
-        // 2. Check candidates and their content
-        if (data.candidates && data.candidates.length > 0) {
-            const candidate = data.candidates[0];
+                        lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): ${message}`);
 
-            // Check finishReason for issues other than STOP
-            // Common finishReasons: STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER
-            if (candidate.finishReason && candidate.finishReason !== "STOP") {
-                const reason = candidate.finishReason;
-                const safetyRatings = candidate.safetyRatings ? JSON.stringify(candidate.safetyRatings) : 'N/A';
-                console.error(`Gemini Chat content generation finished with reason: ${reason}. Safety ratings: ${safetyRatings}`, JSON.stringify(data, null, 2));
-                if (reason === "SAFETY") {
-                     throw new Error(`Gemini Chat content generation blocked due to safety (${reason}). Safety ratings: ${safetyRatings}`);
+                        if (response.status === 404 || response.status === 405) {
+                            continue versionLoop; // try next API version
+                        }
+                        if ((response.status === 401 || response.status === 403) && auth.useQueryKey) {
+                            continue authLoop; // try header auth
+                        }
+                        if (isInvalidArgumentError(response.status, message)) {
+                            continue; // try next payload variant
+                        }
+                        continue; // try next payload variant
+                    }
+
+                    if (!contentType.includes('application/json')) {
+                        const bodyText = await response.text();
+                        logGeminiDebug(env, "Gemini non-stream non-JSON response", {
+                            url: redactGeminiUrl(url),
+                            status: response.status,
+                            contentType,
+                            variant: formatGeminiVariant(variant),
+                            bodyPreview: String(bodyText || "").slice(0, 200)
+                        });
+                        lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): Non-JSON response (${contentType || 'unknown'})`);
+                        continue; // try next payload variant
+                    }
+
+                    const data = await response.json();
+                    if (data?.error?.message) {
+                        const message = data.error.message;
+                        lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): ${message}`);
+                        if (isInvalidArgumentError(response.status, message)) {
+                            continue; // try next payload variant
+                        }
+                        continue;
+                    }
+                    return extractGeminiTextFromResponse(data);
                 }
-                throw new Error(`Gemini Chat content generation finished due to: ${reason}. Safety ratings: ${safetyRatings}`);
             }
-
-            // If finishReason is STOP, try to extract text
-            if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0 && candidate.content.parts[0].text) {
-                return candidate.content.parts[0].text;
-            } else {
-                // finishReason was STOP (or not present, implying success), but no text.
-                console.warn("Gemini Chat API response has candidate with 'STOP' finishReason but no text content, or content structure is unexpected.", JSON.stringify(data, null, 2));
-                throw new Error("Gemini Chat API returned a candidate with 'STOP' finishReason but no text content.");
-            }
-        } else {
-            // No candidates, and no promptFeedback block reason either (handled above).
-            // This means the response is empty or malformed in an unexpected way.
-            console.warn("Gemini Chat API response format unexpected: No candidates found and no prompt block reason.", JSON.stringify(data, null, 2));
-            throw new Error("Gemini Chat API returned an empty or malformed response with no candidates.");
         }
+
+        if (lastCompatibilityError) {
+            throw lastCompatibilityError;
+        }
+        throw new Error("Gemini Chat API error: failed to reach a compatible endpoint (check GEMINI_API_URL / proxy compatibility).");
     } catch (error) {
         // Log the full error object if it's not one we constructed, or just re-throw
         if (!(error instanceof Error && error.message.startsWith("Gemini Chat"))) {
@@ -116,50 +464,122 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
     if (!env.GEMINI_API_URL) {
         throw new Error("GEMINI_API_URL environment variable is not set.");
     }
-    if (!env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY environment variable is not set for Gemini models.");
+    const apiKey = getGeminiApiKey(env);
+    if (!apiKey) {
+        throw new Error("Gemini API key is not set (set GEMINI_API_KEY, or reuse ANTHROPIC_API_KEY/OPENAI_API_KEY).");
     }
-    const modelName = env.DEFAULT_GEMINI_MODEL;
-    const url = `${env.GEMINI_API_URL}/v1beta/models/${modelName}:streamGenerateContent?key=${env.GEMINI_API_KEY}&alt=sse`;
-
-    const payload = {
-        contents: [{
-            parts: [{ text: promptText }]
-        }],
-        generationConfig: {
-            temperature: 1,
-            topP: 0.95
-        }
-    };
-
-    if (systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '') {
-        payload.systemInstruction = {
-            parts: [{ text: systemPromptText }]
-        };
-        console.log("System instruction included in Chat API call.");
+    const modelName = getGeminiModelName(env);
+    if (!modelName) {
+        throw new Error("DEFAULT_GEMINI_MODEL environment variable is not set.");
     }
 
-    let response;
+    const baseUrl = normalizeBaseUrl(env.GEMINI_API_URL);
+    const authModes = [
+        { useQueryKey: true, useHeaderAuth: false },
+        { useQueryKey: false, useHeaderAuth: true },
+    ];
+    const streamQueryVariants = ["alt=sse", ""];
+    const streamMode = getGeminiStreamMode(env);
+
+    const hasSystem = systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '';
+    const payloadVariants = getGeminiPayloadVariants(hasSystem, true);
+
+    let response = null;
+    let lastCompatibilityError = null;
+    let hasYieldedContent = false;
     try {
-        response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        requestLoop:
+        for (const apiVersion of getGeminiApiVersionCandidates(env, baseUrl)) {
+            authLoop:
+            for (const auth of authModes) {
+                for (const streamQuery of streamQueryVariants) {
+                    for (const variant of payloadVariants) {
+                        const { payload } = buildGeminiPayload(promptText, systemPromptText, variant);
+                        const url = buildGeminiUrl(baseUrl, apiVersion, modelName, "streamGenerateContent", apiKey, auth.useQueryKey, streamQuery);
+                        logGeminiDebug(env, "Gemini stream request", { url: redactGeminiUrl(url), variant: formatGeminiVariant(variant) });
 
-        if (!response.ok) {
-            const errorBodyText = await response.text();
-            let errorData;
-            try {
-                errorData = JSON.parse(errorBodyBody);
-            } catch (e) {
-                errorData = errorBodyText;
+                        response = await fetchWithRetry(
+                            url,
+                            {
+                                method: 'POST',
+                                headers: buildGeminiHeaders(apiKey, auth.useHeaderAuth),
+                                body: JSON.stringify(payload)
+                            },
+                            180000,
+                            getGeminiRetryConfig(env),
+                            (message, meta) => logGeminiDebug(env, message, meta)
+                        );
+
+                        const contentType = response.headers.get('content-type') || '';
+                        if (!response.ok) {
+                            const errorBodyText = await response.text();
+                            let errorData;
+                            try {
+                                errorData = JSON.parse(errorBodyText);
+                            } catch (e) {
+                                errorData = errorBodyText;
+                            }
+                            const message = typeof errorData === 'object' && errorData.error?.message
+                                ? errorData.error.message
+                                : (typeof errorData === 'string' ? errorData : 'Unknown Gemini Chat API error');
+
+                            logGeminiDebug(env, "Gemini stream error response", {
+                                url: redactGeminiUrl(url),
+                                status: response.status,
+                                contentType,
+                                variant: formatGeminiVariant(variant),
+                                bodyPreview: String(errorBodyText || "").slice(0, 200)
+                            });
+
+                            lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): ${message}`);
+
+                            if (response.status === 404 || response.status === 405) {
+                                continue requestLoop; // try next API version
+                            }
+                            if ((response.status === 401 || response.status === 403) && auth.useQueryKey) {
+                                continue authLoop; // try header auth
+                            }
+                            if (isInvalidArgumentError(response.status, message)) {
+                                continue; // try next payload variant
+                            }
+                            continue; // try next payload variant
+                        }
+
+                        if (contentType && !contentType.includes('application/json') && !contentType.includes('text/event-stream')) {
+                            const bodyText = await response.text();
+                            logGeminiDebug(env, "Gemini stream non-JSON response", {
+                                url: redactGeminiUrl(url),
+                                status: response.status,
+                                contentType,
+                                variant: formatGeminiVariant(variant),
+                                bodyPreview: String(bodyText || "").slice(0, 200)
+                            });
+                            lastCompatibilityError = new Error(`Gemini Chat API error (${response.status}): Non-JSON response (${contentType || 'unknown'})`);
+                            response = null;
+                            continue; // try next payload variant
+                        }
+
+                        break requestLoop; // got an OK response
+                    }
+                }
             }
-            console.error("Gemini Chat API Error (Stream Initial) Response Body:", typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData);
-            const message = typeof errorData === 'object' && errorData.error?.message
-                ? errorData.error.message
-                : (typeof errorData === 'string' ? errorData : 'Unknown Gemini Chat API error');
-            throw new Error(`Gemini Chat API error (${response.status}): ${message}`);
+        }
+
+        // If streaming endpoint isn't supported by the proxy, gracefully fall back to non-streaming (unless forced).
+        if (!response || !response.ok) {
+            if (streamMode === "force" && lastCompatibilityError) {
+                throw lastCompatibilityError;
+            }
+            const nonStreamText = await callGeminiChatAPI(env, promptText, systemPromptText);
+            yield nonStreamText;
+            return;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            yield extractGeminiTextFromResponse(data);
+            return;
         }
 
         if (!response.body) {
@@ -169,7 +589,6 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let hasYieldedContent = false;
         let overallFinishReason = null; // To track the final finish reason if available
         let finalSafetyRatings = null;
 
@@ -294,7 +713,18 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
         }
 
     } catch (error) {
-         if (!(error instanceof Error && error.message.startsWith("Gemini Chat"))) {
+        // Auto fallback: if stream isn't compatible, try non-streaming once (only if we haven't yielded partial content).
+        if (streamMode === "auto" && !hasYieldedContent) {
+            try {
+                const nonStreamText = await callGeminiChatAPI(env, promptText, systemPromptText);
+                yield nonStreamText;
+                return;
+            } catch (fallbackError) {
+                console.error("Gemini stream failed; non-stream fallback also failed:", fallbackError);
+            }
+        }
+
+        if (!(error instanceof Error && error.message.startsWith("Gemini Chat"))) {
             console.error("Error calling or streaming from Gemini Chat API:", error);
         }
         throw error;
@@ -533,6 +963,201 @@ async function* callOpenAIChatAPIStream(env, promptText, systemPromptText = null
 
 
 /**
+ * Calls the Anthropic Chat API (non-streaming).
+ *
+ * @param {object} env - Environment object containing ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) and ANTHROPIC_API_KEY.
+ * @param {string} promptText - The user's prompt.
+ * @param {string | null} [systemPromptText=null] - Optional system prompt text.
+ * @returns {Promise<string>} The generated text content.
+ * @throws {Error} If API call fails.
+ */
+function buildAnthropicMessagesPayload(modelName, promptText, systemPromptText = null, stream = false) {
+    const payload = {
+        model: modelName,
+        messages: [{ role: "user", content: promptText }],
+        max_tokens: 2048
+    };
+
+    if (stream) {
+        payload.stream = true;
+    }
+
+    if (typeof systemPromptText === 'string' && systemPromptText.trim() !== '') {
+        payload.system = systemPromptText.trim();
+    }
+
+    return payload;
+}
+
+async function fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText = null, stream = false) {
+    const payload = buildAnthropicMessagesPayload(modelName, promptText, systemPromptText, stream);
+    const retryConfig = getAnthropicRetryConfig(env);
+    const debugLog = (message, meta) => console.warn(`[Anthropic retry] ${message}`, meta || {});
+    let response = await fetchWithRetryOnError(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${env.ANTHROPIC_API_KEY}`,
+            'User-Agent': 'Cloudflare-Worker/1.0'
+        },
+        body: JSON.stringify(payload)
+    }, 180000, retryConfig, isRetriableAnthropicError, debugLog);
+
+    if (response.ok) {
+        return response;
+    }
+
+    const errorText = await response.text();
+    const trimmedSystemPrompt = typeof systemPromptText === 'string' ? systemPromptText.trim() : '';
+    const shouldFallbackToMergedUserPrompt =
+        trimmedSystemPrompt &&
+        payload.system &&
+        (response.status === 400 || response.status === 422);
+
+    if (!shouldFallbackToMergedUserPrompt) {
+        throw new Error(`Anthropic Chat API error (${response.status}): ${errorText}`);
+    }
+
+    const fallbackPayload = buildAnthropicMessagesPayload(modelName, `${trimmedSystemPrompt}\n\n${promptText}`, null, stream);
+    response = await fetchWithRetryOnError(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${env.ANTHROPIC_API_KEY}`,
+            'User-Agent': 'Cloudflare-Worker/1.0'
+        },
+        body: JSON.stringify(fallbackPayload)
+    }, 180000, retryConfig, isRetriableAnthropicError, debugLog);
+
+    if (!response.ok) {
+        const fallbackErrorText = await response.text();
+        throw new Error(`Anthropic Chat API error (${response.status}): ${fallbackErrorText}`);
+    }
+
+    return response;
+}
+
+async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
+    const baseUrl = getAnthropicBaseUrl(env);
+    if (!baseUrl || !env.ANTHROPIC_API_KEY) {
+        throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
+    }
+    const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-opus-4-5";
+    const url = `${baseUrl}/v1/messages`;
+
+    /* Legacy merged-user path retained in fetchAnthropicWithSystemFallback.
+        // Anthropic 中转不支持 system 参数，将其融入 user 消息
+        payload.messages[0].content = `${systemPromptText}\n\n${promptText}`;
+    */
+
+    try {
+        const response = await fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText, false);
+        const data = await response.json();
+
+        // Filter out thinking blocks and only return text content
+        if (data.content && Array.isArray(data.content)) {
+            const textBlocks = data.content
+                .filter(block => block.type === 'text' && block.text)
+                .map(block => block.text);
+
+            if (textBlocks.length > 0) {
+                return textBlocks.join('\n');
+            }
+        }
+
+        throw new Error("Anthropic Chat API returned no content.");
+    } catch (error) {
+        console.error("Error calling Anthropic Chat API:", error);
+        throw error;
+    }
+}
+
+
+/**
+ * Calls the Anthropic Chat API with streaming.
+ *
+ * @param {object} env - Environment object.
+ * @param {string} promptText - The user's prompt.
+ * @param {string | null} [systemPromptText=null] - Optional system prompt text.
+ * @returns {AsyncGenerator<string, void, undefined>} An async generator yielding text chunks.
+ * @throws {Error} If API call fails.
+ */
+async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = null) {
+    const baseUrl = getAnthropicBaseUrl(env);
+    if (!baseUrl || !env.ANTHROPIC_API_KEY) {
+        throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
+    }
+    const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-opus-4-5";
+    const url = `${baseUrl}/v1/messages`;
+
+    const messages = [{ role: "user", content: promptText }];
+    
+    const payload = {
+        model: modelName,
+        messages: messages,
+        max_tokens: 2048,
+        stream: true
+    };
+
+    /* Legacy merged-user path retained in fetchAnthropicWithSystemFallback.
+        payload.messages[0].content = `${systemPromptText}\n\n${promptText}`;
+    */
+
+    try {
+        const response = await fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText, true);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let hasYieldedContent = false;
+        let currentBlockType = null;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.trim() || !line.startsWith('data: ')) continue;
+                const data = line.substring(6).trim();
+                if (data === '[DONE]') continue;
+
+                try {
+                    const parsed = JSON.parse(data);
+
+                    // Track the type of the current content block
+                    if (parsed.type === 'content_block_start') {
+                        currentBlockType = parsed.content_block?.type;
+                    } else if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                        // Only yield text if the current block is not a thinking block
+                        if (currentBlockType !== 'thinking') {
+                            hasYieldedContent = true;
+                            yield parsed.delta.text;
+                        }
+                    } else if (parsed.type === 'content_block_stop') {
+                        currentBlockType = null;
+                    } else if (parsed.type === 'error') {
+                        throw new Error(`Anthropic stream error: ${parsed.error?.message || 'Unknown'}`);
+                    }
+                } catch (e) {
+                    console.warn("Failed to parse Anthropic stream chunk:", data, e.message);
+                }
+            }
+        }
+
+        if (!hasYieldedContent) {
+            throw new Error("Anthropic stream completed but yielded no content.");
+        }
+    } catch (error) {
+        console.error("Error calling Anthropic Chat API Stream:", error);
+        throw error;
+    }
+}
+
+
+/**
  * Main function to call the appropriate chat API (Gemini or OpenAI) based on model name.
  * Defaults to Gemini if no specific API is indicated in the model name.
  *
@@ -546,8 +1171,40 @@ export async function callChatAPI(env, promptText, systemPromptText = null) {
     const platform = env.USE_MODEL_PLATFORM;
     if (platform.startsWith("OPEN")) {
         return callOpenAIChatAPI(env, promptText, systemPromptText);
+    } else if (platform.startsWith("ANTHROPIC")) {
+        try {
+            return await callAnthropicChatAPI(env, promptText, systemPromptText);
+        } catch (error) {
+            if (isRateLimitError(error) && canUseOpenAIFallback(env)) {
+                console.warn("Anthropic rate limit encountered; falling back to OpenAI.");
+                return await callOpenAIChatAPI(env, promptText, systemPromptText);
+            }
+            throw error;
+        }
     } else { // Default to Gemini
-        return callGeminiChatAPI(env, promptText, systemPromptText);
+        try {
+            return await callGeminiChatAPI(env, promptText, systemPromptText);
+        } catch (error) {
+            if (isRateLimitError(error)) {
+                if (canUseAnthropicFallback(env)) {
+                    console.warn("Gemini rate limit encountered; falling back to Anthropic.");
+                    try {
+                        return await callAnthropicChatAPI(env, promptText, systemPromptText);
+                    } catch (anthroError) {
+                        if (isRateLimitError(anthroError) && canUseOpenAIFallback(env)) {
+                            console.warn("Anthropic rate limit encountered; falling back to OpenAI.");
+                            return await callOpenAIChatAPI(env, promptText, systemPromptText);
+                        }
+                        throw anthroError;
+                    }
+                }
+                if (canUseOpenAIFallback(env)) {
+                    console.warn("Gemini rate limit encountered; falling back to OpenAI.");
+                    return await callOpenAIChatAPI(env, promptText, systemPromptText);
+                }
+            }
+            throw error;
+        }
     }
 }
 
@@ -565,8 +1222,82 @@ export async function* callChatAPIStream(env, promptText, systemPromptText = nul
     const platform = env.USE_MODEL_PLATFORM;
     if (platform.startsWith("OPEN")) {
         yield* callOpenAIChatAPIStream(env, promptText, systemPromptText);
+    } else if (platform.startsWith("ANTHROPIC")) {
+        try {
+            yield* callAnthropicChatAPIStream(env, promptText, systemPromptText);
+        } catch (error) {
+            if (isRateLimitError(error) && canUseOpenAIFallback(env)) {
+                console.warn("Anthropic rate limit encountered; falling back to OpenAI.");
+                const text = await callOpenAIChatAPI(env, promptText, systemPromptText);
+                yield text;
+                return;
+            }
+            throw error;
+        }
     } else { // Default to Gemini
-        yield* callGeminiChatAPIStream(env, promptText, systemPromptText);
+        const streamMode = getGeminiStreamMode(env);
+        if (streamMode === "off") {
+            try {
+                const text = await callGeminiChatAPI(env, promptText, systemPromptText);
+                yield text;
+                return;
+            } catch (error) {
+                if (isRateLimitError(error)) {
+                    if (canUseAnthropicFallback(env)) {
+                        console.warn("Gemini rate limit encountered; falling back to Anthropic.");
+                        try {
+                            const text = await callAnthropicChatAPI(env, promptText, systemPromptText);
+                            yield text;
+                            return;
+                        } catch (anthroError) {
+                            if (isRateLimitError(anthroError) && canUseOpenAIFallback(env)) {
+                                console.warn("Anthropic rate limit encountered; falling back to OpenAI.");
+                                const text = await callOpenAIChatAPI(env, promptText, systemPromptText);
+                                yield text;
+                                return;
+                            }
+                            throw anthroError;
+                        }
+                    }
+                    if (canUseOpenAIFallback(env)) {
+                        console.warn("Gemini rate limit encountered; falling back to OpenAI.");
+                        const text = await callOpenAIChatAPI(env, promptText, systemPromptText);
+                        yield text;
+                        return;
+                    }
+                }
+                throw error;
+            }
+        }
+        try {
+            yield* callGeminiChatAPIStream(env, promptText, systemPromptText);
+        } catch (error) {
+            if (isRateLimitError(error)) {
+                if (canUseAnthropicFallback(env)) {
+                    console.warn("Gemini rate limit encountered; falling back to Anthropic.");
+                    try {
+                        const text = await callAnthropicChatAPI(env, promptText, systemPromptText);
+                        yield text;
+                        return;
+                    } catch (anthroError) {
+                        if (isRateLimitError(anthroError) && canUseOpenAIFallback(env)) {
+                            console.warn("Anthropic rate limit encountered; falling back to OpenAI.");
+                            const text = await callOpenAIChatAPI(env, promptText, systemPromptText);
+                            yield text;
+                            return;
+                        }
+                        throw anthroError;
+                    }
+                }
+                if (canUseOpenAIFallback(env)) {
+                    console.warn("Gemini rate limit encountered; falling back to OpenAI.");
+                    const text = await callOpenAIChatAPI(env, promptText, systemPromptText);
+                    yield text;
+                    return;
+                }
+            }
+            throw error;
+        }
     }
 }
 

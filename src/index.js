@@ -3,25 +3,46 @@ import { handleWriteData } from './handlers/writeData.js';
 import { handleGetContent } from './handlers/getContent.js';
 import { handleGetContentHtml } from './handlers/getContentHtml.js';
 import { handleGenAIContent, handleGenAIPodcastScript, handleGenAIDailyAnalysis } from './handlers/genAIContent.js';
-import { handleGenAIDailyPage } from './handlers/genAIDailyPage.js'; // Import handleGenAIDailyPage
+import { handleGenAIDailyPage } from './handlers/genAIDailyPage.js';
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
+import { handleScheduled } from './handlers/scheduled.js';
 
 export default {
+    async scheduled(event, env, ctx) {
+        await handleScheduled(event, env, ctx);
+    },
     async fetch(request, env) {
-        // Check essential environment variables
         const requiredEnvVars = [
-            'DATA_KV', 'GEMINI_API_KEY', 'GEMINI_API_URL', 'DEFAULT_GEMINI_MODEL', 'OPEN_TRANSLATE', 'USE_MODEL_PLATFORM',
-            'GITHUB_TOKEN', 'GITHUB_REPO_OWNER', 'GITHUB_REPO_NAME','GITHUB_BRANCH',
+            'DATA_KV', 'OPEN_TRANSLATE', 'USE_MODEL_PLATFORM',
+            'GITHUB_TOKEN', 'GITHUB_REPO_OWNER', 'GITHUB_REPO_NAME', 'GITHUB_BRANCH',
             'LOGIN_USERNAME', 'LOGIN_PASSWORD',
-            'PODCAST_TITLE','PODCAST_BEGIN','PODCAST_END',
-            'FOLO_COOKIE_KV_KEY','FOLO_DATA_API','FOLO_FILTER_DAYS',
+            'PODCAST_TITLE', 'PODCAST_BEGIN', 'PODCAST_END',
+            'FOLO_COOKIE_KV_KEY', 'FOLO_DATA_API', 'FOLO_FILTER_DAYS',
         ];
-        console.log(env);
-        const missingVars = requiredEnvVars.filter(varName => !env[varName]);
+
+        const platform = String(env.USE_MODEL_PLATFORM || '').toUpperCase();
+        if (platform.startsWith('OPEN')) {
+            requiredEnvVars.push('OPENAI_API_URL', 'DEFAULT_OPEN_MODEL', 'OPENAI_API_KEY');
+        } else if (platform.startsWith('ANTHROPIC')) {
+            requiredEnvVars.push('DEFAULT_ANTHROPIC_MODEL', 'ANTHROPIC_API_KEY');
+        } else {
+            requiredEnvVars.push('GEMINI_API_URL', 'DEFAULT_GEMINI_MODEL');
+        }
+
+        const missingVars = requiredEnvVars.filter((varName) => !env[varName]);
+        if (platform.startsWith('ANTHROPIC')) {
+            const hasAnthropicBaseUrl = Boolean(env.ANTHROPIC_BASE_URL || env.ANTHROPIC_API_URL);
+            if (!hasAnthropicBaseUrl) missingVars.push('ANTHROPIC_BASE_URL');
+        }
+
+        if (!platform.startsWith('OPEN') && !platform.startsWith('ANTHROPIC')) {
+            const hasGeminiKey = Boolean(env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY);
+            if (!hasGeminiKey) missingVars.push('GEMINI_API_KEY');
+        }
 
         if (missingVars.length > 0) {
             console.error(`CRITICAL: Missing environment variables/bindings: ${missingVars.join(', ')}`);
@@ -37,10 +58,9 @@ export default {
         const path = url.pathname;
         console.log(`Request received: ${request.method} ${path}`);
 
-        // Handle login path specifically
         if (path === '/login') {
             return await handleLogin(request, env);
-        } else if (path === '/logout') { // Handle logout path
+        } else if (path === '/logout') {
             return await handleLogout(request, env);
         } else if (path === '/getContent' && request.method === 'GET') {
             return await handleGetContent(request, env);
@@ -50,48 +70,97 @@ export default {
             return await handleWriteRssData(request, env);
         } else if (path === '/generateRssContent' && request.method === 'GET') {
             return await handleGenerateRssContent(request, env);
+        } else if (path === '/testTriggerScheduled' && request.method === 'GET') {
+            const secretKey = url.searchParams.get('key');
+            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
+            if (secretKey !== expectedKey) {
+                return new Response(JSON.stringify({
+                    error: 'Unauthorized. Please provide correct secret key.'
+                }), {
+                    status: 401,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            }
+            const dateParam = url.searchParams.get('date');
+            const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+            const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
+            const fakeCtx = { waitUntil: (promise) => promise };
+            try {
+                const debug = await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
+                return new Response(JSON.stringify({
+                    success: true,
+                    message: `Scheduled task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
+                    date: specifiedDate || 'current date',
+                    timestamp: new Date().toISOString(),
+                    debug: debug || null,
+                }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            } catch (error) {
+                return new Response(JSON.stringify({
+                    success: false,
+                    error: error.message,
+                    date: specifiedDate || 'current date',
+                    timestamp: new Date().toISOString()
+                }), {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            }
         }
 
-        // Authentication check for all other paths
         const { authenticated, cookie: newCookie } = await isAuthenticated(request, env);
         if (!authenticated) {
-            // Redirect to login page, passing the original URL as a redirect parameter
             const loginUrl = new URL('/login', url.origin);
             loginUrl.searchParams.set('redirect', url.pathname + url.search);
             return Response.redirect(loginUrl.toString(), 302);
         }
 
-        // Original routing logic for authenticated requests
         let response;
         try {
             if (path === '/writeData' && request.method === 'POST') {
                 response = await handleWriteData(request, env);
-            } else if (path === '/getContentHtml' && request.method === 'GET') {
-                // Prepare dataCategories for the HTML generation
-                const dataCategories = Object.keys(dataSources).map(key => ({
+            } else if ((path === '/getContentHtml' || path === '/') && request.method === 'GET') {
+                const dataCategories = Object.keys(dataSources).map((key) => ({
                     id: key,
                     name: dataSources[key].name
                 }));
                 response = await handleGetContentHtml(request, env, dataCategories);
             } else if (path === '/genAIContent' && request.method === 'POST') {
                 response = await handleGenAIContent(request, env);
-            } else if (path === '/genAIPodcastScript' && request.method === 'POST') { // New route for podcast script
+            } else if (path === '/genAIPodcastScript' && request.method === 'POST') {
                 response = await handleGenAIPodcastScript(request, env);
-            } else if (path === '/genAIDailyAnalysis' && request.method === 'POST') { // New route for AI Daily Analysis
+            } else if (path === '/genAIDailyAnalysis' && request.method === 'POST') {
                 response = await handleGenAIDailyAnalysis(request, env);
-            } else if (path === '/genAIDailyPage' && request.method === 'GET') { // New route for AI Daily Page
+            } else if (path === '/genAIDailyPage' && request.method === 'GET') {
                 response = await handleGenAIDailyPage(request, env);
             } else if (path === '/commitToGitHub' && request.method === 'POST') {
                 response = await handleCommitToGitHub(request, env);
+            } else if (path === '/triggerScheduled' && request.method === 'GET') {
+                const dateParam = url.searchParams.get('date');
+                const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+                const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
+                const fakeCtx = { waitUntil: (promise) => promise };
+                const debug = await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
+                response = new Response(JSON.stringify({
+                    success: true,
+                    message: `Scheduled task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                    date: specifiedDate || 'current date',
+                    timestamp: new Date().toISOString(),
+                    debug: debug || null,
+                }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
             } else {
-                return new Response(null, { status: 404, headers: {'Content-Type': 'text/plain; charset=utf-8'} });
+                return new Response(null, { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
             }
-        } catch (e) {
-            console.error("Unhandled error in fetch handler:", e);
-            return new Response(`Internal Server Error: ${e.message}`, { status: 500 });
+        } catch (error) {
+            console.error('Unhandled error in fetch handler:', error);
+            return new Response(`Internal Server Error: ${error.message}`, { status: 500 });
         }
 
-        // Renew cookie for authenticated requests
         if (newCookie) {
             response.headers.append('Set-Cookie', newCookie);
         }
