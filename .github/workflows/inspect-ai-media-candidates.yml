@@ -1,0 +1,38 @@
+name: Inspect AI Media Candidates
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: inspect date
+        required: true
+        default: "2026-03-11"
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Count AI media candidates
+        run: |
+          set -euo pipefail
+          DATE='${{ github.event.inputs.date }}'
+          URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${DATE}"
+          curl -fsSL "$URL" > payload.json
+          python - <<'PY'
+          import json,re
+          with open('payload.json','r',encoding='utf-8') as f:
+              data=json.load(f)
+          keywords = ['ai','gpt','claude','openai','gemini','agent','karpathy','kimi','腾讯','openclaw','autoclaw','lobster','workbuddy','skillhub','智谱','智能体','模型','推理','songgeneration','metanovas','yann','lecun','jeff dean']
+          total=0
+          ai_media=[]
+          for item in data.get('news') or []:
+              html=((item.get('details') or {}).get('content_html') or '')
+              if not re.search(r'<img\b|<video\b', html, re.I):
+                  continue
+              total += 1
+              text=' '.join(str(item.get(k,'')) for k in ['title','description','source']).lower() + ' ' + html.lower()
+              if any(k in text for k in keywords):
+                  ai_media.append((item.get('title',''), item.get('source',''), item.get('url','')))
+          print('MEDIA_TOTAL', total)
+          print('AI_MEDIA_COUNT', len(ai_media))
+          for row in ai_media[:15]:
+              print('AI_MEDIA', row)
+          PY
