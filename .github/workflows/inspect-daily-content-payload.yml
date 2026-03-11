@@ -5,7 +5,7 @@ on:
       date:
         description: inspect date
         required: true
-        default: '2026-03-11'
+        default: "2026-03-11"
 jobs:
   inspect:
     runs-on: ubuntu-latest
@@ -13,26 +13,24 @@ jobs:
       - name: Fetch content payload
         run: |
           set -euo pipefail
-          DATE='${{ inputs.date }}'
+          DATE='${{ github.event.inputs.date }}'
           URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${DATE}"
           curl -fsSL "$URL" > payload.json
           python - <<'PY'
-import json,re
-from collections import Counter
-with open('payload.json','r',encoding='utf-8') as f:
-    data=json.load(f)
-print('TOP_LEVEL_KEYS', sorted(data.keys()))
-for key, items in data.items():
-    if not isinstance(items, list):
-        continue
-    media = 0
-    total = len(items)
-    examples = []
-    for item in items:
-        html = ((item.get('details') or {}).get('content_html') or '')
-        if re.search(r'<img\b|<video\b', html, re.I):
-            media += 1
-            if len(examples) < 3:
-                examples.append(item.get('title','')[:120])
-    print(f'{key}: total={total} media={media} examples={examples}')
-PY
+          import json,re
+          with open('payload.json','r',encoding='utf-8') as f:
+              data=json.load(f)
+          print('TOP_LEVEL_KEYS', sorted(data.keys()))
+          for key, items in data.items():
+              if not isinstance(items, list):
+                  continue
+              media = 0
+              examples = []
+              for item in items:
+                  html = ((item.get('details') or {}).get('content_html') or '')
+                  if re.search(r'<img\\b|<video\\b', html, re.I):
+                      media += 1
+                      if len(examples) < 3:
+                          examples.append(item.get('title','')[:120])
+              print(f'{key}: total={len(items)} media={media} examples={examples}')
+          PY
