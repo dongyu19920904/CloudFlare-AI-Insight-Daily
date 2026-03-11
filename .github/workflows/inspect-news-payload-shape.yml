@@ -1,0 +1,39 @@
+name: Inspect News Payload Shape
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: inspect date
+        required: true
+        default: "2026-03-11"
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch news payload details
+        run: |
+          set -euo pipefail
+          DATE='${{ github.event.inputs.date }}'
+          URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${DATE}"
+          curl -fsSL "$URL" > payload.json
+          python - <<'PY'
+          import json,re
+          with open('payload.json','r',encoding='utf-8') as f:
+              data=json.load(f)
+          news = data.get('news') or []
+          print('NEWS_COUNT', len(news))
+          for idx, item in enumerate(news[:3]):
+              print('--- ITEM', idx, '---')
+              print('title', item.get('title'))
+              print('url', item.get('url'))
+              print('source', item.get('source'))
+              print('top_keys', sorted(item.keys()))
+              details = item.get('details') or {}
+              print('detail_keys', sorted(details.keys()))
+              blob = json.dumps(item, ensure_ascii=False)
+              urls = re.findall(r'https?://[^\s"\\]+', blob)
+              imgish = [u for u in urls if re.search(r'\.(png|jpg|jpeg|webp|gif)(\?|$)|format=jpg|name=orig|opengraph|thumb|image', u, re.I)]
+              print('imgish_urls', imgish[:10])
+              html = details.get('content_html') or ''
+              print('content_html_preview', html[:500])
+          PY
