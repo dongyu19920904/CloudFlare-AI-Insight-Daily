@@ -1,5 +1,5 @@
 name: Temp Rerun Worker Check
-# rerun after paper cap
+# rerun after prompt truncation
 
 on:
   push:
