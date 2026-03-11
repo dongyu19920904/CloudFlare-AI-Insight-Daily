@@ -14,7 +14,11 @@ jobs:
           set -euo pipefail
           url="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled?key=test-secret-key-change-me&date=2026-03-11"
           echo "Triggering: ${url}"
-          curl -sS --fail "$url" | tee trigger.json
+          http_code=$(curl -sS -o trigger.json -w "%{http_code}" "$url")
+          cat trigger.json
+          echo
+          echo "HTTP=${http_code}"
+          test "$http_code" = "200"
           python - <<'PY'
           from pathlib import Path
           import json
