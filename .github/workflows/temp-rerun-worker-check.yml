@@ -1,0 +1,47 @@
+name: Temp Rerun Worker Check
+
+on:
+  push:
+    paths:
+      - .github/workflows/temp-rerun-worker-check.yml
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger worker
+        run: |
+          set -euo pipefail
+          url="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled?key=test-secret-key-change-me&date=2026-03-11"
+          echo "Triggering: ${url}"
+          curl -sS --fail "$url" | tee trigger.json
+          python - <<'PY'
+from pathlib import Path
+import json
+print(json.loads(Path('trigger.json').read_text(encoding='utf-8')))
+PY
+
+      - name: Wait for sync
+        run: sleep 25
+
+      - name: Fetch generated file
+        run: |
+          set -euo pipefail
+          curl -sS --fail -L "https://raw.githubusercontent.com/dongyu19920904/Hextra-AI-Insight-Daily/main/daily/2026-03-11.md" -o daily.md
+          python - <<'PY'
+from pathlib import Path
+import re
+text = Path('daily.md').read_text(encoding='utf-8')
+headings = re.findall(r'(?m)^#{2,3}\s+.*$', text)
+summary = {
+  'heading_count': len(headings),
+  'headings': headings,
+  'has_top10': 'TOP 10' in text,
+  'has_images': bool(re.search(r'!\[[^\]]*\]\([^)]+\)', text)),
+  'image_count': len(re.findall(r'!\[[^\]]*\]\([^)]+\)', text)),
+  'size': len(text)
+}
+print(summary)
+print('---FILE_HEAD---')
+print('\n'.join(text.splitlines()[:120]))
+PY
