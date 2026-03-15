@@ -142,6 +142,22 @@ function isRecursiveDailyFeedItem(item) {
     return /\d{4}-\d{2}-\d{2}日刊/.test(title);
 }
 
+function isRoundupSocialPost(item) {
+    const title = String(item?.title ?? '').toLowerCase();
+    const url = String(item?.url ?? '').toLowerCase();
+    const source = String(item?.source ?? '').toLowerCase();
+
+    if (!url.includes('x.com') && !url.includes('twitter.com')) {
+        return false;
+    }
+
+    if (title.includes('ai资讯日报') || title.includes('ai 日报') || title.includes('ai日报')) {
+        return true;
+    }
+
+    return source.includes('gorden sun') && /日报|日刊/.test(title);
+}
+
 function buildDedupKey(item) {
     const normalizedUrl = canonicalizeUrl(item?.url);
     if (normalizedUrl) return normalizedUrl;
@@ -160,6 +176,7 @@ export function applyNewsSourcePolicy(items) {
         if (isLowValueTelegramItem(item)) continue;
         if (isPaperLikeNewsItem(item)) continue;
         if (isRecursiveDailyFeedItem(item)) continue;
+        if (isRoundupSocialPost(item)) continue;
 
         const dedupKey = buildDedupKey(item);
         if (dedupKey && seen.has(dedupKey)) continue;

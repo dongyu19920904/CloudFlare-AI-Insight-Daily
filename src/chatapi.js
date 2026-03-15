@@ -6,8 +6,16 @@ function normalizeBaseUrl(url) {
     return String(url || "").replace(/\/+$/, "");
 }
 
+function getAnthropicBaseUrls(env) {
+    const urls = [
+        normalizeBaseUrl(env.ANTHROPIC_API_URL),
+        normalizeBaseUrl(env.ANTHROPIC_BASE_URL)
+    ].filter(Boolean);
+    return [...new Set(urls)];
+}
+
 function getAnthropicBaseUrl(env) {
-    return normalizeBaseUrl(env.ANTHROPIC_BASE_URL || env.ANTHROPIC_API_URL);
+    return getAnthropicBaseUrls(env)[0] || "";
 }
 
 function getGeminiApiKey(env) {
@@ -105,6 +113,17 @@ function isRetriableAnthropicError(error) {
         message.includes("timeout") ||
         message.includes("timed out") ||
         message.includes("524")
+    );
+}
+
+function shouldTryNextAnthropicBaseUrl(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return (
+        isRetriableAnthropicError(error) ||
+        /anthropic chat api error \((408|409|429|5\d\d|524)\)/.test(message) ||
+        message.includes("network") ||
+        message.includes("connection") ||
+        message.includes("fetch failed")
     );
 }
 
@@ -1037,13 +1056,41 @@ async function fetchAnthropicWithSystemFallback(url, env, modelName, promptText,
     return response;
 }
 
+async function fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText = null, stream = false) {
+    const baseUrls = getAnthropicBaseUrls(env);
+    if (baseUrls.length === 0) {
+        throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
+    }
+
+    let lastError = null;
+    for (let index = 0; index < baseUrls.length; index++) {
+        const baseUrl = baseUrls[index];
+        const url = `${baseUrl}/v1/messages`;
+        try {
+            return await fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText, stream);
+        } catch (error) {
+            lastError = error;
+            const hasNext = index < baseUrls.length - 1;
+            if (!hasNext || !shouldTryNextAnthropicBaseUrl(error)) {
+                throw error;
+            }
+            console.warn(`[Anthropic fallback] Primary route failed, trying next base URL.`, {
+                failedBaseUrl: baseUrl,
+                nextBaseUrl: baseUrls[index + 1],
+                error: String(error?.message || error)
+            });
+        }
+    }
+
+    throw lastError || new Error("Anthropic request failed.");
+}
+
 async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
     const baseUrl = getAnthropicBaseUrl(env);
     if (!baseUrl || !env.ANTHROPIC_API_KEY) {
         throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
     }
     const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-opus-4-5";
-    const url = `${baseUrl}/v1/messages`;
 
     /* Legacy merged-user path retained in fetchAnthropicWithSystemFallback.
         // Anthropic 中转不支持 system 参数，将其融入 user 消息
@@ -1051,7 +1098,7 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
     */
 
     try {
-        const response = await fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText, false);
+        const response = await fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText, false);
         const data = await response.json();
 
         // Filter out thinking blocks and only return text content
@@ -1088,23 +1135,13 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
         throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
     }
     const modelName = env.DEFAULT_ANTHROPIC_MODEL || "claude-opus-4-5";
-    const url = `${baseUrl}/v1/messages`;
-
-    const messages = [{ role: "user", content: promptText }];
-    
-    const payload = {
-        model: modelName,
-        messages: messages,
-        max_tokens: 2048,
-        stream: true
-    };
 
     /* Legacy merged-user path retained in fetchAnthropicWithSystemFallback.
         payload.messages[0].content = `${systemPromptText}\n\n${promptText}`;
     */
 
     try {
-        const response = await fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText, true);
+        const response = await fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText, true);
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';

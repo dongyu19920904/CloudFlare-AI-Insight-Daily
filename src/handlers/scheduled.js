@@ -49,7 +49,7 @@ function containsRenderedMedia(markdown) {
     return /!\[[^\]]*\]\([^)]+\)|<img\b|<video\b/i.test(markdown);
 }
 
-function truncatePromptText(text, maxChars = 900) {
+function truncatePromptText(text, maxChars = 500) {
     const normalized = String(text || '').replace(/\s+/g, ' ').trim();
     if (normalized.length <= maxChars) return normalized;
     return `${normalized.slice(0, maxChars)}…`;
@@ -261,8 +261,10 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
             }
         }
         
-        // Combine: items with media first, then items without media
-        selectedContentItems.push(...itemsWithMedia, ...itemsWithoutMedia);
+        // Combine: items with media first, then items without media.
+        // Keep the prompt bounded so Claude does not time out on large same-day batches.
+        const promptItems = [...itemsWithMedia, ...itemsWithoutMedia].slice(0, 16);
+        selectedContentItems.push(...promptItems);
         
         if (itemsWithMedia.length > 0) {
             console.log(`[Scheduled] Found ${itemsWithMedia.length} items with images/videos, ${itemsWithoutMedia.length} items without.`);
