@@ -1,0 +1,30 @@
+name: Capture Worker Error Body
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Date to trigger
+        required: true
+        default: "2026-03-15"
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger worker and print full response
+        shell: bash
+        run: |
+          set -uo pipefail
+          DATE='${{ github.event.inputs.date }}'
+          URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled?key=test-secret-key-change-me&date=${DATE}"
+          echo "URL=$URL"
+          STATUS=$(curl -sS -D headers.txt -o body.txt -w "%{http_code}" "$URL" || true)
+          echo "HTTP_STATUS=$STATUS"
+          echo '---HEADERS---'
+          cat headers.txt || true
+          echo '---BODY---'
+          cat body.txt || true
+          if [ "$STATUS" -ge 400 ]; then
+            exit 1
+          fi
