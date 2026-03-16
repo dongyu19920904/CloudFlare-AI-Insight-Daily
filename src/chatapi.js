@@ -6,12 +6,32 @@ function normalizeBaseUrl(url) {
     return String(url || "").replace(/\/+$/, "");
 }
 
+function getAnthropicRoutes(env) {
+    const routes = [
+        {
+            baseUrl: normalizeBaseUrl(env.ANTHROPIC_API_URL),
+            apiKey: env.ANTHROPIC_API_KEY || "",
+            role: "primary"
+        },
+        {
+            baseUrl: normalizeBaseUrl(env.ANTHROPIC_BASE_URL),
+            apiKey: env.ANTHROPIC_BACKUP_API_KEY || env.ANTHROPIC_API_KEY || "",
+            role: "backup"
+        }
+    ].filter(route => route.baseUrl);
+
+    const deduped = [];
+    const seen = new Set();
+    for (const route of routes) {
+        if (seen.has(route.baseUrl)) continue;
+        seen.add(route.baseUrl);
+        deduped.push(route);
+    }
+    return deduped;
+}
+
 function getAnthropicBaseUrls(env) {
-    const urls = [
-        normalizeBaseUrl(env.ANTHROPIC_API_URL),
-        normalizeBaseUrl(env.ANTHROPIC_BASE_URL)
-    ].filter(Boolean);
-    return [...new Set(urls)];
+    return getAnthropicRoutes(env).map(route => route.baseUrl);
 }
 
 function getAnthropicBaseUrl(env) {
@@ -1008,7 +1028,7 @@ function buildAnthropicMessagesPayload(modelName, promptText, systemPromptText =
     return payload;
 }
 
-async function fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText = null, stream = false) {
+async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, promptText, systemPromptText = null, stream = false) {
     const payload = buildAnthropicMessagesPayload(modelName, promptText, systemPromptText, stream);
     const retryConfig = getAnthropicRetryConfig(env);
     const debugLog = (message, meta) => console.warn(`[Anthropic retry] ${message}`, meta || {});
@@ -1016,7 +1036,7 @@ async function fetchAnthropicWithSystemFallback(url, env, modelName, promptText,
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${env.ANTHROPIC_API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
             'User-Agent': 'Cloudflare-Worker/1.0'
         },
         body: JSON.stringify(payload)
@@ -1042,7 +1062,7 @@ async function fetchAnthropicWithSystemFallback(url, env, modelName, promptText,
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${env.ANTHROPIC_API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
             'User-Agent': 'Cloudflare-Worker/1.0'
         },
         body: JSON.stringify(fallbackPayload)
@@ -1057,26 +1077,26 @@ async function fetchAnthropicWithSystemFallback(url, env, modelName, promptText,
 }
 
 async function fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText = null, stream = false) {
-    const baseUrls = getAnthropicBaseUrls(env);
-    if (baseUrls.length === 0) {
+    const routes = getAnthropicRoutes(env);
+    if (routes.length === 0) {
         throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
     }
 
     let lastError = null;
-    for (let index = 0; index < baseUrls.length; index++) {
-        const baseUrl = baseUrls[index];
-        const url = `${baseUrl}/v1/messages`;
+    for (let index = 0; index < routes.length; index++) {
+        const route = routes[index];
+        const url = `${route.baseUrl}/v1/messages`;
         try {
-            return await fetchAnthropicWithSystemFallback(url, env, modelName, promptText, systemPromptText, stream);
+            return await fetchAnthropicWithSystemFallback(url, route.apiKey, env, modelName, promptText, systemPromptText, stream);
         } catch (error) {
             lastError = error;
-            const hasNext = index < baseUrls.length - 1;
+            const hasNext = index < routes.length - 1;
             if (!hasNext || !shouldTryNextAnthropicBaseUrl(error)) {
                 throw error;
             }
             console.warn(`[Anthropic fallback] Primary route failed, trying next base URL.`, {
-                failedBaseUrl: baseUrl,
-                nextBaseUrl: baseUrls[index + 1],
+                failedBaseUrl: route.baseUrl,
+                nextBaseUrl: routes[index + 1].baseUrl,
                 error: String(error?.message || error)
             });
         }
