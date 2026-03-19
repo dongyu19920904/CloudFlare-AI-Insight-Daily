@@ -1,4 +1,4 @@
-﻿# wrangler.toml
+# wrangler.toml
 name = "cloudflare-ai-lnsight-daily"
 main = "src/index.js"
 compatibility_date = "2025-05-20"
@@ -14,9 +14,10 @@ OPEN_TRANSLATE = "true"
 
 USE_MODEL_PLATFORM = "ANTHROPIC"
 ANTHROPIC_API_URL = "https://cloudcode.bdjd.cc"
-ANTHROPIC_BASE_URL = "https://code.newcli.com/claude/ultra"
+ANTHROPIC_BASE_URL = ""
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-6"
 
+OPENAI_BASE_URL = "https://code.newcli.com/codex/v1"
 OPENAI_API_URL = "https://code.newcli.com/codex"
 DEFAULT_OPEN_MODEL = "gpt-5.4"
 
