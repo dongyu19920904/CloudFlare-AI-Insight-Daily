@@ -55,6 +55,182 @@ function truncatePromptText(text, maxChars = 500) {
     return `${normalized.slice(0, maxChars)}…`;
 }
 
+function getPreviousDate(dateStr) {
+    const [year, month, day] = String(dateStr || '').split('-').map(Number);
+    if (!year || !month || !day) return null;
+
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    utcDate.setUTCDate(utcDate.getUTCDate() - 1);
+
+    const previousYear = utcDate.getUTCFullYear();
+    const previousMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+    const previousDay = String(utcDate.getUTCDate()).padStart(2, '0');
+
+    return `${previousYear}-${previousMonth}-${previousDay}`;
+}
+
+function normalizeReplayUrl(url) {
+    if (!url) return '';
+
+    try {
+        const parsed = new URL(String(url).trim());
+        let hostname = parsed.hostname.toLowerCase().replace(/^www\./, '').replace(/^m\./, '');
+        if (hostname === 'twitter.com') hostname = 'x.com';
+        const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+        return `${hostname}${pathname}`.toLowerCase();
+    } catch {
+        return String(url).trim().toLowerCase().replace(/\/+$/, '');
+    }
+}
+
+function normalizeReplayTitle(title) {
+    return String(title || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|，。！？、；：“”‘’（）【】《》·—…-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getReplayTitleTokens(title) {
+    const normalized = String(title || '').normalize('NFKC').toLowerCase();
+    const tokens = new Set();
+
+    for (const match of normalized.match(/[a-z0-9][a-z0-9.+_-]{1,}/g) || []) {
+        if (match.length >= 2) tokens.add(match);
+    }
+
+    const cjkOnly = normalized.replace(/[^\u4e00-\u9fff]/g, '');
+    for (let index = 0; index <= cjkOnly.length - 3; index += 1) {
+        tokens.add(cjkOnly.slice(index, index + 3));
+    }
+
+    return tokens;
+}
+
+function isSimilarReplayTitle(currentTitle, previousTitle) {
+    const normalizedCurrent = normalizeReplayTitle(currentTitle);
+    const normalizedPrevious = normalizeReplayTitle(previousTitle);
+
+    if (!normalizedCurrent || !normalizedPrevious) return false;
+    if (normalizedCurrent === normalizedPrevious) return true;
+
+    if (
+        normalizedCurrent.length >= 12 &&
+        normalizedPrevious.length >= 12 &&
+        (normalizedCurrent.includes(normalizedPrevious) || normalizedPrevious.includes(normalizedCurrent))
+    ) {
+        return true;
+    }
+
+    const currentTokens = getReplayTitleTokens(currentTitle);
+    const previousTokens = getReplayTitleTokens(previousTitle);
+    if (currentTokens.size === 0 || previousTokens.size === 0) return false;
+
+    const overlap = [...currentTokens].filter((token) => previousTokens.has(token));
+    const strongOverlap = overlap.filter((token) => /[a-z]/.test(token) ? token.length >= 4 : token.length >= 3);
+    const minTokenCount = Math.min(currentTokens.size, previousTokens.size);
+
+    return strongOverlap.length >= 2 || (overlap.length >= 3 && overlap.length / minTokenCount >= 0.6);
+}
+
+function extractPreviousTopItems(markdown) {
+    const content = String(markdown || '');
+    if (!content) return [];
+
+    const topSectionMatch = content.match(/^##\s*\*\*.*TOP.*\*\*/im);
+    if (!topSectionMatch || topSectionMatch.index == null) return [];
+
+    const startIndex = topSectionMatch.index;
+    const remaining = content.slice(startIndex + topSectionMatch[0].length);
+    const nextSectionMatch = remaining.match(/\n##\s+/);
+    const endIndex = nextSectionMatch ? startIndex + topSectionMatch[0].length + nextSectionMatch.index : content.length;
+    const topSection = content.slice(startIndex, endIndex);
+
+    const items = [];
+    const seen = new Set();
+    const itemRegex = /^###\s+\d+\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gm;
+
+    for (const match of topSection.matchAll(itemRegex)) {
+        const title = match[1]?.trim();
+        const url = match[2]?.trim();
+        const urlKey = normalizeReplayUrl(url);
+        const titleKey = normalizeReplayTitle(title);
+        const dedupeKey = `${urlKey}::${titleKey}`;
+        if (!title || !url || seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        items.push({ title, url, urlKey, titleKey });
+    }
+
+    return items;
+}
+
+function isUsablePreviousDaily(markdown, topItems) {
+    if (!markdown || !Array.isArray(topItems) || topItems.length < 3) return false;
+
+    const failurePatterns = [
+        /素材不足/i,
+        /无法生成/i,
+        /请补充素材/i,
+        /请提供完整/i,
+        /我需要你提供/i,
+        /我理解你的困惑/i,
+        /i can't help/i,
+        /would you like help/i,
+        /set up an api integration/i,
+    ];
+
+    return !failurePatterns.some((pattern) => pattern.test(markdown));
+}
+
+async function loadPreviousTopItems(env, dateStr) {
+    const previousDate = getPreviousDate(dateStr);
+    if (!previousDate) {
+        return { previousDate: null, items: [] };
+    }
+
+    try {
+        const previousMarkdown = await getGitHubFileContent(env, `daily/${previousDate}.md`);
+        const topItems = extractPreviousTopItems(previousMarkdown);
+        if (!isUsablePreviousDaily(previousMarkdown, topItems)) {
+            console.warn(`[Scheduled] Previous daily ${previousDate} missing usable TOP section, skipping replay filter.`);
+            return { previousDate, items: [] };
+        }
+        return { previousDate, items: topItems };
+    } catch (error) {
+        console.warn(`[Scheduled] Failed to load previous daily ${previousDate}, skipping replay filter: ${error.message}`);
+        return { previousDate, items: [] };
+    }
+}
+
+function filterNewsAgainstPreviousTop(newsItems, previousTopItems) {
+    if (!Array.isArray(newsItems) || newsItems.length === 0 || !Array.isArray(previousTopItems) || previousTopItems.length === 0) {
+        return { filteredNewsItems: newsItems || [], filteredCount: 0 };
+    }
+
+    const previousUrlKeys = new Set(previousTopItems.map((item) => item.urlKey).filter(Boolean));
+    const previousTitles = previousTopItems.map((item) => item.title).filter(Boolean);
+
+    const filteredNewsItems = [];
+    let filteredCount = 0;
+
+    for (const item of newsItems) {
+        const urlKey = normalizeReplayUrl(item?.url);
+        const title = item?.title || '';
+        const duplicateByUrl = urlKey && previousUrlKeys.has(urlKey);
+        const duplicateByTitle = !duplicateByUrl && title && previousTitles.some((previousTitle) => isSimilarReplayTitle(title, previousTitle));
+
+        if (duplicateByUrl || duplicateByTitle) {
+            filteredCount += 1;
+            continue;
+        }
+
+        filteredNewsItems.push(item);
+    }
+
+    return { filteredNewsItems, filteredCount };
+}
+
 async function generateContentWithTransportFallback(env, userPrompt, systemPrompt) {
     try {
         let output = "";
@@ -166,6 +342,9 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         itemsWithMedia: 0,
         itemsWithoutMedia: 0,
         mediaCandidates: 0,
+        previousDayReplayDate: null,
+        previousDayTopItems: 0,
+        previousDayFilteredNews: 0,
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
         fallbackInserted: false,
@@ -188,6 +367,17 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         }
 
         const allUnifiedData = await fetchAllData(env, foloCookie);
+        const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
+        debugInfo.previousDayReplayDate = previousDate;
+        debugInfo.previousDayTopItems = previousTopItems.length;
+
+        if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
+            const { filteredNewsItems, filteredCount } = filterNewsAgainstPreviousTop(allUnifiedData.news, previousTopItems);
+            allUnifiedData.news = filteredNewsItems;
+            debugInfo.previousDayFilteredNews = filteredCount;
+            console.log(`[Scheduled] Filtered ${filteredCount} repeated news items from previous daily ${previousDate}.`);
+        }
+
         const fetchPromises = [];
         for (const sourceType in dataSources) {
             if (Object.hasOwnProperty.call(dataSources, sourceType)) {
