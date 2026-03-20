@@ -1,4 +1,4 @@
-# wrangler.toml
+﻿# wrangler.toml
 name = "cloudflare-ai-lnsight-daily"
 main = "src/index.js"
 compatibility_date = "2025-05-20"
@@ -72,5 +72,5 @@ INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)
 
 [triggers]
 crons = [
-  "0 2 * * *"
+  "0 1 * * *"
 ]
