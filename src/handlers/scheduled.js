@@ -2,12 +2,14 @@
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
-import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero";
-import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
+import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero.js";
+import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree.js";
+import { getSystemPromptAiOpportunity } from "../prompt/aiOpportunityPrompt.js";
 import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
+import { buildOpportunityPaths, insertOpportunityLinkIntoDailyNavigation, updateSectionHomeIndexContent } from '../opportunityUtils.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -349,6 +351,8 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         outputHasMediaAfterFallback: false,
         fallbackInserted: false,
         labelsVersion: 'headings-v2',
+        opportunityGenerated: false,
+        opportunityPublicPath: null,
     };
 
     try {
@@ -492,17 +496,45 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         let outputOfCall3 = await generateContentWithTransportFallback(env, fullPromptForCall3_User, fullPromptForCall3_System);
         outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
 
-        // 5. Assemble Markdown
+        // 5. Generate Opportunity Content
+        const opportunityPaths = buildOpportunityPaths(dateStr);
+        debugInfo.opportunityPublicPath = opportunityPaths.publicPath;
+
+        console.log(`[Scheduled] Generating AI opportunity content...`);
+        const opportunityPromptInput = [
+            `## 今日摘要\n\n${outputOfCall3}`,
+            `## 今日AI资讯\n\n${outputOfCall2}`,
+        ].join('\n\n');
+
+        let opportunityMarkdownContent = await generateContentWithTransportFallback(
+            env,
+            opportunityPromptInput,
+            getSystemPromptAiOpportunity(dateStr),
+        );
+        opportunityMarkdownContent = removeMarkdownCodeBlock(opportunityMarkdownContent);
+        opportunityMarkdownContent = convertPlaceholdersToMarkdownImages(opportunityMarkdownContent);
+        opportunityMarkdownContent = replaceIncorrectDomainLinks(
+            opportunityMarkdownContent,
+            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+        );
+        opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [💰 可做的机会](#可做的机会) - 今天最值得测试的实操方向\n- [🛠 行动建议](#行动建议) - 今天就能开始的动作\n\n${opportunityMarkdownContent}`;
+        debugInfo.opportunityGenerated = true;
+
+        // 6. Assemble Markdown
         const contentWithMidAd = insertMidAd(outputOfCall2);
         let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
         dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
         dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
         dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
+        dailySummaryMarkdownContent = insertOpportunityLinkIntoDailyNavigation(
+            dailySummaryMarkdownContent,
+            opportunityPaths.publicPath,
+        );
         
         if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
 
-        // 6. Commit to GitHub
+        // 7. Commit to GitHub
         console.log(`[Scheduled] Committing to GitHub...`);
         const yearMonth = getYearMonth(dateStr);
         const dailyFilePath = `daily/${dateStr}.md`;
@@ -512,6 +544,15 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
 
         const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
         const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, { title: dailyPageTitle });
+        const opportunityTitleBase = env.DAILY_TITLE.includes('日报')
+            ? env.DAILY_TITLE.replace('日报', '商机')
+            : `${env.DAILY_TITLE} 商机`;
+        const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
+        const opportunityDescription = '从每天 AI 日报里提炼 AI 工具、AI账号和低门槛实操机会。';
+        const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
+            title: opportunityPageTitle,
+            description: opportunityDescription,
+        });
 
         const existingDailySha = await getGitHubFileSha(env, dailyFilePath);
         const dailyCommitMessage = `${existingDailySha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`;
@@ -527,6 +568,25 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         const monthIndexCommitMessage = `${existingMonthIndexSha ? 'Update' : 'Create'} month directory index for ${yearMonth} (Scheduled)`;
         await createOrUpdateGitHubFile(env, monthDirectoryIndexPath, monthDirectoryIndexContent, monthIndexCommitMessage, existingMonthIndexSha);
 
+        const existingOpportunitySha = await getGitHubFileSha(env, opportunityPaths.rawFilePath);
+        const opportunityCommitMessage = `${existingOpportunitySha ? 'Update' : 'Create'} AI opportunity summary for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, opportunityPaths.rawFilePath, opportunityMarkdownContent, opportunityCommitMessage, existingOpportunitySha);
+
+        const existingOpportunityPageSha = await getGitHubFileSha(env, opportunityPaths.pagePath);
+        const opportunityPageCommitMessage = `${existingOpportunityPageSha ? 'Update' : 'Create'} AI opportunity page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(env, opportunityPaths.pagePath, opportunityPageContent, opportunityPageCommitMessage, existingOpportunityPageSha);
+
+        const opportunityMonthIndexContent = buildMonthDirectoryIndex(opportunityPaths.yearMonth, { sidebarOpen: true });
+        const existingOpportunityMonthIndexSha = await getGitHubFileSha(env, opportunityPaths.monthDirectoryIndexPath);
+        const opportunityMonthIndexCommitMessage = `${existingOpportunityMonthIndexSha ? 'Update' : 'Create'} AI opportunity month directory index for ${opportunityPaths.yearMonth} (Scheduled)`;
+        await createOrUpdateGitHubFile(
+            env,
+            opportunityPaths.monthDirectoryIndexPath,
+            opportunityMonthIndexContent,
+            opportunityMonthIndexCommitMessage,
+            existingOpportunityMonthIndexSha
+        );
+
         let existingHomeContent = '';
         try {
             existingHomeContent = await getGitHubFileContent(env, homePath);
@@ -538,6 +598,32 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         const existingHomeSha = await getGitHubFileSha(env, homePath);
         const homeCommitMessage = `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`;
         await createOrUpdateGitHubFile(env, homePath, homeContent, homeCommitMessage, existingHomeSha);
+
+        let existingOpportunityHomeContent = '';
+        try {
+            existingOpportunityHomeContent = await getGitHubFileContent(env, opportunityPaths.homePath);
+        } catch (error) {
+            console.warn(`[Scheduled] Opportunity home page not found, will create a new one.`);
+        }
+        const opportunityHomeContent = updateSectionHomeIndexContent(
+            existingOpportunityHomeContent,
+            opportunityMarkdownContent,
+            dateStr,
+            {
+                title: opportunityPageTitle,
+                description: opportunityDescription,
+                sectionPrefix: '/opportunity',
+            }
+        );
+        const existingOpportunityHomeSha = await getGitHubFileSha(env, opportunityPaths.homePath);
+        const opportunityHomeCommitMessage = `${existingOpportunityHomeSha ? 'Update' : 'Create'} AI opportunity home page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(
+            env,
+            opportunityPaths.homePath,
+            opportunityHomeContent,
+            opportunityHomeCommitMessage,
+            existingOpportunityHomeSha
+        );
 
         console.log(`[Scheduled] Success!`);
         return debugInfo;

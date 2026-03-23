@@ -1,0 +1,5 @@
+.wrangler/
+node_modules/
+reports/
+ai_headers.txt
+tmp_*
