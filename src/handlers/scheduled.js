@@ -9,7 +9,7 @@ import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
-import { buildOpportunityPaths, insertOpportunityLinkIntoDailyNavigation, updateSectionHomeIndexContent } from '../opportunityUtils.js';
+import { buildOpportunityPaths, insertOpportunityLinkIntoDailyNavigation } from '../opportunityUtils.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -568,24 +568,22 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         const monthIndexCommitMessage = `${existingMonthIndexSha ? 'Update' : 'Create'} month directory index for ${yearMonth} (Scheduled)`;
         await createOrUpdateGitHubFile(env, monthDirectoryIndexPath, monthDirectoryIndexContent, monthIndexCommitMessage, existingMonthIndexSha);
 
-        const existingOpportunitySha = await getGitHubFileSha(env, opportunityPaths.rawFilePath);
-        const opportunityCommitMessage = `${existingOpportunitySha ? 'Update' : 'Create'} AI opportunity summary for ${dateStr} (Scheduled)`;
-        await createOrUpdateGitHubFile(env, opportunityPaths.rawFilePath, opportunityMarkdownContent, opportunityCommitMessage, existingOpportunitySha);
-
         const existingOpportunityPageSha = await getGitHubFileSha(env, opportunityPaths.pagePath);
         const opportunityPageCommitMessage = `${existingOpportunityPageSha ? 'Update' : 'Create'} AI opportunity page for ${dateStr} (Scheduled)`;
         await createOrUpdateGitHubFile(env, opportunityPaths.pagePath, opportunityPageContent, opportunityPageCommitMessage, existingOpportunityPageSha);
 
-        const opportunityMonthIndexContent = buildMonthDirectoryIndex(opportunityPaths.yearMonth, { sidebarOpen: true });
         const existingOpportunityMonthIndexSha = await getGitHubFileSha(env, opportunityPaths.monthDirectoryIndexPath);
-        const opportunityMonthIndexCommitMessage = `${existingOpportunityMonthIndexSha ? 'Update' : 'Create'} AI opportunity month directory index for ${opportunityPaths.yearMonth} (Scheduled)`;
-        await createOrUpdateGitHubFile(
-            env,
-            opportunityPaths.monthDirectoryIndexPath,
-            opportunityMonthIndexContent,
-            opportunityMonthIndexCommitMessage,
-            existingOpportunityMonthIndexSha
-        );
+        if (!existingOpportunityMonthIndexSha) {
+            const opportunityMonthIndexContent = buildMonthDirectoryIndex(opportunityPaths.yearMonth, { sidebarOpen: true });
+            const opportunityMonthIndexCommitMessage = `Create AI opportunity month directory index for ${opportunityPaths.yearMonth} (Scheduled)`;
+            await createOrUpdateGitHubFile(
+                env,
+                opportunityPaths.monthDirectoryIndexPath,
+                opportunityMonthIndexContent,
+                opportunityMonthIndexCommitMessage,
+                null
+            );
+        }
 
         let existingHomeContent = '';
         try {
@@ -598,32 +596,6 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         const existingHomeSha = await getGitHubFileSha(env, homePath);
         const homeCommitMessage = `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`;
         await createOrUpdateGitHubFile(env, homePath, homeContent, homeCommitMessage, existingHomeSha);
-
-        let existingOpportunityHomeContent = '';
-        try {
-            existingOpportunityHomeContent = await getGitHubFileContent(env, opportunityPaths.homePath);
-        } catch (error) {
-            console.warn(`[Scheduled] Opportunity home page not found, will create a new one.`);
-        }
-        const opportunityHomeContent = updateSectionHomeIndexContent(
-            existingOpportunityHomeContent,
-            opportunityMarkdownContent,
-            dateStr,
-            {
-                title: opportunityPageTitle,
-                description: opportunityDescription,
-                sectionPrefix: '/opportunity',
-            }
-        );
-        const existingOpportunityHomeSha = await getGitHubFileSha(env, opportunityPaths.homePath);
-        const opportunityHomeCommitMessage = `${existingOpportunityHomeSha ? 'Update' : 'Create'} AI opportunity home page for ${dateStr} (Scheduled)`;
-        await createOrUpdateGitHubFile(
-            env,
-            opportunityPaths.homePath,
-            opportunityHomeContent,
-            opportunityHomeCommitMessage,
-            existingOpportunityHomeSha
-        );
 
         console.log(`[Scheduled] Success!`);
         return debugInfo;
