@@ -29,9 +29,12 @@ test("getSystemPromptAiOpportunity reuses the daily writing kernel instead of on
   assert.match(prompt, /先给画面，再补概念/);
   assert.match(prompt, /像朋友聊天，不像系统填表/);
   assert.match(prompt, /展示，而不是解释/);
+  assert.match(prompt, /标题要有钩子/);
+  assert.match(prompt, /可以单独截图转发/);
+  assert.match(prompt, /像朋友圈转发导语/);
 });
 
-test("getSystemPromptAiOpportunity asks for a lighter card-style markdown structure", () => {
+test("getSystemPromptAiOpportunity asks for a hooky and memorable card-style markdown structure", () => {
   const prompt = getSystemPromptAiOpportunity("2026-03-24", "### 当前业务");
 
   assert.match(prompt, /# 今日AI商机/);
@@ -45,6 +48,10 @@ test("getSystemPromptAiOpportunity asks for a lighter card-style markdown struct
   assert.match(prompt, /今天先做哪一步/);
   assert.match(prompt, /今天就能发的文案/);
   assert.match(prompt, /配图建议/);
+  assert.match(prompt, /句子要短，有记忆点/);
+  assert.match(prompt, /先说结论要像一条会被转发的导语/);
+  assert.match(prompt, /第一句要像朋友圈写发圈时的开场/);
+  assert.match(prompt, /让小白看完后有“我也能试一下”的冲动/);
   assert.doesNotMatch(prompt, /为什么今天能卖：/);
   assert.doesNotMatch(prompt, /参考卖法：/);
 });

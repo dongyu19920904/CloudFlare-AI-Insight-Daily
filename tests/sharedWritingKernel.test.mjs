@@ -25,4 +25,8 @@ test("getSharedOpportunityWritingKernel adapts the daily style to money-making c
   assert.match(kernel, /不是在填系统字段/);
   assert.match(kernel, /把热闹翻译成小白能做的小机会/);
   assert.match(kernel, /先写买家今天为什么会心动/);
+  assert.match(kernel, /标题要有钩子/);
+  assert.match(kernel, /可以单独截图转发/);
+  assert.match(kernel, /像朋友圈转发导语/);
+  assert.match(kernel, /“我也能试一下”/);
 });
