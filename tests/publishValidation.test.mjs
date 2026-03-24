@@ -16,6 +16,7 @@ I can't discuss that.
 \`\`\`
 
 ## ⚡ 快速导航
+
 - [📪 今日 AI 资讯](#今日ai资讯) - 最新动态速览
 `,
   });
@@ -72,10 +73,10 @@ test("validateOpportunityPublication rejects gray phrasing and missing required 
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止片段: 便宜 token/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: 今天就能发的文案/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: 这钱从哪来/);
 });
 
-test("validateOpportunityPublication accepts the card-style opportunity structure", () => {
+test("validateOpportunityPublication accepts the lighter daily-style opportunity structure", () => {
   const result = validateOpportunityPublication({
     markdown: `# 今日AI商机
 
@@ -84,32 +85,31 @@ test("validateOpportunityPublication accepts the card-style opportunity structur
 
 ## 今日主推
 ### 微信跑通包
-不是卖概念，是卖“帮别人今天就跑通”。
+不是卖概念，是卖“帮别人今天就跑通”。很多人卡在配置这一步，你卖的是省时间、少踩坑和马上能用。
 
 - 适合谁：已经买了 Claude 或 OpenClaw，但不会接进微信的人
-- 为什么今天能卖：新接入方案出来了，很多人想试，但不想自己折腾
+- 这钱从哪来：买家不是不想用 AI，而是不想自己折腾配置。你把“跑通”这件事做成结果，就有成交空间
 - 最简单卖法：先卖跑通包，不要一上来卖复杂定制
-- 参考卖法：29 元基础说明，59 元跑通包，139 元账号 + 跑通 + 答疑
 - 今天先做哪一步：录一个 3 分钟跑通视频，证明你真的能弄好
 - 今天就能发的文案：Claude 现在能接进微信了，我这边已经整理好跑通版，不想折腾配置的直接拿现成
 - 配图建议：用接入成功界面截图，证明这不是空口说法
 
 ## 本周可试
 ### 技能包精选安装包
-不是卖“技能市场很火”，而是卖“我帮你选好 5 个最实用的”。
+这不是卖“技能市场很火”，而是卖“我帮你选好最实用的 5 个”。这类更适合先做小合集，先看哪类最容易成交。
 
 - 适合谁：已经在用 Claude 或 OpenClaw，但不会挑技能和模板的人
 - 先怎么试：先做 1 份“5 个最实用技能包合集”，别做大全
-- 为什么别一下冲太猛：先看哪类技能更容易成交，是办公、内容还是开发辅助
+- 为什么先别冲太猛：先看哪类技能更容易成交，是办公、内容还是开发辅助
 - 配图建议：用技能市场截图，帮助读者理解这是什么
 
 ## 今天别碰
 ### 只聊模型跑分
-看着热，但小白看完还是不知道今天能卖什么。
+看着热，但小白看完还是不知道今天能卖什么，也不知道第一单从哪来。
 
 ## 地图感
 ### 技能市场
-把它理解成 AI 世界里的小插件市场就行，知道就行，不用今天深挖。
+把它理解成 AI 世界里的小插件市场就行。以后很多商机都会从“技能包、模板包、安装包”里长出来。
 
 ## 今日动作
 - 先发什么：微信跑通包

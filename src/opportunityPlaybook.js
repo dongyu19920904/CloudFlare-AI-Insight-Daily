@@ -186,11 +186,12 @@ export const opportunityPlaybook = {
     weakDayLanguage: ["先小范围试发", "先观察", "先低成本验证"],
     requireSections: ["先说结论", "今日主推", "本周可试", "今天别碰", "地图感", "今日动作"],
     offerTiers: ["低价引流款", "标准成交款", "搭售利润款"],
+    narrativeRequirement:
+      "今日主推和本周可试都先用 1-2 句短段落讲清场景、痛点和结果，再补必要 bullets，不要写成问答表单。",
     requiredOpportunityFields: [
       "适合谁",
-      "为什么今天能卖",
+      "这钱从哪来",
       "最简单卖法",
-      "参考卖法",
       "今天先做哪一步",
       "今天就能发的文案",
       "配图建议",
@@ -198,7 +199,7 @@ export const opportunityPlaybook = {
     requiredWeeklyTryFields: [
       "适合谁",
       "先怎么试",
-      "为什么别一下冲太猛",
+      "为什么先别冲太猛",
       "配图建议",
     ],
     requiredActionFields: [
@@ -209,7 +210,7 @@ export const opportunityPlaybook = {
     titleRule:
       "标题先写结果或场景，再写工具名；不要把项目名、stars、安装量直接写进标题。",
     whyNowRule:
-      "为什么今天能卖先写买家为什么现在会下单，再补当天新变化，控制在 1-2 句。",
+      "“这钱从哪来”先写买家今天为什么会心动，再补当天新变化，控制在 1-2 句。",
     discouragedLeadSignals: ["GitHub stars", "安装量", "技术圈热议", "SDK 名词堆砌"],
     bannedClaims: [
       "不要假装知道闲鱼实时销量、成交量或全网主流售价。",
@@ -273,8 +274,9 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
         ? "是"
         : "否"
     }`,
-    `- 固定卖法档位: ${playbook.outputRules.offerTiers.join("、")}`,
+    `- 参考卖法可自然带出: ${playbook.outputRules.offerTiers.join("、")}，但不要机械写成报价表`,
     `- 弱证据时允许语气: ${playbook.outputRules.weakDayLanguage.join("、")}`,
+    `- 叙事要求: ${playbook.outputRules.narrativeRequirement}`,
     `- 每条机会必须包含: ${playbook.outputRules.requiredOpportunityFields.join(
       "、"
     )}`,

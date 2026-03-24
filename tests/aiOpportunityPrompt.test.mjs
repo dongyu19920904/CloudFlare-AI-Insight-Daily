@@ -16,12 +16,22 @@ test("getSystemPromptAiOpportunity applies the four-quadrant filter", () => {
   assert.match(prompt, /右下角 = 可以试卖/);
   assert.match(prompt, /右上角 = 值得长期做/);
   assert.match(prompt, /优先“今天就能卖”的/);
-  assert.match(prompt, /不写大段分析，不写长篇报告/);
   assert.match(prompt, /不要假装知道全网真实成交数据/);
   assert.match(prompt, /便宜 token、风险自负、多用户商业化/);
 });
 
-test("getSystemPromptAiOpportunity asks for the card-style markdown structure", () => {
+test("getSystemPromptAiOpportunity reuses the daily writing kernel instead of only naming a style", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-03-24", "### 当前业务");
+
+  assert.match(prompt, /共享写作内核/);
+  assert.match(prompt, /说人话/);
+  assert.match(prompt, /先给结果，再补原因/);
+  assert.match(prompt, /先给画面，再补概念/);
+  assert.match(prompt, /像朋友聊天，不像系统填表/);
+  assert.match(prompt, /展示，而不是解释/);
+});
+
+test("getSystemPromptAiOpportunity asks for a lighter card-style markdown structure", () => {
   const prompt = getSystemPromptAiOpportunity("2026-03-24", "### 当前业务");
 
   assert.match(prompt, /# 今日AI商机/);
@@ -31,9 +41,10 @@ test("getSystemPromptAiOpportunity asks for the card-style markdown structure", 
   assert.match(prompt, /## 今天别碰/);
   assert.match(prompt, /## 地图感/);
   assert.match(prompt, /## 今日动作/);
-  assert.match(prompt, /最简单卖法/);
+  assert.match(prompt, /这钱从哪来/);
   assert.match(prompt, /今天先做哪一步/);
   assert.match(prompt, /今天就能发的文案/);
   assert.match(prompt, /配图建议/);
-  assert.match(prompt, /先怎么试/);
+  assert.doesNotMatch(prompt, /为什么今天能卖：/);
+  assert.doesNotMatch(prompt, /参考卖法：/);
 });
