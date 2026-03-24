@@ -539,7 +539,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             opportunityMarkdownContent,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
-        opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日可卖](#今日可卖) - 今天最适合发的主机会\n- [📆 本周可试](#本周可试) - 先低成本验证的方向\n- [✅ 今日动作](#今日动作) - 今天就能开始的动作\n\n${opportunityMarkdownContent}`;
+        opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日主推](#今日主推) - 今天最值得先试的机会\n- [🧪 本周可试](#本周可试) - 适合先低成本测试的方向\n- [🚫 今天别碰](#今天别碰) - 看着热，但不建议小白跟进\n- [🗺️ 地图感](#地图感) - 知道就行的背景概念\n- [✅ 今日动作](#今日动作) - 今天先发什么、先卖什么\n\n${opportunityMarkdownContent}`;
         debugInfo.opportunityGenerated = true;
 
         // 6. Assemble Markdown
@@ -849,15 +849,15 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
         "",
         "请严格遵守以下规则：",
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
-        "- 必须包含完整结构：## 今日AI商机 / ## 今日可卖 / ## 本周可试 / ## 今日动作",
-        "- 每个机会都必须包含：可直接发布的商品标题、买家现在最在意什么、你实际交付什么、更适合发到哪里、低价引流款、标准成交款、搭售利润款",
-        "- 本周可试必须包含：如果要试，先包装成什么商品",
-        "- 今日动作必须包含：今天就能发的 1 句话术",
+        "- 必须包含完整结构：# 今日AI商机 / ## 先说结论 / ## 今日主推 / ## 本周可试 / ## 今天别碰 / ## 地图感 / ## 今日动作",
+        "- 今日主推必须包含：适合谁、为什么今天能卖、最简单卖法、参考卖法、今天先做哪一步、今天就能发的文案、配图建议",
+        "- 本周可试必须包含：适合谁、先怎么试、为什么别一下冲太猛、配图建议",
+        "- 整篇风格要像轻快、好看、好懂的日报卡片，不要写成长篇分析",
         "- 如果证据偏弱，可以写成先试、先观察、先小范围验证，但不能拒答",
         "- 不要出现便宜 token、风险自负、多用户商业化",
-        "- 商品标题先写结果、场景或交付动作，不要把 GitHub stars、安装量、SDK 名词堆进标题",
+        "- 标题先写结果、场景或交付动作，不要把 GitHub stars、安装量、SDK 名词堆进标题",
         "- 为什么今天能卖先写买家为什么现在愿意下单，再补当天新变化，控制在 1-2 句",
-        "- 少写技术圈热闹，多写今天能卖什么、交付什么、发到哪里",
+        "- 少写技术圈热闹，多写今天能卖什么、今天先做什么",
         "",
         "下面是原始候选素材：",
         basePromptInput,
@@ -944,7 +944,7 @@ async function generateOpportunityMarkdown(env, dateStr, allUnifiedData, debugIn
         }
     }
 
-    opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日可卖](#今日可卖) - 今天最适合发的主机会\n- [📆 本周可试](#本周可试) - 先低成本验证的方向\n- [✅ 今日动作](#今日动作) - 今天就能开始的动作\n\n${opportunityMarkdownContent}`;
+    opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日主推](#今日主推) - 今天最值得先试的机会\n- [🧪 本周可试](#本周可试) - 适合先低成本测试的方向\n- [🚫 今天别碰](#今天别碰) - 看着热，但不建议小白跟进\n- [🗺️ 地图感](#地图感) - 知道就行的背景概念\n- [✅ 今日动作](#今日动作) - 今天先发什么、先卖什么\n\n${opportunityMarkdownContent}`;
 
     debugInfo.opportunityGenerated = true;
 

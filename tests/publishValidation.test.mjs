@@ -16,8 +16,7 @@ I can't discuss that.
 \`\`\`
 
 ## ⚡ 快速导航
-
-- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+- [📪 今日 AI 资讯](#今日ai资讯) - 最新动态速览
 `,
   });
 
@@ -35,11 +34,11 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "",
     "## ⚡ 快速导航",
     "",
-    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "- [📪 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
     "",
     "## **今日AI资讯**",
     "",
-    "### **👀 只有一句话**",
+    "### **🤖 只有一句话**",
     "微信 Agent 开始走向大众平台。",
     "",
     "### **🔑 3 个关键词**",
@@ -62,61 +61,60 @@ test("validateDailyPublication accepts a structured daily page", () => {
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {
   const result = validateOpportunityPublication({
-    markdown: `## 今日AI商机
+    markdown: `# 今日AI商机
 
-## 今日可卖
-
+## 今日主推
 ### 一个机会
-- 今天适合卖什么：便宜 token
+- 最简单卖法：便宜 token
 `,
     bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
   });
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止片段: 便宜 token/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: 今天就能发的 1 句话术/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: 今天就能发的文案/);
 });
 
-test("validateOpportunityPublication accepts the new publishable opportunity structure", () => {
+test("validateOpportunityPublication accepts the card-style opportunity structure", () => {
   const result = validateOpportunityPublication({
-    markdown: `## 今日AI商机
+    markdown: `# 今日AI商机
 
-### 一句话判断
-今天更适合卖账号搭售，不适合单卖教程。
+## 先说结论
+今天最值得试的，不是追模型热词，而是卖微信跑通包。
 
-## 今日可卖
-### Claude 账号搭售技能包
-- 可直接发布的商品标题：Claude 账号 + 技能包配置
-- 今天适合卖什么：Claude 账号搭配技能包配置
-- 适合卖给谁：想快速上手 Claude 的中文用户
-- 买家现在最在意什么：想尽快上手，不想自己折腾入口和配置
-- 为什么今天能卖：买家现在想更快用 Claude 做内容处理，今天又有明确的新变化能带来新鲜感。
-- 建议卖法：账号 + 配置 + 教程
-- 你实际交付什么：账号入口、技能包配置说明、3 个场景示例
-- 更适合发到哪里：群里、朋友圈、商品页
-- 更适合单卖还是搭售：搭售
-- 如果搭售，最适合搭什么：账号 + 配置说明 + 教程
-- 低价引流款：39-59 元体验版
-- 标准成交款：99-149 元标准版
-- 搭售利润款：199-299 元陪跑版
-- 今天值不值得发：值得
-- 注意事项：不要承诺长期稳定
+## 今日主推
+### 微信跑通包
+不是卖概念，是卖“帮别人今天就跑通”。
+
+- 适合谁：已经买了 Claude 或 OpenClaw，但不会接进微信的人
+- 为什么今天能卖：新接入方案出来了，很多人想试，但不想自己折腾
+- 最简单卖法：先卖跑通包，不要一上来卖复杂定制
+- 参考卖法：29 元基础说明，59 元跑通包，139 元账号 + 跑通 + 答疑
+- 今天先做哪一步：录一个 3 分钟跑通视频，证明你真的能弄好
+- 今天就能发的文案：Claude 现在能接进微信了，我这边已经整理好跑通版，不想折腾配置的直接拿现成
+- 配图建议：用接入成功界面截图，证明这不是空口说法
 
 ## 本周可试
-### 微信 Agent 代配置
-- 可直接发布的商品标题：微信 Agent 代配置
-- 如果要试，先包装成什么商品：微信 Agent 跑通体验版
-- 为什么值得试：入口新、讨论热
-- 更适合谁来做：愿意先跑 demo 的卖家
-- 先怎么小成本试：先做 demo 再测试询盘
-- 为什么现在先别放大：还要验证稳定性
+### 技能包精选安装包
+不是卖“技能市场很火”，而是卖“我帮你选好 5 个最实用的”。
+
+- 适合谁：已经在用 Claude 或 OpenClaw，但不会挑技能和模板的人
+- 先怎么试：先做 1 份“5 个最实用技能包合集”，别做大全
+- 为什么别一下冲太猛：先看哪类技能更容易成交，是办公、内容还是开发辅助
+- 配图建议：用技能市场截图，帮助读者理解这是什么
+
+## 今天别碰
+### 只聊模型跑分
+看着热，但小白看完还是不知道今天能卖什么。
+
+## 地图感
+### 技能市场
+把它理解成 AI 世界里的小插件市场就行，知道就行，不用今天深挖。
 
 ## 今日动作
-- 今天先发哪一类商品：账号搭售商品
-- 今天先测哪一个入口：群内测试文案
-- 今天先准备哪一种搭售内容：安装截图教程
-- 今天就能发的 1 句话术：Claude 账号 + 技能包，配好就能直接上手
-`,
+- 先发什么：微信跑通包
+- 先录什么：跑通录屏
+- 先卖哪一款：29 元低价引流款`,
     bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
   });
 
