@@ -9,7 +9,31 @@ import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
-import { handleScheduled } from './handlers/scheduled.js';
+import {
+    handleScheduled,
+    handleScheduledDaily,
+    handleScheduledOpportunity,
+} from './handlers/scheduled.js';
+
+function getSpecifiedDate(url) {
+    const dateParam = url.searchParams.get('date');
+    return dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+}
+
+async function runScheduledMode(mode, env, specifiedDate) {
+    const fakeEvent = { scheduledTime: Date.now(), cron: '' };
+    const fakeCtx = { waitUntil: (promise) => promise };
+
+    if (mode === 'opportunity') {
+        return handleScheduledOpportunity(fakeEvent, env, fakeCtx, specifiedDate);
+    }
+
+    if (mode === 'daily') {
+        return handleScheduledDaily(fakeEvent, env, fakeCtx, specifiedDate);
+    }
+
+    return handleScheduled(fakeEvent, env, fakeCtx, specifiedDate, 'all');
+}
 
 export default {
     async scheduled(event, env, ctx) {
@@ -73,7 +97,12 @@ export default {
             return await handleWriteRssData(request, env);
         } else if (path === '/generateRssContent' && request.method === 'GET') {
             return await handleGenerateRssContent(request, env);
-        } else if (path === '/testTriggerScheduled' && request.method === 'GET') {
+        } else if (
+            (path === '/testTriggerScheduled' ||
+                path === '/testTriggerScheduledDaily' ||
+                path === '/testTriggerScheduledOpportunity') &&
+            request.method === 'GET'
+        ) {
             const secretKey = url.searchParams.get('key');
             const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
             if (secretKey !== expectedKey) {
@@ -84,15 +113,22 @@ export default {
                     headers: { 'Content-Type': 'application/json; charset=utf-8' }
                 });
             }
-            const dateParam = url.searchParams.get('date');
-            const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
-            const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
-            const fakeCtx = { waitUntil: (promise) => promise };
+            const specifiedDate = getSpecifiedDate(url);
+            const requestedMode = url.searchParams.get('mode');
+            const mode =
+                path === '/testTriggerScheduledDaily'
+                    ? 'daily'
+                    : path === '/testTriggerScheduledOpportunity'
+                      ? 'opportunity'
+                      : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
+                        ? requestedMode
+                        : 'daily';
             try {
-                const debug = await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
+                const debug = await runScheduledMode(mode, env, specifiedDate);
                 return new Response(JSON.stringify({
                     success: true,
-                    message: `Scheduled task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
+                    message: `Scheduled ${mode} task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
+                    mode,
                     date: specifiedDate || 'current date',
                     timestamp: new Date().toISOString(),
                     debug: debug || null,
@@ -104,6 +140,7 @@ export default {
                 return new Response(JSON.stringify({
                     success: false,
                     error: error.message,
+                    mode,
                     date: specifiedDate || 'current date',
                     timestamp: new Date().toISOString()
                 }), {
@@ -140,15 +177,27 @@ export default {
                 response = await handleGenAIDailyPage(request, env);
             } else if (path === '/commitToGitHub' && request.method === 'POST') {
                 response = await handleCommitToGitHub(request, env);
-            } else if (path === '/triggerScheduled' && request.method === 'GET') {
-                const dateParam = url.searchParams.get('date');
-                const specifiedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
-                const fakeEvent = { scheduledTime: Date.now(), cron: '0 23 * * *' };
-                const fakeCtx = { waitUntil: (promise) => promise };
-                const debug = await handleScheduled(fakeEvent, env, fakeCtx, specifiedDate);
+            } else if (
+                (path === '/triggerScheduled' ||
+                    path === '/triggerScheduledDaily' ||
+                    path === '/triggerScheduledOpportunity') &&
+                request.method === 'GET'
+            ) {
+                const specifiedDate = getSpecifiedDate(url);
+                const requestedMode = url.searchParams.get('mode');
+                const mode =
+                    path === '/triggerScheduledDaily'
+                        ? 'daily'
+                        : path === '/triggerScheduledOpportunity'
+                          ? 'opportunity'
+                          : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
+                            ? requestedMode
+                            : 'daily';
+                const debug = await runScheduledMode(mode, env, specifiedDate);
                 response = new Response(JSON.stringify({
                     success: true,
-                    message: `Scheduled task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                    message: `Scheduled ${mode} task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                    mode,
                     date: specifiedDate || 'current date',
                     timestamp: new Date().toISOString(),
                     debug: debug || null,

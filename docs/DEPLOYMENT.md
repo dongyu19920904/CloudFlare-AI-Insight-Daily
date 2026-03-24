@@ -145,6 +145,60 @@ TWITTER_FETCH_PAGES = "2"
   ```
   部署成功后，Wrangler 会返回一个公开的 `*.workers.dev` 域名，您的 AI 洞察日报服务已在线上运行！
 
+#### 5. 使用 GitHub Actions 自动部署 Worker
+
+如果您本地 `wrangler deploy` 偶发网络不稳定，或者希望以后只要推送代码就自动发版，可以直接使用仓库内置的 `.github/workflows/deploy-worker.yml`。
+
+该工作流的行为：
+
+- 当 `main` 分支的后端代码、`wrangler.toml` 或 Worker 部署工作流本身发生变化时，自动部署 Worker
+- 支持在 GitHub Actions 页面手动点击 `Run workflow`
+- 不会因为 `daily/`、`docs/`、前端内容文件的普通变更而重复部署 Worker
+
+##### 需要在 GitHub 仓库里配置的 Actions Secrets
+
+进入 `Settings` -> `Secrets and variables` -> `Actions`，新增下面两个 Secrets：
+
+- `CLOUDFLARE_API_TOKEN`
+  - Cloudflare API Token
+  - 建议使用 Cloudflare 官方的 `Edit Cloudflare Workers` 模板创建
+- `CLOUDFLARE_ACCOUNT_ID`
+  - 您的 Cloudflare Account ID
+  - 可在 `wrangler whoami` 输出或 Cloudflare Dashboard 中查看
+
+##### 非 GitHub Secrets，但仍需提前存在于 Worker 的运行时 Secrets
+
+自动部署工作流只负责“发版代码”，**不会自动替您创建 Worker 运行时密钥**。首次启用前，请先在本地或其他可访问 Cloudflare 的环境中执行：
+
+```bash
+wrangler secret put ANTHROPIC_API_KEY
+wrangler secret put GITHUB_TOKEN
+wrangler secret put LOGIN_PASSWORD
+wrangler secret put TEST_TRIGGER_SECRET
+wrangler secret put FOLO_COOKIE
+```
+
+其中：
+
+- `ANTHROPIC_API_KEY`：当前项目默认使用 `ANTHROPIC`
+- `GITHUB_TOKEN`：用于把日报和商机内容写回前端仓库
+- `LOGIN_PASSWORD`：后台登录密码
+- `TEST_TRIGGER_SECRET`：用于手动触发 `/testTriggerScheduled...`
+- `FOLO_COOKIE`：用于定时抓取 Folo 数据；如果您已经走 KV 方案，也可以不设这个 secret
+
+##### 启用完成后如何验证
+
+1. 推送一次后端改动到 `main`
+2. 打开 GitHub 仓库的 `Actions` 页面，确认 `Deploy Cloudflare Worker` 工作流成功
+3. 再访问 Worker 地址或手动调用测试接口，例如：
+
+```bash
+https://<your-worker>.workers.dev/testTriggerScheduledDaily?key=<TEST_TRIGGER_SECRET>&date=2026-03-24
+https://<your-worker>.workers.dev/testTriggerScheduledOpportunity?key=<TEST_TRIGGER_SECRET>&date=2026-03-24
+```
+
+只要工作流成功，`wrangler.toml` 里现有的 cron 也会继续生效，不需要额外再配一次定时任务。
+
 ### 🗓️ 定时生成日报站点 (可选)
 
 #### 方案一：🌐 使用 GitHub Actions 自动部署 (推荐)

@@ -1,4 +1,5 @@
 .wrangler/
+.wrangler-build/
 node_modules/
 reports/
 ai_headers.txt

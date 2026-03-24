@@ -5,11 +5,23 @@ import { callChatAPI, callChatAPIStream } from '../chatapi.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero.js";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree.js";
 import { getSystemPromptAiOpportunity } from "../prompt/aiOpportunityPrompt.js";
+import {
+    opportunityPlaybook,
+    serializeOpportunityPlaybook,
+} from "../opportunityPlaybook.js";
+import {
+    buildOpportunityCandidates,
+    formatOpportunityCandidatesForPrompt,
+} from "../opportunityScoring.js";
 import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
-import { buildOpportunityPaths, insertOpportunityLinkIntoDailyNavigation } from '../opportunityUtils.js';
+import { buildOpportunityPaths } from '../opportunityUtils.js';
+import {
+    validateDailyPublication,
+    validateOpportunityPublication,
+} from '../publishValidation.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -334,7 +346,7 @@ function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
     return `${markdown}\n\n### **相关配图**\n\n${rendered}`;
 }
 
-export async function handleScheduled(event, env, ctx, specifiedDate = null) {
+export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
     // 濡傛灉鎸囧畾浜嗘棩鏈燂紝浣跨敤鎸囧畾鏃ユ湡锛涘惁鍒欎娇鐢ㄥ綋鍓嶆棩鏈?
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -353,6 +365,8 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         labelsVersion: 'headings-v2',
         opportunityGenerated: false,
         opportunityPublicPath: null,
+        opportunityCandidateCount: 0,
+        opportunityTopScore: 0,
     };
 
     try {
@@ -499,17 +513,25 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         // 5. Generate Opportunity Content
         const opportunityPaths = buildOpportunityPaths(dateStr);
         debugInfo.opportunityPublicPath = opportunityPaths.publicPath;
+        const opportunityCandidates = buildOpportunityCandidates(allUnifiedData, opportunityPlaybook);
+        const playbookText = serializeOpportunityPlaybook(opportunityPlaybook);
+        const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
+            opportunityCandidates,
+            opportunityPlaybook,
+        );
+        debugInfo.opportunityCandidateCount = opportunityCandidates.length;
+        debugInfo.opportunityTopScore = opportunityCandidates[0]?.score || 0;
 
         console.log(`[Scheduled] Generating AI opportunity content...`);
         const opportunityPromptInput = [
+            `## 候选主题\n\n${opportunityCandidatesText}`,
             `## 今日摘要\n\n${outputOfCall3}`,
-            `## 今日AI资讯\n\n${outputOfCall2}`,
         ].join('\n\n');
 
         let opportunityMarkdownContent = await generateContentWithTransportFallback(
             env,
             opportunityPromptInput,
-            getSystemPromptAiOpportunity(dateStr),
+            getSystemPromptAiOpportunity(dateStr, playbookText),
         );
         opportunityMarkdownContent = removeMarkdownCodeBlock(opportunityMarkdownContent);
         opportunityMarkdownContent = convertPlaceholdersToMarkdownImages(opportunityMarkdownContent);
@@ -517,7 +539,7 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
             opportunityMarkdownContent,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
-        opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [💰 可做的机会](#可做的机会) - 今天最值得测试的实操方向\n- [🛠 行动建议](#行动建议) - 今天就能开始的动作\n\n${opportunityMarkdownContent}`;
+        opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日可卖](#今日可卖) - 今天最适合发的主机会\n- [📆 本周可试](#本周可试) - 先低成本验证的方向\n- [✅ 今日动作](#今日动作) - 今天就能开始的动作\n\n${opportunityMarkdownContent}`;
         debugInfo.opportunityGenerated = true;
 
         // 6. Assemble Markdown
@@ -604,5 +626,515 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null) {
         console.error(`[Scheduled] Error:`, error);
         throw error;
     }
+}
+
+function buildBaseDebugInfo(dateStr, mode) {
+    return {
+        mode,
+        date: dateStr,
+        itemsWithMedia: 0,
+        itemsWithoutMedia: 0,
+        mediaCandidates: 0,
+        previousDayReplayDate: null,
+        previousDayTopItems: 0,
+        previousDayFilteredNews: 0,
+        outputHasMediaBeforeFallback: false,
+        outputHasMediaAfterFallback: false,
+        fallbackInserted: false,
+        labelsVersion: 'headings-v2',
+        dailyGenerated: false,
+        dailyPublished: false,
+        dailyValidationPassed: false,
+        dailyValidationIssues: [],
+        opportunityGenerated: false,
+        opportunityPublished: false,
+        opportunityValidationPassed: false,
+        opportunityValidationIssues: [],
+        opportunityPublicPath: null,
+        opportunityCandidateCount: 0,
+        opportunityTopScore: 0,
+    };
+}
+
+async function loadFoloCookie(env) {
+    let foloCookie = env.FOLO_COOKIE;
+    if (!foloCookie && env.FOLO_COOKIE_KV_KEY) {
+        try {
+            foloCookie = await getFromKV(env.DATA_KV, env.FOLO_COOKIE_KV_KEY);
+            if (foloCookie) {
+                console.log(`[Scheduled] Loaded Folo cookie from KV (${env.FOLO_COOKIE_KV_KEY}).`);
+            }
+        } catch (error) {
+            console.warn(`[Scheduled] Failed to load Folo cookie from KV: ${error.message}`);
+        }
+    }
+
+    return foloCookie;
+}
+
+function buildPromptCollections(allUnifiedData, debugInfo) {
+    const selectedContentItems = [];
+    const itemsWithMedia = [];
+    const itemsWithoutMedia = [];
+    const mediaCandidates = [];
+
+    for (const sourceType in allUnifiedData) {
+        const items = allUnifiedData[sourceType];
+        if (!items || items.length === 0) continue;
+
+        for (const item of items) {
+            const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
+            const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
+            const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
+            let itemText = "";
+
+            switch (item.type) {
+                case 'news':
+                    itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
+                    break;
+                case 'project':
+                    itemText = `Project Name: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nDescription: ${truncatePromptText(item.description)}\nStars: ${item.details.totalStars}`;
+                    break;
+                case 'paper':
+                    itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
+                    break;
+                case 'socialMedia':
+                    itemText = `socialMedia Post by ${item.authors}锛歅ublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${truncatePromptText(stripHtml(item.details.content_html))}`;
+                    break;
+                default:
+                    itemText = `Type: ${item.type}\nTitle: ${item.title || 'N/A'}\nDescription: ${truncatePromptText(item.description || 'N/A')}\nURL: ${item.url || 'N/A'}`;
+                    if (item.published_date) itemText += `\nPublished: ${item.published_date}`;
+                    if (item.source) itemText += `\nSource: ${item.source}`;
+                    if (item.details?.content_html) itemText += `\nContent: ${plainTextContent}`;
+                    break;
+            }
+
+            if (mediaPlaceholders.length > 0) {
+                itemText += `\nMedia References: ${mediaPlaceholders.join(' ')}`;
+            }
+
+            if (!itemText) continue;
+
+            if (itemHasMedia) {
+                itemsWithMedia.push(itemText);
+                mediaCandidates.push({
+                    title: item.title,
+                    description: item.description,
+                    source: item.source,
+                    url: item.url,
+                    plainText: plainTextContent,
+                    placeholders: mediaPlaceholders,
+                    searchText: [item.title, item.description, item.source, plainTextContent].filter(Boolean).join(' '),
+                    matchTokens: extractMatchTokens({
+                        title: item.title,
+                        description: item.description,
+                        source: item.source,
+                        plainText: plainTextContent,
+                    }),
+                });
+            } else {
+                itemsWithoutMedia.push(itemText);
+            }
+        }
+    }
+
+    const promptItems = [...itemsWithMedia, ...itemsWithoutMedia].slice(0, 16);
+    selectedContentItems.push(...promptItems);
+
+    debugInfo.itemsWithMedia = itemsWithMedia.length;
+    debugInfo.itemsWithoutMedia = itemsWithoutMedia.length;
+    debugInfo.mediaCandidates = mediaCandidates.length;
+
+    return { selectedContentItems, mediaCandidates };
+}
+
+async function loadScheduledContext(env, dateStr, debugInfo) {
+    console.log(`[Scheduled] Fetching data for ${dateStr}...`);
+    const foloCookie = await loadFoloCookie(env);
+    const allUnifiedData = await fetchAllData(env, foloCookie);
+    const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
+
+    debugInfo.previousDayReplayDate = previousDate;
+    debugInfo.previousDayTopItems = previousTopItems.length;
+
+    if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
+        const { filteredNewsItems, filteredCount } = filterNewsAgainstPreviousTop(allUnifiedData.news, previousTopItems);
+        allUnifiedData.news = filteredNewsItems;
+        debugInfo.previousDayFilteredNews = filteredCount;
+    }
+
+    const fetchPromises = [];
+    for (const sourceType in dataSources) {
+        if (Object.hasOwnProperty.call(dataSources, sourceType)) {
+            fetchPromises.push(storeInKV(env.DATA_KV, `${dateStr}-${sourceType}`, allUnifiedData[sourceType] || []));
+        }
+    }
+    await Promise.all(fetchPromises);
+
+    return {
+        allUnifiedData,
+        ...buildPromptCollections(allUnifiedData, debugInfo),
+    };
+}
+
+async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCandidates, debugInfo) {
+    if (selectedContentItems.length === 0) {
+        throw new Error('No content items found for daily generation.');
+    }
+
+    console.log(`[Scheduled][Daily] Generating content...`);
+    const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);
+    const outputOfCall2User = '\n\n------\n\n' + selectedContentItems.join('\n\n------\n\n') + '\n\n------\n\n';
+
+    let outputOfCall2 = await generateContentWithTransportFallback(env, outputOfCall2User, outputOfCall2System);
+    outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
+    outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
+    debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
+    const outputBeforeFallback = outputOfCall2;
+    outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
+    debugInfo.fallbackInserted = outputBeforeFallback !== outputOfCall2;
+    debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
+    outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
+
+    console.log(`[Scheduled][Daily] Generating summary...`);
+    let outputOfCall3 = await generateContentWithTransportFallback(env, outputOfCall2, getSystemPromptSummarizationStepThree());
+    outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
+
+    const contentWithMidAd = insertMidAd(outputOfCall2);
+    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
+    dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+    dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
+    dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
+
+    if (env.INSERT_AD == 'true') dailySummaryMarkdownContent += insertAd() + `\n`;
+    if (env.INSERT_FOOT == 'true') dailySummaryMarkdownContent += insertFoot() + `\n\n`;
+
+    debugInfo.dailyGenerated = true;
+
+    return { outputOfCall3, dailySummaryMarkdownContent };
+}
+
+function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPerCandidate = 2) {
+    const visibleCandidates = (candidates || []).slice(0, maxCandidates);
+    if (visibleCandidates.length === 0) {
+        return '今天候选主题较弱，请保守输出，不要硬凑热门。';
+    }
+
+    return visibleCandidates.map((candidate) => {
+        const supportingText = (candidate.supportingItems || [])
+            .slice(0, maxItemsPerCandidate)
+            .map((item, index) => `${index + 1}. ${item.title || item.source} - ${item.description || item.plainText || '无'}`)
+            .join('\n');
+
+        return [
+            `### ${candidate.label}`,
+            `- 优先卖法: ${candidate.preferredLaneName}`,
+            `- 商品化角度: ${candidate.productAngle || '先写今天能卖的商品，再补技术解释'}`,
+            `- 更适合成交给: ${candidate.buyerHint || '优先写成中文新手也能买懂的商品'}`,
+            `- 你能交付: ${candidate.deliveryHint || '写清楚交付内容，不要只写热点'}`,
+            `- 更适合发到: ${candidate.channelHint || '群里、朋友圈、商品页'}`,
+            `- 标题写法: ${candidate.titleHint || '先写结果或场景，再写工具名'}`,
+            `- 不要主写: ${candidate.avoidLeadHint || '不要把技术热闹、stars、安装量写成主卖点'}`,
+            `- 建议形式: ${candidate.sellFormats.join('、') || '按热点灵活处理'}`,
+            `- 证据片段:\n${supportingText || '- 无'}`,
+        ].join('\n');
+    }).join('\n\n');
+}
+
+function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validationIssues) {
+    return [
+        "你上一次输出不合格，请立即按要求重写，不要解释原因，不要道歉，不要拒答。",
+        "上一次输出存在这些问题：",
+        ...(validationIssues || []).map((issue) => `- ${issue}`),
+        "",
+        "请严格遵守以下规则：",
+        "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
+        "- 必须包含完整结构：## 今日AI商机 / ## 今日可卖 / ## 本周可试 / ## 今日动作",
+        "- 每个机会都必须包含：可直接发布的商品标题、买家现在最在意什么、你实际交付什么、更适合发到哪里、低价引流款、标准成交款、搭售利润款",
+        "- 本周可试必须包含：如果要试，先包装成什么商品",
+        "- 今日动作必须包含：今天就能发的 1 句话术",
+        "- 如果证据偏弱，可以写成先试、先观察、先小范围验证，但不能拒答",
+        "- 不要出现便宜 token、风险自负、多用户商业化",
+        "- 商品标题先写结果、场景或交付动作，不要把 GitHub stars、安装量、SDK 名词堆进标题",
+        "- 为什么今天能卖先写买家为什么现在愿意下单，再补当天新变化，控制在 1-2 句",
+        "- 少写技术圈热闹，多写今天能卖什么、交付什么、发到哪里",
+        "",
+        "下面是原始候选素材：",
+        basePromptInput,
+        "",
+        "下面是上一次不合格输出，仅供你纠错参考：",
+        invalidMarkdown || "(空)",
+    ].join('\n');
+}
+
+async function generateOpportunityMarkdown(env, dateStr, allUnifiedData, debugInfo) {
+    const opportunityPaths = buildOpportunityPaths(dateStr);
+    debugInfo.opportunityPublicPath = opportunityPaths.publicPath;
+
+    const opportunityCandidates = buildOpportunityCandidates(allUnifiedData, opportunityPlaybook);
+    const playbookText = serializeOpportunityPlaybook(opportunityPlaybook);
+    const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
+        opportunityCandidates,
+        opportunityPlaybook
+    );
+    const opportunitySourceDigest = buildOpportunitySourceDigest(
+        opportunityCandidates,
+        opportunityPlaybook.outputRules.maxDigestCandidates || 3,
+        opportunityPlaybook.outputRules.maxEvidenceItemsPerCandidate || 2
+    );
+
+    debugInfo.opportunityCandidateCount = opportunityCandidates.length;
+    debugInfo.opportunityTopScore = opportunityCandidates[0]?.score || 0;
+
+    console.log(`[Scheduled][Opportunity] Generating content...`);
+    const opportunityPromptInput = [
+        `## 候选主题\n\n${opportunityCandidatesText}`,
+        `## 今日摘要\n\n${opportunitySourceDigest}`,
+    ].join('\n\n');
+
+    const opportunitySystemPrompt = getSystemPromptAiOpportunity(dateStr, playbookText);
+    let opportunityMarkdownContent = await generateContentWithTransportFallback(
+        env,
+        opportunityPromptInput,
+        opportunitySystemPrompt
+    );
+    opportunityMarkdownContent = removeMarkdownCodeBlock(opportunityMarkdownContent);
+    opportunityMarkdownContent = convertPlaceholdersToMarkdownImages(opportunityMarkdownContent);
+    opportunityMarkdownContent = replaceIncorrectDomainLinks(
+        opportunityMarkdownContent,
+        env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+    );
+
+    let validation = validateOpportunityPublication({
+        markdown: opportunityMarkdownContent,
+        bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
+    });
+
+    if (!validation.ok) {
+        console.warn(
+            `[Scheduled][Opportunity] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
+        );
+        let repairedMarkdownContent = await generateContentWithTransportFallback(
+            env,
+            buildOpportunityRepairPrompt(
+                opportunityPromptInput,
+                opportunityMarkdownContent,
+                validation.issues
+            ),
+            opportunitySystemPrompt
+        );
+        repairedMarkdownContent = removeMarkdownCodeBlock(repairedMarkdownContent);
+        repairedMarkdownContent = convertPlaceholdersToMarkdownImages(repairedMarkdownContent);
+        repairedMarkdownContent = replaceIncorrectDomainLinks(
+            repairedMarkdownContent,
+            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+        );
+
+        const repairedValidation = validateOpportunityPublication({
+            markdown: repairedMarkdownContent,
+            bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
+        });
+
+        if (repairedValidation.ok) {
+            opportunityMarkdownContent = repairedMarkdownContent;
+            validation = repairedValidation;
+        } else {
+            validation = repairedValidation;
+            opportunityMarkdownContent = repairedMarkdownContent;
+        }
+    }
+
+    opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日可卖](#今日可卖) - 今天最适合发的主机会\n- [📆 本周可试](#本周可试) - 先低成本验证的方向\n- [✅ 今日动作](#今日动作) - 今天就能开始的动作\n\n${opportunityMarkdownContent}`;
+
+    debugInfo.opportunityGenerated = true;
+
+    return {
+        opportunityPaths,
+        opportunityMarkdownContent,
+        validation,
+    };
+}
+
+async function commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent) {
+    const yearMonth = getYearMonth(dateStr);
+    const dailyFilePath = `daily/${dateStr}.md`;
+    const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
+    const monthDirectoryIndexPath = `content/cn/${yearMonth}/_index.md`;
+    const homePath = 'content/cn/_index.md';
+    const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+    const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, {
+        title: dailyPageTitle,
+    });
+
+    const existingDailySha = await getGitHubFileSha(env, dailyFilePath);
+    await createOrUpdateGitHubFile(
+        env,
+        dailyFilePath,
+        dailySummaryMarkdownContent,
+        `${existingDailySha ? 'Update' : 'Create'} daily summary for ${dateStr} (Scheduled)`,
+        existingDailySha
+    );
+
+    const existingDailyPageSha = await getGitHubFileSha(env, dailyPagePath);
+    await createOrUpdateGitHubFile(
+        env,
+        dailyPagePath,
+        dailyPageContent,
+        `${existingDailyPageSha ? 'Update' : 'Create'} daily page for ${dateStr} (Scheduled)`,
+        existingDailyPageSha
+    );
+
+    const monthDirectoryIndexContent = buildMonthDirectoryIndex(yearMonth, { sidebarOpen: true });
+    const existingMonthIndexSha = await getGitHubFileSha(env, monthDirectoryIndexPath);
+    await createOrUpdateGitHubFile(
+        env,
+        monthDirectoryIndexPath,
+        monthDirectoryIndexContent,
+        `${existingMonthIndexSha ? 'Update' : 'Create'} month directory index for ${yearMonth} (Scheduled)`,
+        existingMonthIndexSha
+    );
+
+    let existingHomeContent = '';
+    try {
+        existingHomeContent = await getGitHubFileContent(env, homePath);
+    } catch (error) {
+        console.warn(`[Scheduled][Daily] Home page not found, will create a new one.`);
+    }
+
+    const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr, {
+        title: dailyPageTitle,
+    });
+    const existingHomeSha = await getGitHubFileSha(env, homePath);
+    await createOrUpdateGitHubFile(
+        env,
+        homePath,
+        homeContent,
+        `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`,
+        existingHomeSha
+    );
+}
+
+async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportunityMarkdownContent) {
+    const opportunityTitleBase = env.DAILY_TITLE.includes('日报')
+        ? env.DAILY_TITLE.replace('日报', '商机')
+        : `${env.DAILY_TITLE} 商机`;
+    const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
+    const opportunityDescription = '从每天 AI 日报里提炼 AI 工具、AI账号和低门槛实操机会。';
+    const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
+        title: opportunityPageTitle,
+        description: opportunityDescription,
+    });
+
+    const existingOpportunityPageSha = await getGitHubFileSha(env, opportunityPaths.pagePath);
+    await createOrUpdateGitHubFile(
+        env,
+        opportunityPaths.pagePath,
+        opportunityPageContent,
+        `${existingOpportunityPageSha ? 'Update' : 'Create'} AI opportunity page for ${dateStr} (Scheduled)`,
+        existingOpportunityPageSha
+    );
+
+    const existingOpportunityMonthIndexSha = await getGitHubFileSha(env, opportunityPaths.monthDirectoryIndexPath);
+    if (!existingOpportunityMonthIndexSha) {
+        const opportunityMonthIndexContent = buildMonthDirectoryIndex(opportunityPaths.yearMonth, { sidebarOpen: true });
+        await createOrUpdateGitHubFile(
+            env,
+            opportunityPaths.monthDirectoryIndexPath,
+            opportunityMonthIndexContent,
+            `Create AI opportunity month directory index for ${opportunityPaths.yearMonth} (Scheduled)`,
+            null
+        );
+    }
+}
+
+function resolveScheduledMode(event, env, mode = 'auto') {
+    if (mode && mode !== 'auto') return mode;
+
+    const cron = String(event?.cron || '').trim();
+    if (cron && cron === String(env.OPPORTUNITY_CRON_SCHEDULE || '').trim()) {
+        return 'opportunity';
+    }
+    if (cron && cron === String(env.DAILY_CRON_SCHEDULE || '').trim()) {
+        return 'daily';
+    }
+
+    return 'daily';
+}
+
+export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    setFetchDate(dateStr);
+    const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
+    console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+
+    const { selectedContentItems, mediaCandidates } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { outputOfCall3, dailySummaryMarkdownContent } = await generateDailyMarkdown(
+        env,
+        dateStr,
+        selectedContentItems,
+        mediaCandidates,
+        debugInfo
+    );
+
+    const validation = validateDailyPublication({
+        summaryText: outputOfCall3,
+        pageMarkdown: dailySummaryMarkdownContent,
+    });
+    debugInfo.dailyValidationPassed = validation.ok;
+    debugInfo.dailyValidationIssues = validation.issues;
+    if (!validation.ok) {
+        console.warn(`[Scheduled][Daily] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
+        return debugInfo;
+    }
+
+    await commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent);
+    debugInfo.dailyPublished = true;
+    return debugInfo;
+}
+
+export async function handleScheduledOpportunity(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    setFetchDate(dateStr);
+    const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
+    console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+
+    const { allUnifiedData } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { opportunityPaths, opportunityMarkdownContent } = await generateOpportunityMarkdown(
+        env,
+        dateStr,
+        allUnifiedData,
+        debugInfo
+    );
+
+    const validation = validateOpportunityPublication({
+        markdown: opportunityMarkdownContent,
+        bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
+    });
+    debugInfo.opportunityValidationPassed = validation.ok;
+    debugInfo.opportunityValidationIssues = validation.issues;
+    if (!validation.ok) {
+        console.warn(`[Scheduled][Opportunity] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
+        return debugInfo;
+    }
+
+    await commitOpportunityOutputs(env, dateStr, opportunityPaths, opportunityMarkdownContent);
+    debugInfo.opportunityPublished = true;
+    return debugInfo;
+}
+
+export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto') {
+    const resolvedMode = resolveScheduledMode(event, env, mode);
+
+    if (resolvedMode === 'opportunity') {
+        return handleScheduledOpportunity(event, env, ctx, specifiedDate);
+    }
+
+    if (resolvedMode === 'all') {
+        const daily = await handleScheduledDaily(event, env, ctx, specifiedDate);
+        const opportunity = await handleScheduledOpportunity(event, env, ctx, specifiedDate);
+        return { daily, opportunity };
+    }
+
+    return handleScheduledDaily(event, env, ctx, specifiedDate);
 }
 
