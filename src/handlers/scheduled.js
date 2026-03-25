@@ -12,6 +12,7 @@ import {
 import {
     buildOpportunityCandidates,
     formatOpportunityCandidatesForPrompt,
+    inferOpportunityReplaySignals,
 } from "../opportunityScoring.js";
 import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
@@ -214,6 +215,55 @@ async function loadPreviousTopItems(env, dateStr) {
     } catch (error) {
         console.warn(`[Scheduled] Failed to load previous daily ${previousDate}, skipping replay filter: ${error.message}`);
         return { previousDate, items: [] };
+    }
+}
+
+function extractMarkdownSection(markdown, heading) {
+    const content = String(markdown || '');
+    const normalizedHeading = String(heading || '').trim();
+    if (!content || !normalizedHeading) return '';
+
+    const escapedHeading = normalizedHeading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sectionHeaderRegex = new RegExp(`^##\\s+${escapedHeading}\\s*$`, 'm');
+    const sectionMatch = content.match(sectionHeaderRegex);
+    if (!sectionMatch || sectionMatch.index == null) return '';
+
+    const startIndex = sectionMatch.index;
+    const remaining = content.slice(startIndex + sectionMatch[0].length);
+    const nextSectionMatch = remaining.match(/\n##\s+/);
+    const endIndex = nextSectionMatch
+        ? startIndex + sectionMatch[0].length + nextSectionMatch.index
+        : content.length;
+
+    return content.slice(startIndex, endIndex).trim();
+}
+
+async function loadPreviousOpportunityMainTopicSignals(env, dateStr) {
+    const previousDate = getPreviousDate(dateStr);
+    if (!previousDate) {
+        return {
+            previousDate: null,
+            signals: { matchedRuleIds: [], matchedTerms: [], primaryLane: null },
+        };
+    }
+
+    const previousPaths = buildOpportunityPaths(previousDate);
+
+    try {
+        const previousMarkdown = await getGitHubFileContent(env, previousPaths.pagePath);
+        const mainTopicSection =
+            extractMarkdownSection(previousMarkdown, '今日主推') || previousMarkdown;
+        const signals = inferOpportunityReplaySignals(mainTopicSection, opportunityPlaybook);
+
+        return { previousDate, signals };
+    } catch (error) {
+        console.warn(
+            `[Scheduled] Failed to load previous opportunity ${previousDate}, skipping replay penalty: ${error.message}`
+        );
+        return {
+            previousDate,
+            signals: { matchedRuleIds: [], matchedTerms: [], primaryLane: null },
+        };
     }
 }
 
@@ -570,7 +620,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             ? env.DAILY_TITLE.replace('日报', '商机')
             : `${env.DAILY_TITLE} 商机`;
         const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
-        const opportunityDescription = '从每天 AI 日报里提炼 AI 工具、AI账号和低门槛实操机会。';
+        const opportunityDescription = '与 AI日报共享同源信息，再额外筛选 AI 工具、AI账号和低门槛实操机会。';
         const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
             title: opportunityPageTitle,
             description: opportunityDescription,
@@ -753,9 +803,16 @@ async function loadScheduledContext(env, dateStr, debugInfo) {
     const foloCookie = await loadFoloCookie(env);
     const allUnifiedData = await fetchAllData(env, foloCookie);
     const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
+    const {
+        previousDate: previousOpportunityDate,
+        signals: previousOpportunityReplaySignals,
+    } = await loadPreviousOpportunityMainTopicSignals(env, dateStr);
 
     debugInfo.previousDayReplayDate = previousDate;
     debugInfo.previousDayTopItems = previousTopItems.length;
+    debugInfo.previousOpportunityReplayDate = previousOpportunityDate;
+    debugInfo.previousOpportunityReplayRules =
+        previousOpportunityReplaySignals.matchedRuleIds?.length || 0;
 
     if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
         const { filteredNewsItems, filteredCount } = filterNewsAgainstPreviousTop(allUnifiedData.news, previousTopItems);
@@ -773,6 +830,7 @@ async function loadScheduledContext(env, dateStr, debugInfo) {
 
     return {
         allUnifiedData,
+        previousOpportunityReplaySignals,
         ...buildPromptCollections(allUnifiedData, debugInfo),
     };
 }
@@ -867,11 +925,23 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
     ].join('\n');
 }
 
-async function generateOpportunityMarkdown(env, dateStr, allUnifiedData, debugInfo) {
+async function generateOpportunityMarkdown(
+    env,
+    dateStr,
+    allUnifiedData,
+    debugInfo,
+    options = {}
+) {
     const opportunityPaths = buildOpportunityPaths(dateStr);
     debugInfo.opportunityPublicPath = opportunityPaths.publicPath;
 
-    const opportunityCandidates = buildOpportunityCandidates(allUnifiedData, opportunityPlaybook);
+    const opportunityCandidates = buildOpportunityCandidates(
+        allUnifiedData,
+        opportunityPlaybook,
+        {
+            previousMainTopicSignals: options.previousMainTopicSignals || null,
+        }
+    );
     const playbookText = serializeOpportunityPlaybook(opportunityPlaybook);
     const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
         opportunityCandidates,
@@ -1019,7 +1089,7 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
         ? env.DAILY_TITLE.replace('日报', '商机')
         : `${env.DAILY_TITLE} 商机`;
     const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
-    const opportunityDescription = '从每天 AI 日报里提炼 AI 工具、AI账号和低门槛实操机会。';
+    const opportunityDescription = '与 AI日报共享同源信息，再额外筛选 AI 工具、AI账号和低门槛实操机会。';
     const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
         title: opportunityPageTitle,
         description: opportunityDescription,
@@ -1098,12 +1168,15 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
     console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { allUnifiedData } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo);
     const { opportunityPaths, opportunityMarkdownContent } = await generateOpportunityMarkdown(
         env,
         dateStr,
         allUnifiedData,
-        debugInfo
+        debugInfo,
+        {
+            previousMainTopicSignals: previousOpportunityReplaySignals,
+        }
     );
 
     const validation = validateOpportunityPublication({

@@ -44,7 +44,7 @@ function stripFrontMatter(content) {
 function buildSectionHomeFrontMatter(dateStr, options = {}) {
   const {
     title = "AI商机",
-    description = "从每天 AI 日报里提炼实操机会。",
+    description = "与 AI日报共享同源信息，再额外筛选更偏实操的机会。",
     sectionPrefix = "/opportunity",
   } = options;
   const yearMonth = getYearMonth(dateStr);
@@ -70,7 +70,7 @@ export function updateSectionHomeIndexContent(
 ) {
   const {
     title = "AI商机",
-    description = "从每天 AI 日报里提炼实操机会。",
+    description = "与 AI日报共享同源信息，再额外筛选更偏实操的机会。",
     sectionPrefix = "/opportunity",
   } = options;
   const yearMonth = getYearMonth(dateStr);

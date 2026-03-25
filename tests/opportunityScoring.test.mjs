@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildOpportunityCandidates,
   formatOpportunityCandidatesForPrompt,
+  inferOpportunityReplaySignals,
 } from "../src/opportunityScoring.js";
 
 test("buildOpportunityCandidates groups raw items into lane-aware topics", () => {
@@ -211,4 +212,64 @@ test("buyer-facing outcome signals are preserved ahead of community heat in prom
 
   assert.match(output, /字幕提取/);
   assert.match(output, /不要主写/);
+});
+test("inferOpportunityReplaySignals extracts yesterday main topic hints from markdown", () => {
+  const signals = inferOpportunityReplaySignals(`
+## 今日主推
+### 微信里直接出改写和总结，这套 Claude 更好卖
+
+今天最值得试卖的，是 Claude 账号 + 微信即用技能包。
+`);
+
+  assert.ok(signals.matchedRuleIds.includes("claude"));
+  assert.ok(signals.matchedTerms.includes("claude"));
+});
+
+test("buildOpportunityCandidates downranks yesterday main topic to reduce back-to-back repetition", () => {
+  const input = {
+    news: [
+      {
+        title: "Claude 更新了新的内容处理入口",
+        description: "Claude 账号 + 模板包更适合今天继续卖",
+        source: "AI Base",
+        url: "https://example.com/claude-repeat-1",
+        published_date: "2026-03-25",
+        details: { content_html: "<p>claude release template content workflow</p>" },
+      },
+      {
+        title: "Claude 写作模板包继续更新",
+        description: "claude skills template release for writers",
+        source: "X",
+        url: "https://example.com/claude-repeat-2",
+        published_date: "2026-03-25",
+        details: { content_html: "<p>claude skills template</p>" },
+      },
+      {
+        title: "OpenClaw 微信跑通包有新接入方案",
+        description: "openclaw 微信 agent release integration support",
+        source: "Twitter",
+        url: "https://example.com/openclaw-fresh",
+        published_date: "2026-03-25",
+        details: { content_html: "<p>openclaw wechat plugin integration release</p>" },
+      },
+    ],
+  };
+
+  const withoutPenalty = buildOpportunityCandidates(input);
+  const withPenalty = buildOpportunityCandidates(
+    input,
+    undefined,
+    {
+      previousMainTopicSignals: {
+        matchedRuleIds: ["claude"],
+        matchedTerms: ["claude", "skills"],
+        primaryLane: "account",
+      },
+    }
+  );
+
+  assert.equal(withoutPenalty[0].id, "claude");
+  assert.notEqual(withPenalty[0].id, "claude");
+  const penalizedClaude = withPenalty.find((candidate) => candidate.id === "claude");
+  assert.ok(penalizedClaude.replayPenalty > 0);
 });

@@ -270,7 +270,85 @@ function summarizeScoreBreakdown(scores) {
   ].join(" / ");
 }
 
-function buildCandidateFromGroup(group, playbook) {
+function normalizeReplaySignalText(text) {
+  return String(text || "").toLowerCase();
+}
+
+export function inferOpportunityReplaySignals(
+  markdown,
+  playbook = opportunityPlaybook
+) {
+  const normalized = normalizeReplaySignalText(markdown);
+  if (!normalized) {
+    return {
+      matchedRuleIds: [],
+      matchedTerms: [],
+      primaryLane: null,
+    };
+  }
+
+  const rankedRules = playbook.topicRules
+    .map((rule) => {
+      const matchedTerms = rule.match.filter((term) =>
+        normalized.includes(String(term).toLowerCase())
+      );
+
+      return {
+        rule,
+        matchedTerms,
+      };
+    })
+    .filter((item) => item.matchedTerms.length > 0)
+    .sort((a, b) => b.matchedTerms.length - a.matchedTerms.length)
+    .slice(0, 2);
+
+  if (rankedRules.length === 0) {
+    return {
+      matchedRuleIds: [],
+      matchedTerms: [],
+      primaryLane: null,
+    };
+  }
+
+  return {
+    matchedRuleIds: rankedRules.map((item) => item.rule.id),
+    matchedTerms: [...new Set(rankedRules.flatMap((item) => item.matchedTerms))],
+    primaryLane: rankedRules[0]?.rule?.preferredLane || null,
+  };
+}
+
+function getPreviousTopicPenalty(candidate, replaySignals) {
+  if (!candidate || !replaySignals) {
+    return { penalty: 0, reason: "" };
+  }
+
+  const matchedRuleIds = new Set(replaySignals.matchedRuleIds || []);
+  const matchedTerms = new Set(
+    (replaySignals.matchedTerms || []).map((term) => String(term).toLowerCase())
+  );
+  const candidateTerms = (candidate.matchedTerms || []).map((term) =>
+    String(term).toLowerCase()
+  );
+
+  if (matchedRuleIds.has(candidate.id)) {
+    return {
+      penalty: 18,
+      reason: "昨日主推同一主题降权",
+    };
+  }
+
+  const hasSharedTerms = candidateTerms.some((term) => matchedTerms.has(term));
+  if (hasSharedTerms) {
+    return {
+      penalty: 10,
+      reason: "昨日主推相近主题降权",
+    };
+  }
+
+  return { penalty: 0, reason: "" };
+}
+
+function buildCandidateFromGroup(group, playbook, replaySignals = null) {
   const preferredLane = getOpportunityLaneById(group.rule.preferredLane, playbook);
   const secondaryLane = getOpportunityLaneById(group.rule.secondaryLane, playbook);
   const laneHints = getLaneProductHints(group.rule.preferredLane);
@@ -285,7 +363,7 @@ function buildCandidateFromGroup(group, playbook) {
     upsellFit: laneScores.upsellFit,
   };
 
-  const score = Object.values(scores).reduce((sum, value) => sum + value, 0);
+  const baseScore = Object.values(scores).reduce((sum, value) => sum + value, 0);
   const rankedItems = [...group.items]
     .sort(
       (a, b) =>
@@ -297,13 +375,27 @@ function buildCandidateFromGroup(group, playbook) {
     .slice(0, 3);
   const supportingItems =
     cleanSupportingItems.length > 0 ? cleanSupportingItems : rankedItems.slice(0, 3);
+  const replayPenalty = getPreviousTopicPenalty(
+    {
+      id: group.rule.id,
+      matchedTerms: [...group.matchedTerms],
+    },
+    replaySignals
+  );
+  const score = Math.max(0, baseScore - replayPenalty.penalty);
+  const scoreText = replayPenalty.penalty
+    ? `${summarizeScoreBreakdown(scores)} / ${replayPenalty.reason} -${replayPenalty.penalty}`
+    : summarizeScoreBreakdown(scores);
 
   return {
     id: group.rule.id,
     label: group.rule.label,
     score,
+    baseScore,
+    replayPenalty: replayPenalty.penalty,
+    replayPenaltyReason: replayPenalty.reason,
     scores,
-    scoreText: summarizeScoreBreakdown(scores),
+    scoreText,
     preferredLane: preferredLane?.id || group.rule.preferredLane,
     preferredLaneName: preferredLane?.name || group.rule.preferredLane,
     secondaryLane: secondaryLane?.id || group.rule.secondaryLane,
@@ -324,7 +416,8 @@ function buildCandidateFromGroup(group, playbook) {
 
 export function buildOpportunityCandidates(
   allUnifiedData,
-  playbook = opportunityPlaybook
+  playbook = opportunityPlaybook,
+  options = {}
 ) {
   const groups = new Map();
 
@@ -358,7 +451,8 @@ export function buildOpportunityCandidates(
           ...group,
           matchedTerms: [...group.matchedTerms],
         },
-        playbook
+        playbook,
+        options.previousMainTopicSignals || null
       )
     )
     .sort((a, b) => b.score - a.score);
