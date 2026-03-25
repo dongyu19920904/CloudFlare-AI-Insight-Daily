@@ -11,6 +11,14 @@ const SOURCE_TYPE_SIGNAL = {
   paper: 3,
 };
 
+const GENERIC_RULE_IDS = new Set(["skills_templates", "workflow"]);
+const ACCOUNT_SIGNAL_PATTERN =
+  /账号|账户|account|subscription|订阅|会员|套餐|seat|workspace|pro\b|plus\b|login|登录|入口|quota|pricing|price/i;
+const BUNDLE_SIGNAL_PATTERN =
+  /模板|template|templates|skill|skills|prompt|风格|style|合集|教程|guide|playbook|清单|pack|bundle|示例|案例/i;
+const SERVICE_SIGNAL_PATTERN =
+  /接入|integration|plugin|plugins|sdk|mcp|代配置|配置|安装|部署|跑通|automation|自动化|agent|微信|飞书|企微|wecom|browser use|computer use/i;
+
 const CHANGE_SIGNAL_PATTERN =
   /上线|发布|更新|开放|支持|接入|新增|推出|灰度|涨价|降价|发售|开源|launch|release|update|pricing|quota|support/i;
 const CONCRETE_PRODUCT_SIGNAL_PATTERN =
@@ -75,27 +83,42 @@ function toOpportunityItem(item, sourceType) {
 }
 
 function findBestRuleForItem(item, playbook) {
-  let bestRule = null;
-  let bestMatchedTerms = [];
+  const matchedRules = playbook.topicRules
+    .map((rule) => {
+      const matchedTerms = rule.match.filter((term) =>
+        item.searchText.includes(String(term).toLowerCase())
+      );
 
-  for (const rule of playbook.topicRules) {
-    const matchedTerms = rule.match.filter((term) =>
-      item.searchText.includes(String(term).toLowerCase())
-    );
+      return {
+        rule,
+        matchedTerms,
+      };
+    })
+    .filter((match) => match.matchedTerms.length > 0);
 
-    if (matchedTerms.length === 0) continue;
+  if (matchedRules.length === 0) return null;
 
-    if (!bestRule || matchedTerms.length > bestMatchedTerms.length) {
-      bestRule = rule;
-      bestMatchedTerms = matchedTerms;
+  const specificRules = matchedRules.filter(
+    (match) => !GENERIC_RULE_IDS.has(match.rule.id)
+  );
+
+  const rankedRules = (specificRules.length > 0 ? specificRules : matchedRules).sort(
+    (left, right) => {
+      const matchedTermDiff = right.matchedTerms.length - left.matchedTerms.length;
+      if (matchedTermDiff !== 0) return matchedTermDiff;
+
+      const matchedLengthDiff =
+        right.matchedTerms.reduce((sum, term) => sum + String(term).length, 0) -
+        left.matchedTerms.reduce((sum, term) => sum + String(term).length, 0);
+      if (matchedLengthDiff !== 0) return matchedLengthDiff;
+
+      return left.rule.id.localeCompare(right.rule.id);
     }
-  }
-
-  if (!bestRule) return null;
+  );
 
   return {
-    rule: bestRule,
-    matchedTerms: [...new Set(bestMatchedTerms)],
+    rule: rankedRules[0].rule,
+    matchedTerms: [...new Set(rankedRules[0].matchedTerms)],
   };
 }
 
@@ -166,12 +189,34 @@ function getEditorialHint(candidate) {
 
 function selectPromptCandidates(candidates, playbook) {
   const maxCandidates = playbook.outputRules.maxPromptCandidates || 4;
-  const selectedCandidates = [...(candidates || [])].slice(0, maxCandidates);
+  const sortedCandidates = [...(candidates || [])];
+  const selectedCandidates = sortedCandidates.slice(0, maxCandidates);
 
-  if (
-    selectedCandidates.length === 0 ||
-    !playbook.outputRules.requireAccountLikeOpportunityInTodayCanSell
-  ) {
+  if (selectedCandidates.length === 0) {
+    return selectedCandidates;
+  }
+
+  if (!playbook.outputRules.requireAccountLikeOpportunityInTodayCanSell) {
+    const nonAccountCandidates = sortedCandidates.filter(
+      (candidate) => !isAccountCandidate(candidate)
+    );
+    const accountCandidates = sortedCandidates.filter(isAccountCandidate);
+
+    if (nonAccountCandidates.length >= 2) {
+      const visibleCandidates = nonAccountCandidates.slice(0, maxCandidates);
+      const bestNonAccountScore = nonAccountCandidates[0]?.score || 0;
+      const standoutAccountCandidates = accountCandidates.filter(
+        (candidate) => candidate.score >= bestNonAccountScore + 8
+      );
+
+      for (const candidate of standoutAccountCandidates) {
+        if (visibleCandidates.length >= maxCandidates) break;
+        visibleCandidates.push(candidate);
+      }
+
+      return visibleCandidates.slice(0, maxCandidates);
+    }
+
     return selectedCandidates;
   }
 
@@ -258,6 +303,112 @@ function scoreSupportingItem(item, matchedTerms) {
     communityHeatPenalty -
     noisePenalty
   );
+}
+
+function getLaneSignalScores(group) {
+  const laneSignalScores = {
+    account: 0,
+    bundle: 0,
+    service: 0,
+  };
+
+  if (group.rule.preferredLane) {
+    laneSignalScores[group.rule.preferredLane] += 6;
+  }
+
+  if (group.rule.secondaryLane) {
+    laneSignalScores[group.rule.secondaryLane] += 3;
+  }
+
+  for (const item of group.items || []) {
+    const searchText = item?.searchText || "";
+
+    if (ACCOUNT_SIGNAL_PATTERN.test(searchText)) {
+      laneSignalScores.account += 5;
+    }
+
+    if (BUNDLE_SIGNAL_PATTERN.test(searchText)) {
+      laneSignalScores.bundle += 5;
+    }
+
+    if (SERVICE_SIGNAL_PATTERN.test(searchText)) {
+      laneSignalScores.service += 5;
+    }
+
+    if (hasBuyerOutcomeSignal(item)) {
+      laneSignalScores.bundle += 2;
+      laneSignalScores.service += 3;
+    }
+
+    if (hasConcreteSignal(item)) {
+      laneSignalScores.bundle += 1;
+      laneSignalScores.service += 1;
+    }
+  }
+
+  return laneSignalScores;
+}
+
+function getResolvedLaneOrder(group) {
+  const laneSignalScores = getLaneSignalScores(group);
+  const rankedLaneIds = Object.keys(laneSignalScores).sort((leftLaneId, rightLaneId) => {
+    const scoreDiff = laneSignalScores[rightLaneId] - laneSignalScores[leftLaneId];
+    if (scoreDiff !== 0) return scoreDiff;
+
+    if (leftLaneId === group.rule.preferredLane) return -1;
+    if (rightLaneId === group.rule.preferredLane) return 1;
+
+    if (leftLaneId === group.rule.secondaryLane) return -1;
+    if (rightLaneId === group.rule.secondaryLane) return 1;
+
+    return leftLaneId.localeCompare(rightLaneId);
+  });
+
+  return {
+    laneSignalScores,
+    preferredLaneId: rankedLaneIds[0] || group.rule.preferredLane,
+    secondaryLaneId:
+      rankedLaneIds.find((laneId) => laneId !== rankedLaneIds[0]) ||
+      group.rule.secondaryLane ||
+      group.rule.preferredLane,
+  };
+}
+
+function getLaneSpecificRecommendation(preferredLaneId, rule) {
+  if (preferredLaneId === rule.preferredLane) {
+    return rule.defaultAdvice;
+  }
+
+  if (preferredLaneId === "account") {
+    return "这类变化更适合先写成低门槛账号入口，再补基础说明和常用场景。";
+  }
+
+  if (preferredLaneId === "bundle") {
+    return "这类变化更适合写成模板包、场景包或账号搭售，不要只卖工具名。";
+  }
+
+  return "这类变化更适合写成跑通、代配置或交付服务，不要只讲技术热闹。";
+}
+
+function getResolvedCandidateLabel(rule, preferredLaneId) {
+  if (preferredLaneId === rule.preferredLane) {
+    return rule.label;
+  }
+
+  const laneLabelById = {
+    account: "账号机会",
+    bundle: "搭售机会",
+    service: "轻服务机会",
+  };
+
+  const baseLabel = String(rule.label || "")
+    .replace(
+      /\s*(账号与搭售机会|账号与工具机会|账号机会|代配置机会|自动化工具机会|技能包 \/ 模板包机会|工作流 \/ 插件接入机会|机会)$/u,
+      ""
+    )
+    .trim();
+
+  return `${baseLabel} ${laneLabelById[preferredLaneId] || "机会"}`.trim();
 }
 
 function summarizeScoreBreakdown(scores) {
@@ -349,11 +500,22 @@ function getPreviousTopicPenalty(candidate, replaySignals) {
 }
 
 function buildCandidateFromGroup(group, playbook, replaySignals = null) {
-  const preferredLane = getOpportunityLaneById(group.rule.preferredLane, playbook);
-  const secondaryLane = getOpportunityLaneById(group.rule.secondaryLane, playbook);
-  const laneHints = getLaneProductHints(group.rule.preferredLane);
-  const laneScores = getLaneDimensionScores(group.rule.preferredLane, playbook);
+  const laneDecision = getResolvedLaneOrder(group);
+  const preferredLane = getOpportunityLaneById(
+    laneDecision.preferredLaneId,
+    playbook
+  );
+  const secondaryLane = getOpportunityLaneById(
+    laneDecision.secondaryLaneId,
+    playbook
+  );
+  const laneHints = getLaneProductHints(laneDecision.preferredLaneId);
+  const laneScores = getLaneDimensionScores(
+    laneDecision.preferredLaneId,
+    playbook
+  );
   const clearChange = scoreClearChange(group.items);
+  const useRuleSpecificHints = laneDecision.preferredLaneId === group.rule.preferredLane;
 
   const scores = {
     catalogFit: laneScores.catalogFit,
@@ -389,26 +551,42 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null) {
 
   return {
     id: group.rule.id,
-    label: group.rule.label,
+    label: getResolvedCandidateLabel(group.rule, laneDecision.preferredLaneId),
     score,
     baseScore,
     replayPenalty: replayPenalty.penalty,
     replayPenaltyReason: replayPenalty.reason,
     scores,
     scoreText,
-    preferredLane: preferredLane?.id || group.rule.preferredLane,
-    preferredLaneName: preferredLane?.name || group.rule.preferredLane,
-    secondaryLane: secondaryLane?.id || group.rule.secondaryLane,
-    secondaryLaneName: secondaryLane?.name || group.rule.secondaryLane,
+    preferredLane: preferredLane?.id || laneDecision.preferredLaneId,
+    preferredLaneName: preferredLane?.name || laneDecision.preferredLaneId,
+    secondaryLane: secondaryLane?.id || laneDecision.secondaryLaneId,
+    secondaryLaneName: secondaryLane?.name || laneDecision.secondaryLaneId,
     sellFormats: preferredLane?.sellFormats || [],
     matchedTerms: [...group.matchedTerms],
-    recommendation: group.rule.defaultAdvice,
-    productAngle: group.rule.productAngle || laneHints.productAngle,
-    buyerHint: group.rule.buyerHint || laneHints.buyerHint,
-    deliveryHint: group.rule.deliveryHint || laneHints.deliveryHint,
-    channelHint: group.rule.channelHint || laneHints.channelHint,
-    titleHint: group.rule.titleHint || laneHints.titleHint,
-    avoidLeadHint: group.rule.avoidLeadHint || laneHints.avoidLeadHint,
+    recommendation: getLaneSpecificRecommendation(
+      laneDecision.preferredLaneId,
+      group.rule
+    ),
+    productAngle: useRuleSpecificHints
+      ? group.rule.productAngle || laneHints.productAngle
+      : laneHints.productAngle,
+    buyerHint: useRuleSpecificHints
+      ? group.rule.buyerHint || laneHints.buyerHint
+      : laneHints.buyerHint,
+    deliveryHint: useRuleSpecificHints
+      ? group.rule.deliveryHint || laneHints.deliveryHint
+      : laneHints.deliveryHint,
+    channelHint: useRuleSpecificHints
+      ? group.rule.channelHint || laneHints.channelHint
+      : laneHints.channelHint,
+    titleHint: useRuleSpecificHints
+      ? group.rule.titleHint || laneHints.titleHint
+      : laneHints.titleHint,
+    avoidLeadHint: useRuleSpecificHints
+      ? group.rule.avoidLeadHint || laneHints.avoidLeadHint
+      : laneHints.avoidLeadHint,
+    laneSignalScores: laneDecision.laneSignalScores,
     supportingItems,
     sourceTypes: [...new Set(group.items.map((item) => item.type))],
   };

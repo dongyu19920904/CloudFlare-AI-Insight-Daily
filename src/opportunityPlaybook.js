@@ -4,7 +4,7 @@ export const opportunityPlaybook = {
     targetUsers: ["中文新手", "低预算用户", "想快速上手AI的人"],
     tone: "务实、直接、偏成交，不写空话",
     editorialRule:
-      "先把热点翻译成今天就能卖的商品，再解释技术；先写买家愿意付钱的理由，再补当天的新变化。",
+      "先根据当天真实信息源判断机会，再决定最适合写成账号、模板包、跑通包还是轻服务；先写买家愿意付钱的理由，再补当天的新变化。",
   },
 
   productLanes: [
@@ -182,7 +182,7 @@ export const opportunityPlaybook = {
     maxDigestCandidates: 3,
     maxEvidenceItemsPerCandidate: 2,
     allowWeakDaySingleOpportunity: true,
-    requireAccountLikeOpportunityInTodayCanSell: true,
+    requireAccountLikeOpportunityInTodayCanSell: false,
     weakDayLanguage: ["先小范围试发", "先观察", "先低成本验证"],
     requireSections: ["先说结论", "今日主推", "本周可试", "今天别碰", "地图感", "今日动作"],
     offerTiers: ["低价引流款", "标准成交款", "搭售利润款"],

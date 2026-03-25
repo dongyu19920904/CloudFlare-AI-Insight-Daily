@@ -41,8 +41,7 @@ test("buildOpportunityCandidates groups raw items into lane-aware topics", () =>
 
   assert.ok(candidates.length >= 2);
   assert.equal(candidates[0].id, "cursor");
-  assert.equal(candidates[0].preferredLane, "account");
-  assert.equal(candidates[0].secondaryLane, "bundle");
+  assert.equal(candidates[0].preferredLane, "bundle");
   assert.match(candidates[0].scoreText, /货盘匹配/);
 });
 
@@ -104,19 +103,19 @@ test("concrete release topics outrank noisy token-demand chatter", () => {
   assert.ok(claudeIndex >= 1);
 });
 
-test("formatOpportunityCandidatesForPrompt keeps an account opportunity in view when services dominate", () => {
+test("formatOpportunityCandidatesForPrompt no longer forces an account opportunity into view when services dominate", () => {
   const candidates = buildOpportunityCandidates({
     news: [
       {
-        title: "OpenClaw 上线微信插件并放出 SDK",
-        description: "支持接入、上线插件、开发者可以快速跑通",
+        title: "OpenClaw 微信插件接入更新",
+        description: "release sdk plugin wechat integration",
         source: "Twitter",
         url: "https://github.com/example/openclaw-sdk",
         published_date: "2026-03-22",
-        details: { content_html: "<p>release sdk plugin</p>" },
+        details: { content_html: "<p>release sdk plugin wechat integration</p>" },
       },
       {
-        title: "Browser Use 发布新 automation 模板",
+        title: "Browser Use automation template 发布",
         description: "automation workflow template launch",
         source: "GitHub",
         url: "https://github.com/example/browser-use-template",
@@ -132,16 +131,8 @@ test("formatOpportunityCandidatesForPrompt keeps an account opportunity in view 
         details: { content_html: "<p>plugin integration sdk</p>" },
       },
       {
-        title: "baoyu skills template 发布",
-        description: "skills template release for agent users",
-        source: "GitHub",
-        url: "https://github.com/example/skills-template",
-        published_date: "2026-03-22",
-        details: { content_html: "<p>skills template release</p>" },
-      },
-      {
-        title: "Claude 更新新入口与套餐变化",
-        description: "Claude Opus 相关入口变化，适合做低门槛账号入口",
+        title: "Claude 新入口变动",
+        description: "Claude Opus 账号入口变化，适合低门槛体验",
         source: "机器之心",
         url: "https://example.com/claude-account",
         published_date: "2026-03-22",
@@ -152,8 +143,36 @@ test("formatOpportunityCandidatesForPrompt keeps an account opportunity in view 
 
   const output = formatOpportunityCandidatesForPrompt(candidates);
 
-  assert.match(output, /Claude/);
-  assert.match(output, /账号入口或账号搭售商品/);
+  assert.doesNotMatch(output, /Claude/);
+  assert.match(output, /OpenClaw|workflow/);
+});
+
+test("gpt topics can shift from account packaging to bundle when template evidence is stronger", () => {
+  const candidates = buildOpportunityCandidates({
+    news: [
+      {
+        title: "GPT 写作模板包更新",
+        description: "GPT skills template release with writing scenarios and style examples",
+        source: "GitHub",
+        url: "https://example.com/gpt-template",
+        published_date: "2026-03-25",
+        details: { content_html: "<p>gpt template skills prompt writing workflow</p>" },
+      },
+      {
+        title: "ChatGPT 风格模板合集上线",
+        description: "chatgpt template bundle for product copy and social posts",
+        source: "AI Base",
+        url: "https://example.com/chatgpt-style",
+        published_date: "2026-03-25",
+        details: { content_html: "<p>chatgpt style template pack</p>" },
+      },
+    ],
+  });
+
+  const gptCandidate = candidates.find((candidate) => candidate.id === "gpt");
+
+  assert.ok(gptCandidate);
+  assert.equal(gptCandidate.preferredLane, "bundle");
 });
 
 test("supporting items prefer concrete evidence over noisy demand chatter", () => {
@@ -213,6 +232,7 @@ test("buyer-facing outcome signals are preserved ahead of community heat in prom
   assert.match(output, /字幕提取/);
   assert.match(output, /不要主写/);
 });
+
 test("inferOpportunityReplaySignals extracts yesterday main topic hints from markdown", () => {
   const signals = inferOpportunityReplaySignals(`
 ## 今日主推
