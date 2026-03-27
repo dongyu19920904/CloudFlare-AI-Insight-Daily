@@ -9,6 +9,7 @@ import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
+import { getFromKV, storeInKV } from './kv.js';
 import {
     handleScheduled,
     handleScheduledDaily,
@@ -18,6 +19,57 @@ import {
 function getSpecifiedDate(url) {
     const dateParam = url.searchParams.get('date');
     return dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+}
+
+function getScheduledStatusKey(mode, specifiedDate) {
+    return `scheduled-status:${mode}:${specifiedDate || 'current'}`;
+}
+
+async function queueScheduledMode(ctx, env, mode, specifiedDate) {
+    const statusKey = getScheduledStatusKey(mode, specifiedDate);
+    const queuedAt = new Date().toISOString();
+
+    await storeInKV(env.DATA_KV, statusKey, {
+        state: 'queued',
+        mode,
+        date: specifiedDate || 'current date',
+        queuedAt,
+    }, 86400);
+
+    ctx.waitUntil((async () => {
+        await storeInKV(env.DATA_KV, statusKey, {
+            state: 'running',
+            mode,
+            date: specifiedDate || 'current date',
+            queuedAt,
+            startedAt: new Date().toISOString(),
+        }, 86400);
+
+        try {
+            const debug = await runScheduledMode(mode, env, specifiedDate);
+            await storeInKV(env.DATA_KV, statusKey, {
+                state: 'success',
+                mode,
+                date: specifiedDate || 'current date',
+                queuedAt,
+                finishedAt: new Date().toISOString(),
+                debug: debug || null,
+            }, 86400);
+        } catch (error) {
+            console.error(`Async scheduled ${mode} trigger failed`, error);
+            await storeInKV(env.DATA_KV, statusKey, {
+                state: 'error',
+                mode,
+                date: specifiedDate || 'current date',
+                queuedAt,
+                finishedAt: new Date().toISOString(),
+                error: error?.message || String(error),
+                stack: error?.stack ? String(error.stack) : '',
+            }, 86400);
+        }
+    })());
+
+    return statusKey;
 }
 
 async function runScheduledMode(mode, env, specifiedDate) {
@@ -39,7 +91,7 @@ export default {
     async scheduled(event, env, ctx) {
         await handleScheduled(event, env, ctx);
     },
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         const requiredEnvVars = [
             'DATA_KV', 'OPEN_TRANSLATE', 'USE_MODEL_PLATFORM',
             'GITHUB_TOKEN', 'GITHUB_REPO_OWNER', 'GITHUB_REPO_NAME', 'GITHUB_BRANCH',
@@ -97,6 +149,29 @@ export default {
             return await handleWriteRssData(request, env);
         } else if (path === '/generateRssContent' && request.method === 'GET') {
             return await handleGenerateRssContent(request, env);
+        } else if (path === '/testTriggerScheduledStatus' && request.method === 'GET') {
+            const secretKey = url.searchParams.get('key');
+            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
+            if (secretKey !== expectedKey) {
+                return new Response(JSON.stringify({
+                    error: 'Unauthorized. Please provide correct secret key.'
+                }), {
+                    status: 401,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            }
+            const specifiedDate = getSpecifiedDate(url);
+            const mode = url.searchParams.get('mode') || 'daily';
+            const statusKey = url.searchParams.get('statusKey') || getScheduledStatusKey(mode, specifiedDate);
+            const status = await getFromKV(env.DATA_KV, statusKey);
+            return new Response(JSON.stringify({
+                success: true,
+                statusKey,
+                status: status || null,
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            });
         } else if (
             (path === '/testTriggerScheduled' ||
                 path === '/testTriggerScheduledDaily' ||
@@ -115,15 +190,31 @@ export default {
             }
             const specifiedDate = getSpecifiedDate(url);
             const requestedMode = url.searchParams.get('mode');
+            const runAsync = url.searchParams.get('async') === '1';
             const mode =
                 path === '/testTriggerScheduledDaily'
                     ? 'daily'
                     : path === '/testTriggerScheduledOpportunity'
                       ? 'opportunity'
-                      : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
+                        : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
                         ? requestedMode
                         : 'daily';
             try {
+                if (runAsync) {
+                    const statusKey = await queueScheduledMode(ctx, env, mode, specifiedDate);
+                    return new Response(JSON.stringify({
+                        success: true,
+                        queued: true,
+                        statusKey,
+                        message: `Scheduled ${mode} task queued${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
+                        mode,
+                        date: specifiedDate || 'current date',
+                        timestamp: new Date().toISOString(),
+                    }), {
+                        status: 202,
+                        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                    });
+                }
                 const debug = await runScheduledMode(mode, env, specifiedDate);
                 return new Response(JSON.stringify({
                     success: true,
@@ -185,6 +276,7 @@ export default {
             ) {
                 const specifiedDate = getSpecifiedDate(url);
                 const requestedMode = url.searchParams.get('mode');
+                const runAsync = url.searchParams.get('async') === '1';
                 const mode =
                     path === '/triggerScheduledDaily'
                         ? 'daily'
@@ -193,18 +285,34 @@ export default {
                           : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
                             ? requestedMode
                             : 'daily';
-                const debug = await runScheduledMode(mode, env, specifiedDate);
-                response = new Response(JSON.stringify({
-                    success: true,
-                    message: `Scheduled ${mode} task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
-                    mode,
-                    date: specifiedDate || 'current date',
-                    timestamp: new Date().toISOString(),
-                    debug: debug || null,
-                }), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
-                });
+                if (runAsync) {
+                    const statusKey = await queueScheduledMode(ctx, env, mode, specifiedDate);
+                    response = new Response(JSON.stringify({
+                        success: true,
+                        queued: true,
+                        statusKey,
+                        message: `Scheduled ${mode} task queued${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                        mode,
+                        date: specifiedDate || 'current date',
+                        timestamp: new Date().toISOString(),
+                    }), {
+                        status: 202,
+                        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                    });
+                } else {
+                    const debug = await runScheduledMode(mode, env, specifiedDate);
+                    response = new Response(JSON.stringify({
+                        success: true,
+                        message: `Scheduled ${mode} task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
+                        mode,
+                        date: specifiedDate || 'current date',
+                        timestamp: new Date().toISOString(),
+                        debug: debug || null,
+                    }), {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                    });
+                }
             } else {
                 return new Response(null, { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
             }

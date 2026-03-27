@@ -8,6 +8,14 @@ const COMMON_FAILURE_PATTERNS = [
   /无法生成/i,
 ];
 
+const DAILY_META_PATTERNS = [
+  /AI思考[:：]?/i,
+  /我看了一下(今天|这批)?素材/,
+  /(按照|根据).{0,12}(日期过滤规则|容错机制|评分系统)/,
+  /素材(质量)?参差不齐/,
+  /我会按照.{0,12}筛选/,
+];
+
 function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
@@ -17,6 +25,7 @@ function collectMarkdownIssues(markdown, options = {}) {
     label = "内容",
     requiredPhrases = [],
     forbiddenPhrases = [],
+    forbiddenPatterns = [],
     minChars = 0,
   } = options;
 
@@ -51,6 +60,12 @@ function collectMarkdownIssues(markdown, options = {}) {
     }
   }
 
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(String(markdown || ""))) {
+      issues.push(`${label}包含禁止模式: ${pattern}`);
+    }
+  }
+
   return issues;
 }
 
@@ -63,7 +78,14 @@ export function validateDailyPublication({ summaryText, pageMarkdown }) {
     ...collectMarkdownIssues(pageMarkdown, {
       label: "日报页面",
       minChars: 300,
-      requiredPhrases: ["## **今日摘要**", "## ⚡ 快速导航", "## **今日AI资讯**"],
+      requiredPhrases: [
+        "## **今日摘要**",
+        "## ⚡ 快速导航",
+        "## **今日AI资讯**",
+        "## **❓ 相关问题（仅1条）**",
+        "aivora.cn",
+      ],
+      forbiddenPatterns: DAILY_META_PATTERNS,
     }),
   ];
 

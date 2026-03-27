@@ -49,6 +49,14 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    "",
+    "## **❓ 相关问题（仅1条）**",
+    "",
+    "### 如何体验 Claude 的电脑操控功能？",
+    "",
+    "Claude 的新能力目前仍有账号和使用门槛。",
+    "",
+    "**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号，极速发货，售后无忧。",
   ].join("\n");
 
   const result = validateDailyPublication({
@@ -58,6 +66,42 @@ test("validateDailyPublication accepts a structured daily page", () => {
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
+});
+
+test("validateDailyPublication rejects meta commentary and missing FAQ section", () => {
+  const result = validateDailyPublication({
+    summaryText: "谷歌发了新模型，开源工具也不少。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+谷歌发了新模型，开源工具也不少。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+我看了一下素材，发现今天高质量新闻不够 10 条。
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+今天高质量新闻不够多。
+
+### **🔑 3 个关键词**
+#AI #日报 #测试
+
+## **🔥 重磅 TOP 6**
+
+### 1. 一条新闻
+这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。
+这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。
+这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。`,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /包含禁止模式|元话术|AI思考/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题（仅1条）\*\*/);
 });
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {

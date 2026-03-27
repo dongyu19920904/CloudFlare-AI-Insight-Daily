@@ -312,6 +312,42 @@ async function generateContentWithTransportFallback(env, userPrompt, systemPromp
     }
 }
 
+function assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env) {
+    const contentWithMidAd = insertMidAd(outputOfCall2);
+    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
+    dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+    dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
+    dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
+
+    if (env.INSERT_AD == 'true') dailySummaryMarkdownContent += insertAd() + `\n`;
+    if (env.INSERT_FOOT == 'true') dailySummaryMarkdownContent += insertFoot() + `\n\n`;
+
+    return dailySummaryMarkdownContent;
+}
+
+function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssues, dateStr) {
+    return [
+        "你上一次输出的日报正文不合格，请立即重写，不要解释原因，不要道歉，不要拒答。",
+        `这次重写的目标日期是 ${dateStr}。`,
+        "上一次输出存在这些问题：",
+        ...(validationIssues || []).map((issue) => `- ${issue}`),
+        "",
+        "请严格遵守以下规则：",
+        "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
+        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **❓ 相关问题（仅1条）**`",
+        "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
+        "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
+        "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
+        "- 直接输出可发布成稿，不要输出任何元话术",
+        "",
+        "下面是原始素材：",
+        basePromptInput,
+        "",
+        "下面是上一次不合格输出，仅供你纠错参考：",
+        invalidMarkdown || "(空)",
+    ].join('\n');
+}
+
 function extractMatchTokens(item) {
     const text = [
         item?.title || '',
@@ -858,18 +894,58 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     let outputOfCall3 = await generateContentWithTransportFallback(env, outputOfCall2, getSystemPromptSummarizationStepThree());
     outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
 
-    const contentWithMidAd = insertMidAd(outputOfCall2);
-    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
-    dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
-    dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
-    dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
+    let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
+    let validation = validateDailyPublication({
+        summaryText: outputOfCall3,
+        pageMarkdown: dailySummaryMarkdownContent,
+    });
 
-    if (env.INSERT_AD == 'true') dailySummaryMarkdownContent += insertAd() + `\n`;
-    if (env.INSERT_FOOT == 'true') dailySummaryMarkdownContent += insertFoot() + `\n\n`;
+    if (!validation.ok) {
+        console.warn(
+            `[Scheduled][Daily] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
+        );
+        let repairedOutputOfCall2 = await generateContentWithTransportFallback(
+            env,
+            buildDailyRepairPrompt(outputOfCall2User, outputOfCall2, validation.issues, dateStr),
+            outputOfCall2System
+        );
+        repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
+        repairedOutputOfCall2 = convertPlaceholdersToMarkdownImages(repairedOutputOfCall2);
+        repairedOutputOfCall2 = appendFallbackMediaSection(repairedOutputOfCall2, mediaCandidates);
+        repairedOutputOfCall2 = replaceIncorrectDomainLinks(
+            repairedOutputOfCall2,
+            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+        );
+
+        let repairedOutputOfCall3 = await generateContentWithTransportFallback(
+            env,
+            repairedOutputOfCall2,
+            getSystemPromptSummarizationStepThree()
+        );
+        repairedOutputOfCall3 = removeMarkdownCodeBlock(repairedOutputOfCall3);
+
+        const repairedDailySummaryMarkdownContent = assembleDailySummaryMarkdown(
+            repairedOutputOfCall2,
+            repairedOutputOfCall3,
+            env
+        );
+        const repairedValidation = validateDailyPublication({
+            summaryText: repairedOutputOfCall3,
+            pageMarkdown: repairedDailySummaryMarkdownContent,
+        });
+
+        outputOfCall2 = repairedOutputOfCall2;
+        outputOfCall3 = repairedOutputOfCall3;
+        dailySummaryMarkdownContent = repairedDailySummaryMarkdownContent;
+        validation = repairedValidation;
+        debugInfo.dailyRepairAttempted = true;
+        debugInfo.dailyRepairPassed = repairedValidation.ok;
+        debugInfo.dailyRepairIssues = repairedValidation.issues;
+    }
 
     debugInfo.dailyGenerated = true;
 
-    return { outputOfCall3, dailySummaryMarkdownContent };
+    return { outputOfCall3, dailySummaryMarkdownContent, validation };
 }
 
 function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPerCandidate = 2) {
@@ -1138,7 +1214,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
     const { selectedContentItems, mediaCandidates } = await loadScheduledContext(env, dateStr, debugInfo);
-    const { outputOfCall3, dailySummaryMarkdownContent } = await generateDailyMarkdown(
+    const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
         dateStr,
         selectedContentItems,
@@ -1146,7 +1222,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         debugInfo
     );
 
-    const validation = validateDailyPublication({
+    const validation = generatedValidation || validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
     });

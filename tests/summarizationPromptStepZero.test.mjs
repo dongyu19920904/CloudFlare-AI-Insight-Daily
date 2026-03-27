@@ -20,3 +20,23 @@ test("AI趣闻 prompt asks for people-first, lightly humorous observation instea
   assert.match(prompt, /不要写成吐槽贴/);
   assert.match(prompt, /不要模仿任何特定演员/);
 });
+
+test("daily prompt forbids meta commentary and requires a FAQ every day", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-03-27");
+
+  assert.match(prompt, /不要输出任何元话术/);
+  assert.match(prompt, /不要写“我看了一下今天的素材”/);
+  assert.match(prompt, /今天新闻不够/);
+  assert.match(prompt, /每天必须输出 1 条 FAQ/);
+  assert.doesNotMatch(prompt, /可以省略此板块/);
+});
+
+test("daily prompt relaxes Top 10 backfill window for early-morning reports", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-03-27");
+
+  assert.match(prompt, /允许补充前 2 天内/);
+  assert.match(prompt, /只要没有与昨日日报明显重复/);
+  assert.match(prompt, /如果当天是早上批次|早上 9 点|早间更新/);
+  assert.match(prompt, /如果按 80 分筛完仍不足 10 条/);
+  assert.match(prompt, /逐步放宽到 70 分|放宽到 70 分/);
+});
