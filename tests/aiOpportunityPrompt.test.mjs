@@ -55,3 +55,16 @@ test("getSystemPromptAiOpportunity asks for a hooky and memorable card-style mar
   assert.doesNotMatch(prompt, /为什么今天能卖：/);
   assert.doesNotMatch(prompt, /参考卖法：/);
 });
+
+test("getSystemPromptAiOpportunity prioritizes the strongest today angle instead of flat selling copy", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-03-24", "### 当前业务");
+
+  assert.match(prompt, /先替读者判断/);
+  assert.match(prompt, /bottom line/);
+  assert.match(prompt, /为什么偏偏是今天/);
+  assert.match(prompt, /别把两个机会写得一样重/);
+  assert.match(prompt, /少一点卖货腔/);
+  assert.match(prompt, /不要写成段子、捧哏逗哏或表演腔/);
+  assert.match(prompt, /只帮读者建立坐标/);
+  assert.match(prompt, /分别对应引流、证明、成交/);
+});
