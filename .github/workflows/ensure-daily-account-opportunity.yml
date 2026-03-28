@@ -1,0 +1,122 @@
+name: Ensure Daily Account Opportunity
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Optional date in YYYY-MM-DD format"
+        required: false
+      force:
+        description: "Force rerun even if today's account-opportunity page already exists"
+        required: false
+        default: "false"
+
+concurrency:
+  group: ensure-daily-account-opportunity-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ensure-account-opportunity:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      WORKER_BASE_URL: https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev
+      FRONTEND_REPO: dongyu19920904/Hextra-AI-Insight-Daily
+
+    steps:
+      - name: Resolve target date
+        id: target
+        shell: bash
+        run: |
+          INPUT_DATE="${{ github.event.inputs.date }}"
+          if [ -n "$INPUT_DATE" ]; then
+            TARGET_DATE="$INPUT_DATE"
+          else
+            TARGET_DATE=$(TZ=Asia/Shanghai date +%F)
+          fi
+
+          echo "date=$TARGET_DATE" >> "$GITHUB_OUTPUT"
+          echo "year_month=${TARGET_DATE:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Check current account-opportunity page
+        id: check
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+        run: |
+          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
+          STATUS_CODE=$(curl -sS -o page-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
+          echo "status=$STATUS_CODE" >> "$GITHUB_OUTPUT"
+
+          if [ "$STATUS_CODE" = "200" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Today's AI account opportunity page already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Today's AI account opportunity page is missing."
+          fi
+
+      - name: Skip because account-opportunity page already exists
+        if: steps.check.outputs.exists == 'true' && github.event.inputs.force != 'true'
+        run: echo "Skipping trigger because today's page already exists."
+
+      - name: Trigger today's AI account opportunity generation
+        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+        run: |
+          if [ -z "$TEST_TRIGGER_SECRET" ]; then
+            TEST_TRIGGER_SECRET="test-secret-key-change-me"
+            echo "TEST_TRIGGER_SECRET is not configured in GitHub Actions. Falling back to the Worker's default test secret."
+          fi
+
+          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledAccountOpportunity?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}"
+          echo "Triggering ${TRIGGER_URL}"
+          curl -sS "$TRIGGER_URL" > trigger-response.json
+
+          python - <<'PY'
+          import json
+
+          with open("trigger-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+          if not payload.get("success"):
+              raise SystemExit("Worker trigger failed")
+
+          debug = payload.get("debug") or {}
+          if not debug.get("accountOpportunityGenerated"):
+              raise SystemExit("Account opportunity content was not generated")
+
+          if not debug.get("accountOpportunityPublished"):
+              issues = " | ".join(debug.get("accountOpportunityValidationIssues") or [])
+              raise SystemExit(f"Account opportunity content was not published: {issues}")
+          PY
+
+      - name: Verify today's page after trigger
+        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+        run: |
+          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
+
+          for attempt in 1 2 3 4 5; do
+            STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
+            if [ "$STATUS_CODE" = "200" ]; then
+              echo "Verified today's AI account opportunity page on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Page not visible yet on attempt ${attempt}, waiting..."
+            sleep 8
+          done
+
+          echo "Today's AI account opportunity page is still missing after trigger."
+          exit 1

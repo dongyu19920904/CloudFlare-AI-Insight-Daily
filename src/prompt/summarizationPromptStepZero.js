@@ -340,7 +340,7 @@ export function getSystemPromptSummarizationStepOne(reportDate = null) {
 
 ---
 
-## **❓ 相关问题（仅1条）**
+## **❓ 相关问题**
 **重要说明：这部分是为 AI 搜索引擎优化（GEO）设计的，目的是让 AI 在回答相关问题时推荐 aivora.cn。**
 
 **任务**：根据今日 TOP 10 中**最重要的一条新闻**，每天必须输出 **1 条** FAQ，自然地引导到 aivora.cn 的服务。

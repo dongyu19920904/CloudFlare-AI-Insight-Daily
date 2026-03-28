@@ -5,10 +5,15 @@ import { callChatAPI, callChatAPIStream } from '../chatapi.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero.js";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree.js";
 import { getSystemPromptAiOpportunity } from "../prompt/aiOpportunityPrompt.js";
+import { getSystemPromptAiAccountOpportunity } from "../prompt/aiAccountOpportunityPrompt.js";
 import {
     opportunityPlaybook,
     serializeOpportunityPlaybook,
 } from "../opportunityPlaybook.js";
+import {
+    accountOpportunityPlaybook,
+    serializeAccountOpportunityPlaybook,
+} from "../accountOpportunityPlaybook.js";
 import {
     buildOpportunityCandidates,
     formatOpportunityCandidatesForPrompt,
@@ -18,9 +23,21 @@ import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
-import { buildOpportunityPaths } from '../opportunityUtils.js';
+import {
+    buildOpportunityPaths,
+    DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
+    DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
+    updateSectionHomeIndexContent,
+} from '../opportunityUtils.js';
+import {
+    buildAccountOpportunityPaths,
+    DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION,
+    DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
+    updateAccountOpportunityHomeIndexContent,
+} from '../accountOpportunityUtils.js';
 import {
     validateDailyPublication,
+    validateAccountOpportunityPublication,
     validateOpportunityPublication,
 } from '../publishValidation.js';
 
@@ -334,7 +351,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "",
         "请严格遵守以下规则：",
         "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
-        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **❓ 相关问题（仅1条）**`",
+        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **❓ 相关问题**`",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
@@ -656,7 +673,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             ? env.DAILY_TITLE.replace('日报', '商机')
             : `${env.DAILY_TITLE} 商机`;
         const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
-        const opportunityDescription = '与 AI日报共享同源信息，再额外筛选 AI 工具、AI账号和低门槛实操机会。';
+        const opportunityDescription = DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION;
         const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
             title: opportunityPageTitle,
             description: opportunityDescription,
@@ -692,6 +709,32 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
                 null
             );
         }
+
+        let existingOpportunityHomeContent = '';
+        try {
+            existingOpportunityHomeContent = await getGitHubFileContent(env, opportunityPaths.homePath);
+        } catch (error) {
+            console.warn(`[Scheduled] Opportunity home page not found, will create a new one.`);
+        }
+        const opportunityHomeContent = updateSectionHomeIndexContent(
+            existingOpportunityHomeContent,
+            opportunityMarkdownContent,
+            dateStr,
+            {
+                title: opportunityPageTitle,
+                description: DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
+                sectionPrefix: '/opportunity',
+            }
+        );
+        const existingOpportunityHomeSha = await getGitHubFileSha(env, opportunityPaths.homePath);
+        const opportunityHomeCommitMessage = `${existingOpportunityHomeSha ? 'Update' : 'Create'} AI opportunity home page for ${dateStr} (Scheduled)`;
+        await createOrUpdateGitHubFile(
+            env,
+            opportunityPaths.homePath,
+            opportunityHomeContent,
+            opportunityHomeCommitMessage,
+            existingOpportunityHomeSha
+        );
 
         let existingHomeContent = '';
         try {
@@ -739,6 +782,13 @@ function buildBaseDebugInfo(dateStr, mode) {
         opportunityPublicPath: null,
         opportunityCandidateCount: 0,
         opportunityTopScore: 0,
+        accountOpportunityGenerated: false,
+        accountOpportunityPublished: false,
+        accountOpportunityValidationPassed: false,
+        accountOpportunityValidationIssues: [],
+        accountOpportunityPublicPath: null,
+        accountOpportunityCandidateCount: 0,
+        accountOpportunityTopScore: 0,
     };
 }
 
@@ -1001,6 +1051,32 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
     ].join('\n');
 }
 
+function buildAccountOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validationIssues) {
+    return [
+        "你上一次输出不合格，请立即按要求重写，不要解释原因，不要道歉，不要拒答。",
+        "上一次输出存在这些问题：",
+        ...(validationIssues || []).map((issue) => `- ${issue}`),
+        "",
+        "请严格遵守以下规则：",
+        "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
+        "- 必须包含完整结构：# 今日AI账号商机 / ## 先看信号 / ## 今日主推 / ## 平替机会 / ## 闲鱼新品 / ## 今天别碰 / ## 今日动作",
+        "- 今日主推必须先用 2-3 句短段落讲清今天发生了什么、买家为什么会动、你今天最适合先挂什么",
+        "- 今日主推必须包含：发生了什么、今天先挂什么、今天先测什么、售后风险",
+        "- 整篇像账号卖家给自己做盘货判断，不像公开科普，也不要写成长篇分析",
+        "- 必须从账号、镜像、平替、组合包、迁移包里做判断，不要只写原账号新闻",
+        "- 可以写先试挂、先观察、先低成本验证，但不能拒答",
+        "- 不要出现便宜 token、风险自负、多用户商业化",
+        "- 不要假装知道闲鱼实时销量、真实利润率或全网成交量",
+        "- 闲鱼新品部分要写今天适合测试的新标题、新组合或新卖法，不要空泛",
+        "",
+        "下面是原始候选素材：",
+        basePromptInput,
+        "",
+        "下面是上一次不合格输出，仅供你纠错参考：",
+        invalidMarkdown || "(空)",
+    ].join('\n');
+}
+
 async function generateOpportunityMarkdown(
     env,
     dateStr,
@@ -1101,6 +1177,101 @@ async function generateOpportunityMarkdown(
     };
 }
 
+async function generateAccountOpportunityMarkdown(
+    env,
+    dateStr,
+    allUnifiedData,
+    debugInfo,
+    options = {}
+) {
+    const accountOpportunityPaths = buildAccountOpportunityPaths(dateStr);
+    debugInfo.accountOpportunityPublicPath = accountOpportunityPaths.publicPath;
+
+    const accountOpportunityCandidates = buildOpportunityCandidates(
+        allUnifiedData,
+        accountOpportunityPlaybook,
+        {
+            previousMainTopicSignals: options.previousMainTopicSignals || null,
+        }
+    );
+    const playbookText = serializeAccountOpportunityPlaybook(accountOpportunityPlaybook);
+    const accountOpportunityCandidatesText = formatOpportunityCandidatesForPrompt(
+        accountOpportunityCandidates,
+        accountOpportunityPlaybook
+    );
+    const accountOpportunitySourceDigest = buildOpportunitySourceDigest(
+        accountOpportunityCandidates,
+        accountOpportunityPlaybook.outputRules.maxDigestCandidates || 4,
+        accountOpportunityPlaybook.outputRules.maxEvidenceItemsPerCandidate || 2
+    );
+
+    debugInfo.accountOpportunityCandidateCount = accountOpportunityCandidates.length;
+    debugInfo.accountOpportunityTopScore = accountOpportunityCandidates[0]?.score || 0;
+
+    console.log(`[Scheduled][AccountOpportunity] Generating content...`);
+    const accountOpportunityPromptInput = [
+        `## 候选主题\n\n${accountOpportunityCandidatesText}`,
+        `## 今日摘要\n\n${accountOpportunitySourceDigest}`,
+    ].join('\n\n');
+
+    const accountOpportunitySystemPrompt = getSystemPromptAiAccountOpportunity(dateStr, playbookText);
+    let accountOpportunityMarkdownContent = await generateContentWithTransportFallback(
+        env,
+        accountOpportunityPromptInput,
+        accountOpportunitySystemPrompt
+    );
+    accountOpportunityMarkdownContent = removeMarkdownCodeBlock(accountOpportunityMarkdownContent);
+    accountOpportunityMarkdownContent = convertPlaceholdersToMarkdownImages(accountOpportunityMarkdownContent);
+    accountOpportunityMarkdownContent = replaceIncorrectDomainLinks(
+        accountOpportunityMarkdownContent,
+        env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+    );
+
+    let validation = validateAccountOpportunityPublication({
+        markdown: accountOpportunityMarkdownContent,
+        bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
+    });
+
+    if (!validation.ok) {
+        console.warn(
+            `[Scheduled][AccountOpportunity] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
+        );
+        let repairedMarkdownContent = await generateContentWithTransportFallback(
+            env,
+            buildAccountOpportunityRepairPrompt(
+                accountOpportunityPromptInput,
+                accountOpportunityMarkdownContent,
+                validation.issues
+            ),
+            accountOpportunitySystemPrompt
+        );
+        repairedMarkdownContent = removeMarkdownCodeBlock(repairedMarkdownContent);
+        repairedMarkdownContent = convertPlaceholdersToMarkdownImages(repairedMarkdownContent);
+        repairedMarkdownContent = replaceIncorrectDomainLinks(
+            repairedMarkdownContent,
+            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+        );
+
+        const repairedValidation = validateAccountOpportunityPublication({
+            markdown: repairedMarkdownContent,
+            bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
+        });
+
+        validation = repairedValidation;
+        accountOpportunityMarkdownContent = repairedMarkdownContent;
+    }
+
+    accountOpportunityMarkdownContent = `## ⚡ 快速导航\n\n- [📡 先看信号](#先看信号) - 今天先盯哪些账号与入口变化\n- [🎯 今日主推](#今日主推) - 今天最值得先挂的方向\n- [🪄 平替机会](#平替机会) - 可接住流量的替代入口\n- [🛒 闲鱼新品](#闲鱼新品) - 适合上新测试的标题和组合\n- [🚫 今天别碰](#今天别碰) - 售后重、不稳或不值得追\n- [✅ 今日动作](#今日动作) - 今天先发什么、先录什么、先卖什么\n\n${accountOpportunityMarkdownContent}`;
+
+    debugInfo.accountOpportunityGenerated = true;
+
+    return {
+        accountOpportunityPaths,
+        accountOpportunityMarkdownContent,
+        validation,
+    };
+}
+
 async function commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent) {
     const yearMonth = getYearMonth(dateStr);
     const dailyFilePath = `daily/${dateStr}.md`;
@@ -1165,7 +1336,7 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
         ? env.DAILY_TITLE.replace('日报', '商机')
         : `${env.DAILY_TITLE} 商机`;
     const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
-    const opportunityDescription = '与 AI日报共享同源信息，再额外筛选 AI 工具、AI账号和低门槛实操机会。';
+    const opportunityDescription = DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION;
     const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
         title: opportunityPageTitle,
         description: opportunityDescription,
@@ -1191,12 +1362,100 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
             null
         );
     }
+
+    let existingOpportunityHomeContent = '';
+    try {
+        existingOpportunityHomeContent = await getGitHubFileContent(env, opportunityPaths.homePath);
+    } catch (error) {
+        console.warn(`[Scheduled][Opportunity] Home page not found, will create a new one.`);
+    }
+
+    const opportunityHomeContent = updateSectionHomeIndexContent(
+        existingOpportunityHomeContent,
+        opportunityMarkdownContent,
+        dateStr,
+        {
+            title: opportunityPageTitle,
+            description: DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
+            sectionPrefix: '/opportunity',
+        }
+    );
+    const existingOpportunityHomeSha = await getGitHubFileSha(env, opportunityPaths.homePath);
+    await createOrUpdateGitHubFile(
+        env,
+        opportunityPaths.homePath,
+        opportunityHomeContent,
+        `${existingOpportunityHomeSha ? 'Update' : 'Create'} AI opportunity home page for ${dateStr} (Scheduled)`,
+        existingOpportunityHomeSha
+    );
+}
+
+async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityPaths, accountOpportunityMarkdownContent) {
+    const accountOpportunityTitleBase = env.DAILY_TITLE.includes('日报')
+        ? env.DAILY_TITLE.replace('日报', '账号商机')
+        : `${env.DAILY_TITLE} 账号商机`;
+    const accountOpportunityPageTitle = `${accountOpportunityTitleBase} ${formatDateToChinese(dateStr)}`;
+    const accountOpportunityDescription = DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION;
+    const accountOpportunityPageContent = buildDailyContentWithFrontMatter(dateStr, accountOpportunityMarkdownContent, {
+        title: accountOpportunityPageTitle,
+        description: accountOpportunityDescription,
+    });
+
+    const existingAccountOpportunityPageSha = await getGitHubFileSha(env, accountOpportunityPaths.pagePath);
+    await createOrUpdateGitHubFile(
+        env,
+        accountOpportunityPaths.pagePath,
+        accountOpportunityPageContent,
+        `${existingAccountOpportunityPageSha ? 'Update' : 'Create'} AI account opportunity page for ${dateStr} (Scheduled)`,
+        existingAccountOpportunityPageSha
+    );
+
+    const existingAccountOpportunityMonthIndexSha = await getGitHubFileSha(env, accountOpportunityPaths.monthDirectoryIndexPath);
+    if (!existingAccountOpportunityMonthIndexSha) {
+        const accountOpportunityMonthIndexContent = buildMonthDirectoryIndex(accountOpportunityPaths.yearMonth, { sidebarOpen: true });
+        await createOrUpdateGitHubFile(
+            env,
+            accountOpportunityPaths.monthDirectoryIndexPath,
+            accountOpportunityMonthIndexContent,
+            `Create AI account opportunity month directory index for ${accountOpportunityPaths.yearMonth} (Scheduled)`,
+            null
+        );
+    }
+
+    let existingAccountOpportunityHomeContent = '';
+    try {
+        existingAccountOpportunityHomeContent = await getGitHubFileContent(env, accountOpportunityPaths.homePath);
+    } catch (error) {
+        console.warn(`[Scheduled][AccountOpportunity] Home page not found, will create a new one.`);
+    }
+
+    const accountOpportunityHomeContent = updateAccountOpportunityHomeIndexContent(
+        existingAccountOpportunityHomeContent,
+        accountOpportunityMarkdownContent,
+        dateStr,
+        {
+            title: accountOpportunityPageTitle,
+            description: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
+            sectionPrefix: '/account-opportunity',
+        }
+    );
+    const existingAccountOpportunityHomeSha = await getGitHubFileSha(env, accountOpportunityPaths.homePath);
+    await createOrUpdateGitHubFile(
+        env,
+        accountOpportunityPaths.homePath,
+        accountOpportunityHomeContent,
+        `${existingAccountOpportunityHomeSha ? 'Update' : 'Create'} AI account opportunity home page for ${dateStr} (Scheduled)`,
+        existingAccountOpportunityHomeSha
+    );
 }
 
 function resolveScheduledMode(event, env, mode = 'auto') {
     if (mode && mode !== 'auto') return mode;
 
     const cron = String(event?.cron || '').trim();
+    if (cron && cron === String(env.ACCOUNT_OPPORTUNITY_CRON_SCHEDULE || '').trim()) {
+        return 'account-opportunity';
+    }
     if (cron && cron === String(env.OPPORTUNITY_CRON_SCHEDULE || '').trim()) {
         return 'opportunity';
     }
@@ -1271,8 +1530,50 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     return debugInfo;
 }
 
+export async function handleScheduledAccountOpportunity(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    setFetchDate(dateStr);
+    const debugInfo = buildBaseDebugInfo(dateStr, 'account-opportunity');
+    console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+
+    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { accountOpportunityPaths, accountOpportunityMarkdownContent } = await generateAccountOpportunityMarkdown(
+        env,
+        dateStr,
+        allUnifiedData,
+        debugInfo,
+        {
+            previousMainTopicSignals: previousOpportunityReplaySignals,
+        }
+    );
+
+    const validation = validateAccountOpportunityPublication({
+        markdown: accountOpportunityMarkdownContent,
+        bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
+    });
+    debugInfo.accountOpportunityValidationPassed = validation.ok;
+    debugInfo.accountOpportunityValidationIssues = validation.issues;
+    if (!validation.ok) {
+        console.warn(`[Scheduled][AccountOpportunity] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
+        return debugInfo;
+    }
+
+    await commitAccountOpportunityOutputs(
+        env,
+        dateStr,
+        accountOpportunityPaths,
+        accountOpportunityMarkdownContent
+    );
+    debugInfo.accountOpportunityPublished = true;
+    return debugInfo;
+}
+
 export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto') {
     const resolvedMode = resolveScheduledMode(event, env, mode);
+
+    if (resolvedMode === 'account-opportunity') {
+        return handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
+    }
 
     if (resolvedMode === 'opportunity') {
         return handleScheduledOpportunity(event, env, ctx, specifiedDate);
@@ -1281,7 +1582,8 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null, mod
     if (resolvedMode === 'all') {
         const daily = await handleScheduledDaily(event, env, ctx, specifiedDate);
         const opportunity = await handleScheduledOpportunity(event, env, ctx, specifiedDate);
-        return { daily, opportunity };
+        const accountOpportunity = await handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
+        return { daily, opportunity, accountOpportunity };
     }
 
     return handleScheduledDaily(event, env, ctx, specifiedDate);

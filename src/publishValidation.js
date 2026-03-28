@@ -82,7 +82,7 @@ export function validateDailyPublication({ summaryText, pageMarkdown }) {
         "## **今日摘要**",
         "## ⚡ 快速导航",
         "## **今日AI资讯**",
-        "## **❓ 相关问题（仅1条）**",
+        "## **❓ 相关问题**",
         "aivora.cn",
       ],
       forbiddenPatterns: DAILY_META_PATTERNS,
@@ -117,6 +117,35 @@ export function validateOpportunityPublication({
       "配图建议",
       "先怎么试",
       "为什么先别冲太猛",
+    ],
+    forbiddenPhrases: bannedPublicPhrases,
+  });
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+export function validateAccountOpportunityPublication({
+  markdown,
+  bannedPublicPhrases = [],
+}) {
+  const issues = collectMarkdownIssues(markdown, {
+    label: "账号商机页面",
+    minChars: 180,
+    requiredPhrases: [
+      "# 今日AI账号商机",
+      "## 先看信号",
+      "## 今日主推",
+      "## 平替机会",
+      "## 闲鱼新品",
+      "## 今天别碰",
+      "## 今日动作",
+      "发生了什么",
+      "今天先挂什么",
+      "今天先测什么",
+      "售后风险",
     ],
     forbiddenPhrases: bannedPublicPhrases,
   });

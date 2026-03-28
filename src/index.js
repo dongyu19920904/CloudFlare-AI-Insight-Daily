@@ -14,6 +14,7 @@ import {
     handleScheduled,
     handleScheduledDaily,
     handleScheduledOpportunity,
+    handleScheduledAccountOpportunity,
 } from './handlers/scheduled.js';
 
 function getSpecifiedDate(url) {
@@ -75,6 +76,10 @@ async function queueScheduledMode(ctx, env, mode, specifiedDate) {
 async function runScheduledMode(mode, env, specifiedDate) {
     const fakeEvent = { scheduledTime: Date.now(), cron: '' };
     const fakeCtx = { waitUntil: (promise) => promise };
+
+    if (mode === 'account-opportunity') {
+        return handleScheduledAccountOpportunity(fakeEvent, env, fakeCtx, specifiedDate);
+    }
 
     if (mode === 'opportunity') {
         return handleScheduledOpportunity(fakeEvent, env, fakeCtx, specifiedDate);
@@ -175,7 +180,8 @@ export default {
         } else if (
             (path === '/testTriggerScheduled' ||
                 path === '/testTriggerScheduledDaily' ||
-                path === '/testTriggerScheduledOpportunity') &&
+                path === '/testTriggerScheduledOpportunity' ||
+                path === '/testTriggerScheduledAccountOpportunity') &&
             request.method === 'GET'
         ) {
             const secretKey = url.searchParams.get('key');
@@ -196,7 +202,9 @@ export default {
                     ? 'daily'
                     : path === '/testTriggerScheduledOpportunity'
                       ? 'opportunity'
-                        : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
+                      : path === '/testTriggerScheduledAccountOpportunity'
+                        ? 'account-opportunity'
+                        : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'account-opportunity' || requestedMode === 'all'
                         ? requestedMode
                         : 'daily';
             try {
@@ -271,7 +279,8 @@ export default {
             } else if (
                 (path === '/triggerScheduled' ||
                     path === '/triggerScheduledDaily' ||
-                    path === '/triggerScheduledOpportunity') &&
+                    path === '/triggerScheduledOpportunity' ||
+                    path === '/triggerScheduledAccountOpportunity') &&
                 request.method === 'GET'
             ) {
                 const specifiedDate = getSpecifiedDate(url);
@@ -282,7 +291,9 @@ export default {
                         ? 'daily'
                         : path === '/triggerScheduledOpportunity'
                           ? 'opportunity'
-                          : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'all'
+                          : path === '/triggerScheduledAccountOpportunity'
+                            ? 'account-opportunity'
+                          : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'account-opportunity' || requestedMode === 'all'
                             ? requestedMode
                             : 'daily';
                 if (runAsync) {
