@@ -76,6 +76,5 @@ INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)
 [triggers]
 crons = [
   "0 1 * * *",
-  "20 1 * * *",
-  "50 1 * * *"
+  "20 1 * * *"
 ]

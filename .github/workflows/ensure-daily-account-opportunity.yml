@@ -1,6 +1,8 @@
 name: Ensure Daily Account Opportunity
 
 on:
+  schedule:
+    - cron: "50 1 * * *"
   workflow_dispatch:
     inputs:
       date:
