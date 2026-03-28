@@ -2,6 +2,7 @@
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
+import { resolveScheduledModeFromEvent } from '../scheduleRouting.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero.js";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree.js";
 import { getSystemPromptAiOpportunity } from "../prompt/aiOpportunityPrompt.js";
@@ -1449,23 +1450,6 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
     );
 }
 
-function resolveScheduledMode(event, env, mode = 'auto') {
-    if (mode && mode !== 'auto') return mode;
-
-    const cron = String(event?.cron || '').trim();
-    if (cron && cron === String(env.ACCOUNT_OPPORTUNITY_CRON_SCHEDULE || '').trim()) {
-        return 'account-opportunity';
-    }
-    if (cron && cron === String(env.OPPORTUNITY_CRON_SCHEDULE || '').trim()) {
-        return 'opportunity';
-    }
-    if (cron && cron === String(env.DAILY_CRON_SCHEDULE || '').trim()) {
-        return 'daily';
-    }
-
-    return 'daily';
-}
-
 export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -1569,7 +1553,7 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
 }
 
 export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto') {
-    const resolvedMode = resolveScheduledMode(event, env, mode);
+    const resolvedMode = resolveScheduledModeFromEvent(event, env, mode);
 
     if (resolvedMode === 'account-opportunity') {
         return handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
