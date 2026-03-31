@@ -40,6 +40,11 @@ const FoloMultiFeedsDataSource = {
             .map((s) => s.trim())
             .filter(Boolean);
         const uniqueIds = [...new Set(ids)];
+        const maxIds = parseInt(env.FOLO_NEWS_MAX_IDS || env.FOLO_MAX_IDS || '0', 10);
+        const limitedIds =
+            Number.isFinite(maxIds) && maxIds > 0
+                ? uniqueIds.slice(0, maxIds)
+                : uniqueIds;
 
         const fetchPages = parseInt(env.FOLO_NEWS_FETCH_PAGES || env.FOLO_FETCH_PAGES || '2', 10);
         const filterDays = parseInt(env.FOLO_FILTER_DAYS || '3', 10);
@@ -112,7 +117,7 @@ const FoloMultiFeedsDataSource = {
             return localItems;
         };
 
-        for (const id of uniqueIds) {
+        for (const id of limitedIds) {
             try {
                 if (idType === 'list') {
                     allItems.push(...(await fetchOneKind(id, 'list')));
