@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   validateDailyPublication,
+  validateAccountOpportunityPublication,
   validateOpportunityPublication,
 } from "../src/publishValidation.js";
 
@@ -50,7 +51,18 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "",
-    "## **❓ 相关问题（仅1条）**",
+    "## **📌 值得关注**",
+    "",
+    "- **[开源]** [一条补充新闻](https://example.com/watch) - 这条补充新闻能补齐主线之外的开源视角。",
+    "",
+    "## **🔮 AI趋势预测**",
+    "",
+    "### CLI 工具会继续扩张",
+    "- **预测时间**：2026年Q2",
+    "- **预测概率**：65%",
+    "- **预测依据**：今日新闻[一条补充新闻](https://example.com/watch) + 更多服务会争抢 AI 原生命令行入口。",
+    "",
+    "## **❓ 相关问题**",
     "",
     "### 如何体验 Claude 的电脑操控功能？",
     "",
@@ -101,7 +113,49 @@ test("validateDailyPublication rejects meta commentary and missing FAQ section",
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止模式|元话术|AI思考/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题（仅1条）\*\*/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题\*\*/);
+});
+
+test("validateDailyPublication rejects pages missing worth-watching and trend prediction sections", () => {
+  const pageMarkdown = [
+    "## **今日摘要**",
+    "",
+    "```",
+    "今天有几条 AI 新闻，但结构不完整。",
+    "```",
+    "",
+    "## ⚡ 快速导航",
+    "",
+    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "",
+    "## **今日AI资讯**",
+    "",
+    "### **👀 只有一句话**",
+    "CLI 成了今天的主线。",
+    "",
+    "### **🔑 3 个关键词**",
+    "#CLI #开源 #模型",
+    "",
+    "## **🔥 重磅 TOP 6**",
+    "",
+    "### 1. [一条新闻](https://example.com/1)",
+    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    "",
+    "## **❓ 相关问题**",
+    "",
+    "### 如何体验这个工具？",
+    "",
+    "可以去 **[爱窝啦 Aivora](https://aivora.cn)** 看现成账号。",
+  ].join("\n");
+
+  const result = validateDailyPublication({
+    summaryText: "CLI 成了今天的主线，开源工具在加速扩张，企业服务也开始围绕命令行重新抢入口。",
+    pageMarkdown,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /值得关注/);
+  assert.match(result.issues.join("\n"), /AI趋势预测/);
 });
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {
@@ -160,6 +214,58 @@ test("validateOpportunityPublication accepts the lighter daily-style opportunity
 - 先录什么：跑通录屏
 - 先卖哪一款：29 元低价引流款`,
     bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.issues, []);
+});
+
+test("validateAccountOpportunityPublication rejects missing operator sections", () => {
+  const result = validateAccountOpportunityPublication({
+    markdown: `# 今日AI账号商机
+
+## 今日主推
+先卖 GPT 平替号
+`,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /缺少必需片段: ## 先看信号/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: 售后风险/);
+});
+
+test("validateAccountOpportunityPublication accepts the account-opportunity structure", () => {
+  const result = validateAccountOpportunityPublication({
+    markdown: `# 今日AI账号商机
+
+## 先看信号
+- GPT 封号讨论明显变多
+- 镜像入口讨论开始升温
+
+## 今日主推
+### GPT 封号后先卖 Claude / Gemini 平替体验包
+今天很多人不是不想用 GPT，而是不想继续赌一个不稳的号。这个时候卖“先用起来”的平替入口，比继续讲模型参数更容易成交。
+- 发生了什么：GPT 账号异常讨论变多
+- 今天先挂什么：Claude / Gemini 平替体验包
+- 今天先测什么：闲鱼上“GPT平替”“Claude体验”“Gemini账号”
+- 售后风险：中，重点在入口稳定性
+
+## 平替机会
+- Claude 体验号
+- Gemini 体验号
+- 多模型组合包
+
+## 闲鱼新品
+- 新标题方向：GPT 封号后先用这个平替
+- 新组合方向：账号 + 上手说明
+
+## 今天别碰
+- 售后解释成本过高、入口不稳的镜像站
+
+## 今日动作
+- 先发什么：GPT 封号后的替代方案短帖
+- 先录什么：平替入口实测录屏
+- 先卖哪一款：Claude / Gemini 平替体验包`,
   });
 
   assert.equal(result.ok, true);

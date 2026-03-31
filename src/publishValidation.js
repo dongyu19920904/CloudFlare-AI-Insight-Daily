@@ -82,6 +82,8 @@ export function validateDailyPublication({ summaryText, pageMarkdown }) {
         "## **今日摘要**",
         "## ⚡ 快速导航",
         "## **今日AI资讯**",
+        "## **📌 值得关注**",
+        "## **🔮 AI趋势预测**",
         "## **❓ 相关问题**",
         "aivora.cn",
       ],
