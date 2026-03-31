@@ -69,6 +69,31 @@ function collectMarkdownIssues(markdown, options = {}) {
   return issues;
 }
 
+function extractSection(markdown, heading) {
+  const source = String(markdown || "");
+  const start = source.indexOf(heading);
+  if (start < 0) return "";
+
+  const rest = source.slice(start + heading.length);
+  const nextSectionIndex = rest.search(/\n##\s+/);
+  return nextSectionIndex >= 0 ? rest.slice(0, nextSectionIndex) : rest;
+}
+
+function countDailyTopItems(markdown) {
+  const section = extractSection(markdown, "## **🔥 重磅 TOP");
+  return (section.match(/^###\s+\d+\./gm) || []).length;
+}
+
+function countWorthWatchingItems(markdown) {
+  const section = extractSection(markdown, "## **📌 值得关注**");
+  return (section.match(/^- /gm) || []).length;
+}
+
+function countPredictionItems(markdown) {
+  const section = extractSection(markdown, "## **🔮 AI趋势预测**");
+  return (section.match(/^###\s+/gm) || []).length;
+}
+
 export function validateDailyPublication({ summaryText, pageMarkdown }) {
   const issues = [
     ...collectMarkdownIssues(summaryText, {
@@ -90,6 +115,21 @@ export function validateDailyPublication({ summaryText, pageMarkdown }) {
       forbiddenPatterns: DAILY_META_PATTERNS,
     }),
   ];
+
+  const topItemCount = countDailyTopItems(pageMarkdown);
+  if (topItemCount > 0 && topItemCount < 8) {
+    issues.push(`鏃ユ姤TOP条数不足: ${topItemCount}`);
+  }
+
+  const worthWatchingCount = countWorthWatchingItems(pageMarkdown);
+  if (worthWatchingCount > 0 && worthWatchingCount < 2) {
+    issues.push(`鏃ユ姤“值得关注”条数不足: ${worthWatchingCount}`);
+  }
+
+  const predictionCount = countPredictionItems(pageMarkdown);
+  if (predictionCount > 0 && predictionCount < 2) {
+    issues.push(`鏃ユ姤“AI趋势预测”条数不足: ${predictionCount}`);
+  }
 
   return {
     ok: issues.length === 0,

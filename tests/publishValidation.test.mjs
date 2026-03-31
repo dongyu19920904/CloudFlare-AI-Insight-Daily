@@ -46,14 +46,18 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "### **🔑 3 个关键词**",
     "#Agent #微信 #开源",
     "",
-    "### 1. 一条新闻",
-    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
-    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
-    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    ...Array.from({ length: 8 }, (_, index) =>
+      [
+        `### ${index + 1}. [新闻${index + 1}](https://example.com/top-${index + 1})`,
+        "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+        "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+      ].join("\n")
+    ),
     "",
     "## **📌 值得关注**",
     "",
     "- **[开源]** [一条补充新闻](https://example.com/watch) - 这条补充新闻能补齐主线之外的开源视角。",
+    "- **[产品]** [第二条补充新闻](https://example.com/watch-2) - 这条补充新闻能补齐产品侧的变化。",
     "",
     "## **🔮 AI趋势预测**",
     "",
@@ -61,6 +65,11 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "- **预测时间**：2026年Q2",
     "- **预测概率**：65%",
     "- **预测依据**：今日新闻[一条补充新闻](https://example.com/watch) + 更多服务会争抢 AI 原生命令行入口。",
+    "",
+    "### 微信 Agent 会继续外溢到更多场景",
+    "- **预测时间**：2026年4月",
+    "- **预测概率**：58%",
+    "- **预测依据**：今日新闻[第二条补充新闻](https://example.com/watch-2) + 企业工具会继续往 Agent 接入走。",
     "",
     "## **❓ 相关问题**",
     "",
@@ -72,7 +81,7 @@ test("validateDailyPublication accepts a structured daily page", () => {
   ].join("\n");
 
   const result = validateDailyPublication({
-    summaryText: "今天微信 Agent 和开源框架都在加速，开发者生态正在快速成形。",
+    summaryText: "今天微信 Agent 和开源框架都在加速，开发者生态正在快速成形，产品与工具入口会继续扩张。",
     pageMarkdown,
   });
 
@@ -156,6 +165,70 @@ test("validateDailyPublication rejects pages missing worth-watching and trend pr
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /值得关注/);
   assert.match(result.issues.join("\n"), /AI趋势预测/);
+});
+
+test("validateDailyPublication rejects pages with too few top items and too few worth-watching items", () => {
+  const topItems = Array.from({ length: 7 }, (_, index) =>
+    [
+      `### ${index + 1}. [新闻${index + 1}](https://example.com/${index + 1})`,
+      "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    ].join("\n")
+  ).join("\n\n");
+
+  const pageMarkdown = [
+    "## **今日摘要**",
+    "",
+    "```",
+    "今天的结构比之前完整，但条目数还是偏少。",
+    "```",
+    "",
+    "## ⚡ 快速导航",
+    "",
+    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "",
+    "## **今日AI资讯**",
+    "",
+    "### **👀 只有一句话**",
+    "今天主线有了，但还不够满。",
+    "",
+    "### **🔑 3 个关键词**",
+    "#模型 #工具 #开源",
+    "",
+    "## **🔥 重磅 TOP 10**",
+    "",
+    topItems,
+    "",
+    "## **📌 值得关注**",
+    "",
+    "- **[产品]** [补充新闻](https://example.com/watch) - 这里只有一条，还不够。",
+    "",
+    "## **🔮 AI趋势预测**",
+    "",
+    "### 未来两个月会继续卷工具入口",
+    "- **预测时间**：2026年Q2",
+    "- **预测概率**：60%",
+    "- **预测依据**：今日新闻[新闻1](https://example.com/1) + 工具入口竞争还会继续。",
+    "",
+    "### 语音工具会继续涨",
+    "- **预测时间**：2026年4月",
+    "- **预测概率**：55%",
+    "- **预测依据**：今日新闻[新闻2](https://example.com/2) + 语音场景正在变热。",
+    "",
+    "## **❓ 相关问题**",
+    "",
+    "### 如何体验今天提到的工具？",
+    "",
+    "可以去 **[爱窝啦 Aivora](https://aivora.cn)** 看现成账号。",
+  ].join("\n");
+
+  const result = validateDailyPublication({
+    summaryText: "今天的结构比之前完整，但条目数还是偏少，不过主线已经开始成形。",
+    pageMarkdown,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /TOP/);
+  assert.match(result.issues.join("\n"), /值得关注/);
 });
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {

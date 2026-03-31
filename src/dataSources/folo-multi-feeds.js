@@ -41,9 +41,24 @@ const FoloMultiFeedsDataSource = {
             .filter(Boolean);
         const uniqueIds = [...new Set(ids)];
         const maxIds = parseInt(env.FOLO_NEWS_MAX_IDS || env.FOLO_MAX_IDS || '0', 10);
+        const supplementalIds = String(
+            env.FOLO_NEWS_SUPPLEMENTAL_IDS || env.FOLO_SUPPLEMENTAL_IDS || ''
+        )
+            .split(/[,\\s]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const supplementalIdSet = new Set(supplementalIds);
+        const selectedSupplementalIds = uniqueIds.filter((id) => supplementalIdSet.has(id));
+        const primaryIds = uniqueIds.filter((id) => !supplementalIdSet.has(id));
+        const primarySlots = Number.isFinite(maxIds) && maxIds > 0
+            ? Math.max(0, maxIds - selectedSupplementalIds.length)
+            : primaryIds.length;
         const limitedIds =
             Number.isFinite(maxIds) && maxIds > 0
-                ? uniqueIds.slice(0, maxIds)
+                ? [
+                    ...primaryIds.slice(0, primarySlots),
+                    ...selectedSupplementalIds.slice(0, maxIds),
+                ].slice(0, maxIds)
                 : uniqueIds;
 
         const fetchPages = parseInt(env.FOLO_NEWS_FETCH_PAGES || env.FOLO_FETCH_PAGES || '2', 10);
