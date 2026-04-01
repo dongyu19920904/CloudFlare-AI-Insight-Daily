@@ -42,7 +42,7 @@ jobs:
           echo "date=$TARGET_DATE" >> "$GITHUB_OUTPUT"
           echo "year_month=${TARGET_DATE:0:7}" >> "$GITHUB_OUTPUT"
 
-      - name: Check current daily page
+      - name: Check current daily page and home pointer
         id: check
         shell: bash
         env:
@@ -50,10 +50,12 @@ jobs:
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
         run: |
           PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/${YEAR_MONTH}/${TARGET_DATE}.md"
-          STATUS_CODE=$(curl -sS -o page-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
-          echo "status=$STATUS_CODE" >> "$GITHUB_OUTPUT"
+          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/_index.md"
+          EXPECTED_HOME_NEXT="/${YEAR_MONTH}/${TARGET_DATE}"
+          PAGE_STATUS_CODE=$(curl -sS -o page-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
+          echo "status=$PAGE_STATUS_CODE" >> "$GITHUB_OUTPUT"
 
-          if [ "$STATUS_CODE" = "200" ]; then
+          if [ "$PAGE_STATUS_CODE" = "200" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Today's AI daily page already exists."
           else
@@ -61,12 +63,41 @@ jobs:
             echo "Today's AI daily page is missing."
           fi
 
-      - name: Skip because daily page already exists
-        if: steps.check.outputs.exists == 'true' && github.event.inputs.force != 'true'
-        run: echo "Skipping trigger because today's page already exists."
+          HOME_STATUS_CODE=$(curl -sS -o home-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
+          echo "home_status=$HOME_STATUS_CODE" >> "$GITHUB_OUTPUT"
+
+          HOME_NEXT=""
+          if [ "$HOME_STATUS_CODE" = "200" ]; then
+            HOME_NEXT=$(python - <<'PY'
+          import base64
+          import json
+          import re
+
+          with open("home-check.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          content = base64.b64decode(payload["content"]).decode("utf-8")
+          match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
+          print(match.group(1) if match else "")
+          PY
+            )
+          fi
+
+          echo "home_next=$HOME_NEXT" >> "$GITHUB_OUTPUT"
+          if [ "$HOME_NEXT" = "$EXPECTED_HOME_NEXT" ]; then
+            echo "home_current=true" >> "$GITHUB_OUTPUT"
+            echo "Home page already points to ${EXPECTED_HOME_NEXT}."
+          else
+            echo "home_current=false" >> "$GITHUB_OUTPUT"
+            echo "Home page points to '${HOME_NEXT:-<empty>}' instead of '${EXPECTED_HOME_NEXT}'."
+          fi
+
+      - name: Skip because daily page and home are both current
+        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force != 'true'
+        run: echo "Skipping trigger because today's page exists and the home page already points to it."
 
       - name: Trigger today's AI daily generation
-        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
+        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.force == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -102,24 +133,45 @@ jobs:
           PY
 
       - name: Verify today's page after trigger
-        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
+        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.force == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
         run: |
           PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/${YEAR_MONTH}/${TARGET_DATE}.md"
+          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/_index.md"
+          EXPECTED_HOME_NEXT="/${YEAR_MONTH}/${TARGET_DATE}"
 
           for attempt in 1 2 3 4 5; do
-            STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
-            if [ "$STATUS_CODE" = "200" ]; then
-              echo "Verified today's AI daily page on attempt ${attempt}."
+            PAGE_STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
+            HOME_STATUS_CODE=$(curl -sS -o verify-home.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
+
+            HOME_NEXT=""
+            if [ "$HOME_STATUS_CODE" = "200" ]; then
+              HOME_NEXT=$(python - <<'PY'
+            import base64
+            import json
+            import re
+
+            with open("verify-home.json", "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+
+            content = base64.b64decode(payload["content"]).decode("utf-8")
+            match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
+            print(match.group(1) if match else "")
+            PY
+              )
+            fi
+
+            if [ "$PAGE_STATUS_CODE" = "200" ] && [ "$HOME_NEXT" = "$EXPECTED_HOME_NEXT" ]; then
+              echo "Verified today's AI daily page and home pointer on attempt ${attempt}."
               exit 0
             fi
 
-            echo "Page not visible yet on attempt ${attempt}, waiting..."
+            echo "Daily page or home pointer not ready on attempt ${attempt} (page=${PAGE_STATUS_CODE}, home_next='${HOME_NEXT:-<empty>}'), waiting..."
             sleep 8
           done
 
-          echo "Today's AI daily page is still missing after trigger."
+          echo "Today's AI daily page or home pointer is still not updated after trigger."
           exit 1
