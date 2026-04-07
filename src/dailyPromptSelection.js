@@ -115,6 +115,29 @@ function isSimilarReplayTitle(currentTitle, previousTitle) {
   return strongOverlap.length >= 2 || (overlap.length >= 3 && overlap.length / minTokenCount >= 0.6);
 }
 
+function scoreDailyPromptCandidate(candidate) {
+  let score = 0;
+  const sourceType = candidate?.sourceType || "";
+
+  if (sourceType === "project") score += 30;
+  if (sourceType === "news") score += 24;
+  if (sourceType === "socialMedia") score += 16;
+  if (sourceType === "paper") score += 12;
+
+  if (candidate?.itemHasMedia) score += 6;
+
+  const sourceText = `${candidate?.source || ""} ${candidate?.title || ""} ${candidate?.description || ""}`.toLowerCase();
+  if (/github|open source|open-source|开源|project/i.test(sourceText)) score += 8;
+  if (/release|launch|发布|更新|开源|上新|new/i.test(sourceText)) score += 4;
+
+  const starsTodayMatch = String(candidate?.itemText || "").match(/Stars Today:\s*(\d+)/i);
+  if (starsTodayMatch) {
+    score += Math.min(parseInt(starsTodayMatch[1], 10) || 0, 20);
+  }
+
+  return score;
+}
+
 function extractMatchTokens(item) {
   const text = [
     item?.title || "",
@@ -218,12 +241,12 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 }
 
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
-  const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 24);
+  const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 28);
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 10),
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 6),
-    socialMedia: parsePositiveInt(env.DAILY_PROMPT_SOCIAL_ITEMS, 5),
-    paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 3),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 8),
+    socialMedia: parsePositiveInt(env.DAILY_PROMPT_SOCIAL_ITEMS, 6),
+    paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 4),
   };
   const preferredSourceOrder = ["news", "project", "socialMedia", "paper"];
   const buckets = new Map();
@@ -236,6 +259,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     for (const item of items || []) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
+      candidate.score = scoreDailyPromptCandidate(candidate);
 
       bucket.push(candidate);
 
@@ -273,8 +297,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   for (const sourceType of orderedSourceTypes) {
     const bucket = buckets.get(sourceType) || [];
-    const withMedia = bucket.filter((candidate) => candidate.itemHasMedia);
-    const withoutMedia = bucket.filter((candidate) => !candidate.itemHasMedia);
+    const sortedBucket = [...bucket].sort((left, right) => right.score - left.score);
+    const withMedia = sortedBucket.filter((candidate) => candidate.itemHasMedia);
+    const withoutMedia = sortedBucket.filter((candidate) => !candidate.itemHasMedia);
     const quota = quotas[sourceType] || 0;
 
     if (quota <= 0) continue;
@@ -288,7 +313,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   if (selectedCandidates.length < maxItems) {
     const remainingCandidates = orderedSourceTypes.flatMap((sourceType) => {
-      const bucket = buckets.get(sourceType) || [];
+      const bucket = [...(buckets.get(sourceType) || [])].sort((left, right) => right.score - left.score);
       return [
         ...bucket.filter((candidate) => candidate.itemHasMedia),
         ...bucket.filter((candidate) => !candidate.itemHasMedia),
@@ -306,6 +331,10 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     mediaCandidates,
     itemsWithMedia,
     itemsWithoutMedia,
+    totalCandidateCount: orderedSourceTypes.reduce(
+      (count, sourceType) => count + (buckets.get(sourceType) || []).length,
+      0
+    ),
     selectedCounts: orderedSourceTypes.reduce((acc, sourceType) => {
       acc[sourceType] = selectedCandidates.filter((candidate) => candidate.sourceType === sourceType).length;
       return acc;

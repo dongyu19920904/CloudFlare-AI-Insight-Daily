@@ -159,6 +159,112 @@ Claude 目前更完整的体验通常还是要订阅。
   );
 });
 
+test("validateDailyPublication rejects insufficient top items when enough material is expected", () => {
+  const result = validateDailyPublication({
+    summaryText: "OpenAI、Google 和 GitHub 项目更新很多，今天的候选素材明显够写满十条。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+OpenAI、Google 和 GitHub 项目更新很多，今天的候选素材明显够写满十条。
+\`\`\`
+
+## 📌 快速导航
+
+- [📢 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **🧐 只有一句话**
+今天明明有足够多的素材，日报不该只剩 7 条。
+
+### **🧭 3 个关键词**
+#OpenAI #GitHub #Top10
+
+## **🔥 重磅 TOP 7**
+
+### 1. [新闻 1](https://example.com/news-1)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+### 2. [新闻 2](https://example.com/news-2)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+### 3. [新闻 3](https://example.com/news-3)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+### 4. [新闻 4](https://example.com/news-4)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+### 5. [新闻 5](https://example.com/news-5)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+### 6. [新闻 6](https://example.com/news-6)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+### 7. [新闻 7](https://example.com/news-7)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的工具？
+
+先看官方入口，再决定要不要用更省事的成品服务。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+    minimumTopItems: 10,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /expected at least 10/i);
+});
+
+test("validateDailyPublication rejects repeated stories across sections even when urls differ", () => {
+  const result = validateDailyPublication({
+    summaryText: "同一件 OpenAI 融资新闻不能在三个栏目里换链接复读。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+同一件 OpenAI 融资新闻不能在三个栏目里换链接复读。
+\`\`\`
+
+## 📌 快速导航
+
+- [📢 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **🧐 只有一句话**
+今天最重要的是别把同一个故事写三遍。
+
+### **🧭 3 个关键词**
+#融资 #OpenAI #去重
+
+## **🔥 重磅 TOP 1**
+
+### 1. [OpenAI 完成 1250 亿美元融资](https://example.com/source-a)
+这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文，这里是一段足够长的正文。
+
+## **🎯 值得关注**
+
+- **[商业]** [OpenAI 完成 1250 亿美元融资，估值继续走高](https://example.com/source-b) - 同一个故事只是换了来源，不应该再写一遍。
+
+## **😆 AI趣闻**
+
+### [OpenAI 完成 1250 亿美元融资后员工反应刷屏](https://example.com/source-c)
+同一个核心事件如果只是换个讲法，也不应该再进趣闻栏目。
+
+## **❓ 相关问题**
+
+### 如何看懂今天的融资新闻？
+
+先理解事件本身，再看和你的使用场景有什么关系。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /reuse the same story across sections/i);
+});
+
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {
   const result = validateOpportunityPublication({
     markdown: `# 今日AI商机

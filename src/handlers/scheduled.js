@@ -862,11 +862,11 @@ async function loadScheduledContext(env, dateStr, debugInfo) {
     return {
         allUnifiedData,
         previousOpportunityReplaySignals,
-        ...buildPromptCollections(allUnifiedData, debugInfo),
+        ...buildDailyPromptSelection(allUnifiedData, env),
     };
 }
 
-async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCandidates, debugInfo) {
+async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCandidates, debugInfo, options = {}) {
     if (selectedContentItems.length === 0) {
         throw new Error('No content items found for daily generation.');
     }
@@ -893,6 +893,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
+        minimumTopItems: options.minimumTopItems || 0,
     });
 
     if (!validation.ok) {
@@ -927,6 +928,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
+            minimumTopItems: options.minimumTopItems || 0,
         });
 
         outputOfCall2 = repairedOutputOfCall2;
@@ -1416,18 +1418,26 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { selectedContentItems, mediaCandidates } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo);
+    debugInfo.promptSelectedItems = selectedContentItems.length;
+    debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
+    debugInfo.promptSelectedCounts = selectedCounts || {};
+
     const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
         dateStr,
         selectedContentItems,
         mediaCandidates,
-        debugInfo
+        debugInfo,
+        {
+            minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+        }
     );
 
     const validation = generatedValidation || validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
+        minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
     });
     debugInfo.dailyValidationPassed = validation.ok;
     debugInfo.dailyValidationIssues = validation.issues;

@@ -39,6 +39,29 @@ function canonicalizeUrl(url) {
   }
 }
 
+function normalizeLinkTitle(title) {
+  return String(title || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|，。！？、；：“”‘’（）【】《》·—…-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function areSimilarLinkTitles(leftTitle, rightTitle) {
+  const left = normalizeLinkTitle(leftTitle);
+  const right = normalizeLinkTitle(rightTitle);
+
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  if (left.length >= 10 && right.length >= 10) {
+    return left.includes(right) || right.includes(left);
+  }
+
+  return false;
+}
+
 function collectMarkdownIssues(markdown, options = {}) {
   const {
     label = "内容",
@@ -109,6 +132,15 @@ function extractSectionUrls(markdown) {
     .filter(Boolean);
 }
 
+function extractSectionLinks(markdown) {
+  return [...String(markdown || "").matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+    .map((match) => ({
+      title: match[1],
+      url: canonicalizeUrl(match[2]),
+    }))
+    .filter((item) => item.url);
+}
+
 function collectDuplicateUrlsBySection(sectionMap) {
   const firstSeenSectionByUrl = new Map();
   const duplicates = [];
@@ -130,8 +162,41 @@ function collectDuplicateUrlsBySection(sectionMap) {
   return duplicates;
 }
 
-function collectDailyStructureIssues(pageMarkdown) {
+function collectDuplicateTopicsBySection(sectionMap) {
+  const duplicates = [];
+  const seen = [];
+
+  for (const [sectionName, links] of Object.entries(sectionMap)) {
+    for (const link of links) {
+      const matched = seen.find((existing) => {
+        if (existing.sectionName === sectionName) return false;
+        if (existing.url && link.url && existing.url === link.url) return true;
+        return areSimilarLinkTitles(existing.title, link.title);
+      });
+
+      if (matched) {
+        duplicates.push({
+          firstSection: matched.sectionName,
+          sectionName,
+          title: link.title,
+        });
+        continue;
+      }
+
+      seen.push({
+        sectionName,
+        title: link.title,
+        url: link.url,
+      });
+    }
+  }
+
+  return duplicates;
+}
+
+function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const issues = [];
+  const minimumTopItems = Math.max(0, Number(options.minimumTopItems) || 0);
   const faqHeadingPattern = /^##\s*\*\*❓\s*相关问题(?:（仅1条）)?\*\*/im;
   const topSection = extractSection(pageMarkdown, /^##\s*\*\*.*TOP.*\*\*/im);
 
@@ -152,6 +217,10 @@ function collectDailyStructureIssues(pageMarkdown) {
     issues.push("Daily top items must use numbered headings");
   }
 
+  if (minimumTopItems > 0 && numberedTopItems.length < minimumTopItems) {
+    issues.push(`Daily top items are insufficient: expected at least ${minimumTopItems}`);
+  }
+
   const watchSection = extractSection(pageMarkdown, /^##\s*\*\*.*关注.*\*\*/im);
   const funSection = extractSection(pageMarkdown, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
   const duplicateUrls = collectDuplicateUrlsBySection({
@@ -164,10 +233,24 @@ function collectDailyStructureIssues(pageMarkdown) {
     issues.push("Daily sections reuse the same source URL");
   }
 
+  const duplicateTopics = collectDuplicateTopicsBySection({
+    top: extractSectionLinks(topSection),
+    watch: extractSectionLinks(watchSection),
+    fun: extractSectionLinks(funSection),
+  });
+
+  if (duplicateTopics.length > 0) {
+    issues.push("Daily sections reuse the same story across sections");
+  }
+
   return issues;
 }
 
-export function validateDailyPublication({ summaryText, pageMarkdown }) {
+export function validateDailyPublication({
+  summaryText,
+  pageMarkdown,
+  minimumTopItems = 0,
+}) {
   const issues = [
     ...collectMarkdownIssues(summaryText, {
       label: "日报摘要",
@@ -184,7 +267,7 @@ export function validateDailyPublication({ summaryText, pageMarkdown }) {
       ],
       forbiddenPatterns: DAILY_META_PATTERNS,
     }),
-    ...collectDailyStructureIssues(pageMarkdown),
+    ...collectDailyStructureIssues(pageMarkdown, { minimumTopItems }),
   ];
 
   return {
