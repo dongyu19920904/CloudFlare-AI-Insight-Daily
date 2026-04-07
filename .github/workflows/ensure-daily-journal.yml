@@ -13,6 +13,10 @@ on:
         description: "Force rerun only when today's page or home pointer still needs repair"
         required: false
         default: "false"
+      rebuild:
+        description: "Explicitly rebuild an existing daily page even when page and home are already healthy"
+        required: false
+        default: "false"
 
 concurrency:
   group: ensure-daily-journal-${{ github.ref }}
@@ -97,13 +101,13 @@ jobs:
         run: echo "Skipping trigger because today's page exists and the home page already points to it."
 
       - name: Skip force rerun because daily page and home are already healthy
-        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force == 'true'
+        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force == 'true' && github.event.inputs.rebuild != 'true'
         run: |
           echo "Force rerun requested, but today's page and home pointer are already current."
           echo "Skipping heavy regeneration to avoid unnecessary Worker subrequest pressure."
 
       - name: Trigger today's AI daily generation
-        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true'
+        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -139,7 +143,7 @@ jobs:
           PY
 
       - name: Verify today's page after trigger
-        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true'
+        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
