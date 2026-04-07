@@ -53,6 +53,14 @@ test("daily prompt sharpens one-liner, watchlist, trend, and FAQ sections withou
   assert.match(prompt, /像真人答疑/);
 });
 
+test("daily prompt requires numbered Top items, section exclusivity, and GitHub project exposure", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-04-07");
+
+  assert.match(prompt, /### 1\./);
+  assert.match(prompt, /同一条内容只能出现在一个栏目|同一链接只允许出现一次/);
+  assert.match(prompt, /GitHub|Project Name|开源项目/);
+});
+
 test("summary prompt asks for a three-line progression instead of three parallel headlines", () => {
   const prompt = getSystemPromptSummarizationStepThree();
 

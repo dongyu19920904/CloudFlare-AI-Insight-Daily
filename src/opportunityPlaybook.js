@@ -1,6 +1,6 @@
 export const opportunityPlaybook = {
   businessProfile: {
-    coreBusiness: ["AI账号", "AI内容", "轻教程", "代配置"],
+    coreBusiness: ["AI账号", "AI内容", "模板包", "跑通包", "轻服务", "代配置"],
     targetUsers: ["中文新手", "低预算用户", "想快速上手AI的人"],
     tone: "务实、直接、偏成交，不写空话",
     editorialRule:
@@ -146,6 +146,21 @@ export const opportunityPlaybook = {
       avoidLeadHint: "不要只写 framework 名字和技术热闹。",
     },
     {
+      id: "github_hot_project",
+      label: "GitHub 热门 AI 项目机会",
+      match: ["github trending", "github.com"],
+      preferredLane: "service",
+      secondaryLane: "bundle",
+      defaultAdvice:
+        "优先把热门项目写成跑通包、部署包、模板包或轻服务，不要只写 stars 和技术圈热闹。",
+      productAngle: "跑通包 / 部署包 / 模板包 / 轻服务",
+      buyerHint: "看见热门项目很心动，但自己不会安装、不会部署、不会改配置的中文新手",
+      deliveryHint: "部署说明、跑通截图、配置模板、轻量答疑或代部署",
+      channelHint: "商品页、私聊、社群、朋友圈",
+      titleHint: "先写买家拿到的结果，再写这是哪个 GitHub 热门项目",
+      avoidLeadHint: "不要把 stars、fork 数、GitHub 排名直接写成商品标题主卖点。",
+    },
+    {
       id: "skills_templates",
       label: "技能包 / 模板包机会",
       match: ["skills", "skill", "template", "templates", "prompt"],
@@ -183,9 +198,61 @@ export const opportunityPlaybook = {
     maxEvidenceItemsPerCandidate: 2,
     allowWeakDaySingleOpportunity: true,
     requireAccountLikeOpportunityInTodayCanSell: false,
+    requireDistinctCreativityModes: true,
+    dailyCreativityModeCount: 3,
     weakDayLanguage: ["先小范围试发", "先观察", "先低成本验证"],
     requireSections: ["先说结论", "今日主推", "本周可试", "今天别碰", "地图感", "今日动作"],
     offerTiers: ["低价引流款", "标准成交款", "搭售利润款"],
+    creativityModes: [
+      {
+        id: "translation",
+        label: "信息差翻译型",
+        summary: "把英文更新、GitHub 项目或海外玩法翻成中文新手能直接拿来用的小包。",
+        monetizationHint: "卖的是省搜索、省踩坑、省翻译时间。",
+        starterMove: "先整理一个中文上手版或场景清单，今晚就能试发。",
+        avoid: "不要只复述项目很火、很多 stars。",
+      },
+      {
+        id: "done_for_you",
+        label: "半成品跑通型",
+        summary: "把热门工具或工作流卖成“你不用自己折腾，我先帮你跑通”的交付。",
+        monetizationHint: "卖的是结果，不是教程本身。",
+        starterMove: "先做一个最小跑通版截图或录屏，当天就能试卖。",
+        avoid: "不要写成空泛陪跑或大而全定制。",
+      },
+      {
+        id: "comparison",
+        label: "对比试错型",
+        summary: "不卖单一工具，卖“我替你先试过这几个，直接告诉你怎么选”的试错包。",
+        monetizationHint: "卖的是少走弯路和更快决策。",
+        starterMove: "先做 2-3 个工具的中文对比清单或体验包。",
+        avoid: "不要写成普通测评文章。",
+      },
+      {
+        id: "niche_slice",
+        label: "小行业切片型",
+        summary: "把同一个热点切成具体职业或小场景，让小白看到自己能马上用在哪里。",
+        monetizationHint: "卖的是具体职业结果，而不是笼统 AI 概念。",
+        starterMove: "先挑一个最容易成交的人群做窄包，比如客服、销售、短视频剪辑。",
+        avoid: "不要一次覆盖太多行业。",
+      },
+      {
+        id: "migration",
+        label: "救火迁移型",
+        summary: "当某工具波动、涨价、限流时，卖“今天先别慌，我给你迁过去”的过渡方案。",
+        monetizationHint: "卖的是止损、替代和连续可用。",
+        starterMove: "先做一个迁移清单、平替入口包或应急组合包。",
+        avoid: "不要把所有热点都硬写成救火。",
+      },
+      {
+        id: "odd_combo",
+        label: "反常识组合型",
+        summary: "把两个原本不会一起卖的东西组合成一单，重点卖“省试错的整套结果”。",
+        monetizationHint: "卖的是组合后的新结果，不是单个工具本身。",
+        starterMove: "先做低价试水版组合包，验证有人问再加深。",
+        avoid: "不要写成花哨但无法交付的概念套餐。",
+      },
+    ],
     narrativeRequirement:
       "今日主推和本周可试都先用 1-2 句短段落讲清场景、痛点和结果，再补必要 bullets，不要写成问答表单。",
     requiredOpportunityFields: [
@@ -274,6 +341,9 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
         ? "是"
         : "否"
     }`,
+    `- 今日至少轮换 ${playbook.outputRules.dailyCreativityModeCount || 3} 种创意卖法候选，并保证主推与次推不是同一种模式: ${
+      playbook.outputRules.requireDistinctCreativityModes ? "是" : "否"
+    }`,
     `- 参考卖法可自然带出: ${playbook.outputRules.offerTiers.join("、")}，但不要机械写成报价表`,
     `- 弱证据时允许语气: ${playbook.outputRules.weakDayLanguage.join("、")}`,
     `- 叙事要求: ${playbook.outputRules.narrativeRequirement}`,
@@ -291,6 +361,12 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
     `- 不要把这些写成主卖点: ${playbook.outputRules.discouragedLeadSignals.join(
       "、"
     )}`,
+    "",
+    "### 创意卖法模式库",
+    ...playbook.outputRules.creativityModes.map(
+      (mode) =>
+        `- ${mode.label}: ${mode.summary}｜怎么赚钱：${mode.monetizationHint}｜新手起手：${mode.starterMove}｜别写成：${mode.avoid}`
+    ),
     "",
     "### 禁止乱写",
     ...playbook.outputRules.bannedClaims.map((item) => `- ${item}`),

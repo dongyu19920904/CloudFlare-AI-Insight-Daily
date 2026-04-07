@@ -11,7 +11,11 @@ const SOURCE_TYPE_SIGNAL = {
   paper: 3,
 };
 
-const GENERIC_RULE_IDS = new Set(["skills_templates", "workflow"]);
+const GENERIC_RULE_IDS = new Set([
+  "github_hot_project",
+  "skills_templates",
+  "workflow",
+]);
 const ACCOUNT_SIGNAL_PATTERN =
   /账号|账户|account|subscription|订阅|会员|套餐|seat|workspace|pro\b|plus\b|login|登录|入口|quota|pricing|price/i;
 const BUNDLE_SIGNAL_PATTERN =
@@ -82,12 +86,17 @@ function toOpportunityItem(item, sourceType) {
   };
 }
 
+function getMatchedTermsForRule(item, rule) {
+  const haystack = `${item?.searchText || ""} ${String(item?.url || "").toLowerCase()}`;
+  return (rule?.match || []).filter((term) =>
+    haystack.includes(String(term).toLowerCase())
+  );
+}
+
 function findBestRuleForItem(item, playbook) {
   const matchedRules = playbook.topicRules
     .map((rule) => {
-      const matchedTerms = rule.match.filter((term) =>
-        item.searchText.includes(String(term).toLowerCase())
-      );
+      const matchedTerms = getMatchedTermsForRule(item, rule);
 
       return {
         rule,
@@ -120,6 +129,23 @@ function findBestRuleForItem(item, playbook) {
     rule: rankedRules[0].rule,
     matchedTerms: [...new Set(rankedRules[0].matchedTerms)],
   };
+}
+
+function addItemToOpportunityGroup(groups, rule, item, matchedTerms = []) {
+  if (!rule) return;
+
+  const existingGroup = groups.get(rule.id) || {
+    rule,
+    items: [],
+    matchedTerms: new Set(),
+  };
+
+  existingGroup.items.push(item);
+  for (const term of matchedTerms) {
+    existingGroup.matchedTerms.add(term);
+  }
+
+  groups.set(rule.id, existingGroup);
 }
 
 function getLaneDimensionScores(laneId, playbook) {
@@ -598,6 +624,9 @@ export function buildOpportunityCandidates(
   options = {}
 ) {
   const groups = new Map();
+  const githubHotProjectRule = playbook.topicRules.find(
+    (rule) => rule.id === "github_hot_project"
+  );
 
   for (const [sourceType, items] of Object.entries(allUnifiedData || {})) {
     for (const rawItem of items || []) {
@@ -605,20 +634,23 @@ export function buildOpportunityCandidates(
       if (!item.title && !item.description && !item.plainText) continue;
 
       const ruleMatch = findBestRuleForItem(item, playbook);
-      if (!ruleMatch) continue;
-
-      const existingGroup = groups.get(ruleMatch.rule.id) || {
-        rule: ruleMatch.rule,
-        items: [],
-        matchedTerms: new Set(),
-      };
-
-      existingGroup.items.push(item);
-      for (const term of ruleMatch.matchedTerms) {
-        existingGroup.matchedTerms.add(term);
+      if (ruleMatch) {
+        addItemToOpportunityGroup(groups, ruleMatch.rule, item, ruleMatch.matchedTerms);
       }
 
-      groups.set(ruleMatch.rule.id, existingGroup);
+      const githubMatchedTerms = getMatchedTermsForRule(item, githubHotProjectRule);
+      const isGithubProjectSignal =
+        sourceType === "project" &&
+        (githubMatchedTerms.length > 0 ||
+          /github/i.test(item.source || "") ||
+          /github\.com/i.test(item.url || ""));
+
+      if (
+        isGithubProjectSignal &&
+        (!ruleMatch || ruleMatch.rule.id !== githubHotProjectRule?.id)
+      ) {
+        addItemToOpportunityGroup(groups, githubHotProjectRule, item, githubMatchedTerms);
+      }
     }
   }
 

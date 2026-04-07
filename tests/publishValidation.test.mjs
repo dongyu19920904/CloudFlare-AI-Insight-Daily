@@ -45,12 +45,14 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "### **🔑 3 个关键词**",
     "#Agent #微信 #开源",
     "",
-    "### 1. 一条新闻",
+    "## **🔥 重磅 TOP 6**",
+    "",
+    "### 1. [一条新闻](https://example.com/news-1)",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "",
-    "## **❓ 相关问题（仅1条）**",
+    "## **❓ 相关问题**",
     "",
     "### 如何体验 Claude 的电脑操控功能？",
     "",
@@ -101,7 +103,60 @@ test("validateDailyPublication rejects meta commentary and missing FAQ section",
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止模式|元话术|AI思考/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题（仅1条）\*\*/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题\*\*/);
+});
+
+test("validateDailyPublication rejects unnumbered Top items and duplicated links across sections", () => {
+  const result = validateDailyPublication({
+    summaryText: "Claude 支付门槛在下降，AI 工具入口和工作流搭建都在继续加速。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+Claude 支付门槛在下降，AI 工具入口和工作流搭建都在继续加速。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+- 入口变顺以后，真正拼的是谁先跑通。
+
+### **🔑 3 个关键词**
+- #Claude
+- #支付
+- #工作流
+
+## **🔥 重磅 TOP 6**
+
+### [Claude 微信支付实测](https://example.com/claude-pay)
+这是一段足够长的正文，用来模拟一条可以发布的日报条目。这是一段足够长的正文，用来模拟一条可以发布的日报条目。
+
+## **📌 值得关注**
+
+- **[产品]** [Claude 微信支付实测](https://example.com/claude-pay) - 同一条链接不应该在别的栏目再出现。
+
+## **😄 AI趣闻**
+
+### [Claude 微信支付实测](https://example.com/claude-pay)
+同一条链接也不应该在趣闻里再次出现。
+
+## **❓ 相关问题**
+
+### 如何体验 Claude？
+
+Claude 目前更完整的体验通常还是要订阅。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(
+    result.issues.join("\n"),
+    /top items must use numbered headings|reuse the same source url/i
+  );
 });
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {

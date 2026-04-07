@@ -170,9 +170,61 @@ export const accountOpportunityPlaybook = {
     maxEvidenceItemsPerCandidate: 2,
     allowWeakDaySingleOpportunity: true,
     requireAccountLikeOpportunityInTodayCanSell: true,
+    requireDistinctCreativityModes: true,
+    dailyCreativityModeCount: 3,
     weakDayLanguage: ["先小范围试挂", "先观察", "先低成本验证"],
     requireSections: ["先看信号", "今日主推", "平替机会", "闲鱼新品", "今天别碰", "今日动作"],
     offerTiers: ["低价试水款", "标准成交款", "搭售利润款"],
+    creativityModes: [
+      {
+        id: "replacement_entry",
+        label: "替代入口型",
+        summary: "不盯原账号本身，优先卖能立刻承接流量的平替入口或低门槛体验号。",
+        monetizationHint: "卖的是今天就能接上、先不耽误使用。",
+        starterMove: "先挂一个平替体验版或组合入口版，今天就能试单。",
+        avoid: "不要写成原账号新闻复述。",
+      },
+      {
+        id: "migration",
+        label: "救火迁移型",
+        summary: "当封号、风控、支付限制出现时，卖迁移包、替换包、止损包。",
+        monetizationHint: "卖的是少停机、少折腾、少损失。",
+        starterMove: "先做迁移清单、替代路线或迁移说明包。",
+        avoid: "不要把高售后迁移写成轻松无风险。",
+      },
+      {
+        id: "combo_pack",
+        label: "组合体验型",
+        summary: "把两个或三个模型组合成一单，卖“先试后定”的组合体验，而不是死卖单号。",
+        monetizationHint: "卖的是对比体验和多场景兜底。",
+        starterMove: "先做低价组合体验包，验证谁最爱问。",
+        avoid: "不要写成没有边界的大礼包。",
+      },
+      {
+        id: "risk_guard",
+        label: "风控避坑型",
+        summary: "把今天的波动翻译成买家看得懂的避坑方案，卖风险更低的选择。",
+        monetizationHint: "卖的是确定感和少踩坑。",
+        starterMove: "先做一个风控提示版商品文案或避坑说明。",
+        avoid: "不要只渲染恐慌。",
+      },
+      {
+        id: "xianyu_title_lab",
+        label: "闲鱼标题实验型",
+        summary: "把同一批货换成新标题、新组合、新卖点做实验，寻找今天更容易成交的入口。",
+        monetizationHint: "卖的是标题和组合方式，不只是货本身。",
+        starterMove: "今晚先试两版标题和一版新组合。",
+        avoid: "不要假装知道实时销量。",
+      },
+      {
+        id: "mirror_screening",
+        label: "镜像筛选服务型",
+        summary: "把镜像、第三方入口、备用通道写成代筛、代测、代找的轻服务。",
+        monetizationHint: "卖的是你先替买家排坑。",
+        starterMove: "先做一个镜像筛选说明或代测服务版。",
+        avoid: "不要把不稳定镜像包装成长稳硬货。",
+      },
+    ],
     narrativeRequirement:
       "先把今天的账号信号讲清，再落到今天能卖什么和今天别碰什么，整篇像操盘判断，不像公开科普。",
     requiredOpportunityFields: [
@@ -243,6 +295,9 @@ export function serializeAccountOpportunityPlaybook(
     `- 今日主推至少保留 1 条账号或账号搭售方向: ${
       playbook.outputRules.requireAccountLikeOpportunityInTodayCanSell ? "是" : "否"
     }`,
+    `- 今日至少轮换 ${playbook.outputRules.dailyCreativityModeCount || 3} 种创意卖法候选，并保证主推、平替机会、闲鱼新品至少覆盖两种不同模式: ${
+      playbook.outputRules.requireDistinctCreativityModes ? "是" : "否"
+    }`,
     `- 可自然带出的卖法: ${playbook.outputRules.offerTiers.join("、")}`,
     `- 弱证据时允许语气: ${playbook.outputRules.weakDayLanguage.join("、")}`,
     `- 叙事要求: ${playbook.outputRules.narrativeRequirement}`,
@@ -251,6 +306,12 @@ export function serializeAccountOpportunityPlaybook(
     `- 标题规则: ${playbook.outputRules.titleRule}`,
     `- 今天能卖写法: ${playbook.outputRules.whyNowRule}`,
     `- 不要把这些写成主卖点: ${playbook.outputRules.discouragedLeadSignals.join("、")}`,
+    "",
+    "### 创意卖法模式库",
+    ...playbook.outputRules.creativityModes.map(
+      (mode) =>
+        `- ${mode.label}: ${mode.summary}｜怎么赚钱：${mode.monetizationHint}｜新手起手：${mode.starterMove}｜别写成：${mode.avoid}`
+    ),
     "",
     "### 禁止乱写",
     ...playbook.outputRules.bannedClaims.map((item) => `- ${item}`),

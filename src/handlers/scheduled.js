@@ -24,6 +24,8 @@ import { insertFoot } from '../foot.js';
 import { insertAd, insertMidAd } from '../ad.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
+import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
+import { buildDailyCreativityBrief } from '../opportunityCreativity.js';
 import {
     buildOpportunityPaths,
     DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
@@ -510,80 +512,22 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         console.log(`[Scheduled] Data fetched and stored.`);
 
         // 2. Prepare Content Items
-        // Priority: items with images/videos first
-        const selectedContentItems = [];
-        const itemsWithMedia = [];
-        const itemsWithoutMedia = [];
-        const mediaCandidates = [];
-        
-        for (const sourceType in allUnifiedData) {
-            const items = allUnifiedData[sourceType];
-            if (items && items.length > 0) {
-                for (const item of items) {
-                    const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
-                    const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
-                    const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
-                    let itemText = "";
-                    switch (item.type) {
-                        case 'news':
-                            itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
-                            break;
-                        case 'project':
-                            itemText = `Project Name: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nDescription: ${truncatePromptText(item.description)}\nStars: ${item.details.totalStars}`;
-                            break;
-                        case 'paper':
-                            itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
-                            break;
-                        case 'socialMedia':
-                            itemText = `socialMedia Post by ${item.authors}锛歅ublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${truncatePromptText(stripHtml(item.details.content_html))}`;
-                            break;
-                        default:
-                            itemText = `Type: ${item.type}\nTitle: ${item.title || 'N/A'}\nDescription: ${truncatePromptText(item.description || 'N/A')}\nURL: ${item.url || 'N/A'}`;
-                            if (item.published_date) itemText += `\nPublished: ${item.published_date}`;
-                            if (item.source) itemText += `\nSource: ${item.source}`;
-                            if (item.details && item.details.content_html) itemText += `\nContent: ${plainTextContent}`;
-                            break;
-                    }
-                    if (mediaPlaceholders.length > 0) {
-                        itemText += `\nMedia References: ${mediaPlaceholders.join(' ')}`;
-                    }
-                    if (itemText) {
-                        if (itemHasMedia) {
-                            itemsWithMedia.push(itemText);
-                            mediaCandidates.push({
-                                title: item.title,
-                                description: item.description,
-                                source: item.source,
-                                url: item.url,
-                                plainText: plainTextContent,
-                                placeholders: mediaPlaceholders,
-                                searchText: [item.title, item.description, item.source, plainTextContent].filter(Boolean).join(' '),
-                                matchTokens: extractMatchTokens({
-                                    title: item.title,
-                                    description: item.description,
-                                    source: item.source,
-                                    plainText: plainTextContent,
-                                }),
-                            });
-                        } else {
-                            itemsWithoutMedia.push(itemText);
-                        }
-                    }
-                }
-            }
+        const {
+            selectedContentItems,
+            mediaCandidates,
+            itemsWithMedia,
+            itemsWithoutMedia,
+            selectedCounts,
+        } = buildDailyPromptSelection(allUnifiedData, env);
+
+        if (itemsWithMedia > 0) {
+            console.log(`[Scheduled] Found ${itemsWithMedia} items with images/videos, ${itemsWithoutMedia} items without.`);
         }
-        
-        // Combine: items with media first, then items without media.
-        // Keep the prompt bounded so Claude does not time out on large same-day batches.
-        const promptItems = [...itemsWithMedia, ...itemsWithoutMedia].slice(0, 16);
-        selectedContentItems.push(...promptItems);
-        
-        if (itemsWithMedia.length > 0) {
-            console.log(`[Scheduled] Found ${itemsWithMedia.length} items with images/videos, ${itemsWithoutMedia.length} items without.`);
-        }
-        debugInfo.itemsWithMedia = itemsWithMedia.length;
-        debugInfo.itemsWithoutMedia = itemsWithoutMedia.length;
+        console.log(`[Scheduled] Prompt source mix: ${JSON.stringify(selectedCounts)}`);
+        debugInfo.itemsWithMedia = itemsWithMedia;
+        debugInfo.itemsWithoutMedia = itemsWithoutMedia;
         debugInfo.mediaCandidates = mediaCandidates.length;
+        debugInfo.promptSourceMix = selectedCounts;
 
         if (selectedContentItems.length === 0) {
             console.log(`[Scheduled] No items found. Skipping generation.`);
@@ -1043,6 +987,8 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
         "- 标题先写结果、场景或交付动作，不要把 GitHub stars、安装量、SDK 名词堆进标题",
         "- “这钱从哪来”先写买家今天为什么会心动，再补当天新变化，控制在 1-2 句",
         "- 少写技术圈热闹，多写买家今天为什么会心动、今天先做什么",
+        "- 今日主推和本周可试不要写成同一种卖法模式，至少换一个角度",
+        "- 至少保留一个带点脑洞但今晚就能试卖的方向，不要所有机会都像同一张报价单",
         "",
         "下面是原始候选素材：",
         basePromptInput,
@@ -1069,6 +1015,8 @@ function buildAccountOpportunityRepairPrompt(basePromptInput, invalidMarkdown, v
         "- 不要出现便宜 token、风险自负、多用户商业化",
         "- 不要假装知道闲鱼实时销量、真实利润率或全网成交量",
         "- 闲鱼新品部分要写今天适合测试的新标题、新组合或新卖法，不要空泛",
+        "- 今日主推、平替机会、闲鱼新品至少覆盖两种不同卖法模式",
+        "- 至少保留一个不是原账号直接卖的方向，比如迁移包、组合体验包、筛选服务或标题实验",
         "",
         "下面是原始候选素材：",
         basePromptInput,
@@ -1095,7 +1043,13 @@ async function generateOpportunityMarkdown(
             previousMainTopicSignals: options.previousMainTopicSignals || null,
         }
     );
-    const playbookText = serializeOpportunityPlaybook(opportunityPlaybook);
+    const playbookText = [
+        serializeOpportunityPlaybook(opportunityPlaybook),
+        buildDailyCreativityBrief(opportunityPlaybook, dateStr, {
+            issueLabel: 'AI商机',
+            sectionLabels: ['今日主推', '本周可试'],
+        }),
+    ].join('\n\n');
     const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
         opportunityCandidates,
         opportunityPlaybook
@@ -1195,7 +1149,13 @@ async function generateAccountOpportunityMarkdown(
             previousMainTopicSignals: options.previousMainTopicSignals || null,
         }
     );
-    const playbookText = serializeAccountOpportunityPlaybook(accountOpportunityPlaybook);
+    const playbookText = [
+        serializeAccountOpportunityPlaybook(accountOpportunityPlaybook),
+        buildDailyCreativityBrief(accountOpportunityPlaybook, dateStr, {
+            issueLabel: 'AI账号商机',
+            sectionLabels: ['今日主推', '平替机会'],
+        }),
+    ].join('\n\n');
     const accountOpportunityCandidatesText = formatOpportunityCandidatesForPrompt(
         accountOpportunityCandidates,
         accountOpportunityPlaybook
@@ -1572,4 +1532,3 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null, mod
 
     return handleScheduledDaily(event, env, ctx, specifiedDate);
 }
-

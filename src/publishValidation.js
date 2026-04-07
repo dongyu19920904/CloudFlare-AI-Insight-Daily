@@ -9,7 +9,7 @@ const COMMON_FAILURE_PATTERNS = [
 ];
 
 const DAILY_META_PATTERNS = [
-  /AI思考[:：]?/i,
+  /AI思考:?/i,
   /我看了一下(今天|这批)?素材/,
   /(按照|根据).{0,12}(日期过滤规则|容错机制|评分系统)/,
   /素材(质量)?参差不齐/,
@@ -18,6 +18,25 @@ const DAILY_META_PATTERNS = [
 
 function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function canonicalizeUrl(url) {
+  if (!url) return "";
+
+  try {
+    const parsed = new URL(String(url).trim());
+    parsed.hash = "";
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/^utm_/i.test(key) || key === "ref" || key === "si") {
+        parsed.searchParams.delete(key);
+      }
+    }
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    const query = parsed.searchParams.toString();
+    return `${parsed.origin.toLowerCase()}${pathname}${query ? `?${query}` : ""}`;
+  } catch {
+    return String(url).trim().toLowerCase();
+  }
 }
 
 function collectMarkdownIssues(markdown, options = {}) {
@@ -69,6 +88,85 @@ function collectMarkdownIssues(markdown, options = {}) {
   return issues;
 }
 
+function extractSection(markdown, headingPattern) {
+  const content = String(markdown || "");
+  const match = content.match(headingPattern);
+  if (!match || match.index == null) return "";
+
+  const startIndex = match.index;
+  const remaining = content.slice(startIndex + match[0].length);
+  const nextSectionMatch = remaining.match(/\n##\s+/);
+  const endIndex = nextSectionMatch
+    ? startIndex + match[0].length + nextSectionMatch.index
+    : content.length;
+
+  return content.slice(startIndex, endIndex);
+}
+
+function extractSectionUrls(markdown) {
+  return [...String(markdown || "").matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)]
+    .map((match) => canonicalizeUrl(match[1]))
+    .filter(Boolean);
+}
+
+function collectDuplicateUrlsBySection(sectionMap) {
+  const firstSeenSectionByUrl = new Map();
+  const duplicates = [];
+
+  for (const [sectionName, urls] of Object.entries(sectionMap)) {
+    for (const url of urls) {
+      if (!firstSeenSectionByUrl.has(url)) {
+        firstSeenSectionByUrl.set(url, sectionName);
+        continue;
+      }
+
+      const firstSection = firstSeenSectionByUrl.get(url);
+      if (firstSection !== sectionName) {
+        duplicates.push({ url, firstSection, sectionName });
+      }
+    }
+  }
+
+  return duplicates;
+}
+
+function collectDailyStructureIssues(pageMarkdown) {
+  const issues = [];
+  const faqHeadingPattern = /^##\s*\*\*❓\s*相关问题(?:（仅1条）)?\*\*/im;
+  const topSection = extractSection(pageMarkdown, /^##\s*\*\*.*TOP.*\*\*/im);
+
+  if (!faqHeadingPattern.test(String(pageMarkdown || ""))) {
+    issues.push("日报页面缺少必需片段: ## **❓ 相关问题**");
+  }
+
+  if (!topSection) {
+    issues.push("日报页面缺少 TOP 栏目");
+    return issues;
+  }
+
+  const numberedTopItems = [
+    ...topSection.matchAll(/^###\s+\d+\.\s+\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/gm),
+  ];
+
+  if (numberedTopItems.length === 0) {
+    issues.push("Daily top items must use numbered headings");
+  }
+
+  const watchSection = extractSection(pageMarkdown, /^##\s*\*\*.*关注.*\*\*/im);
+  const funSection = extractSection(pageMarkdown, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
+  const duplicateUrls = collectDuplicateUrlsBySection({
+    top: extractSectionUrls(topSection),
+    watch: extractSectionUrls(watchSection),
+    fun: extractSectionUrls(funSection),
+  });
+
+  if (duplicateUrls.length > 0) {
+    issues.push("Daily sections reuse the same source URL");
+  }
+
+  return issues;
+}
+
 export function validateDailyPublication({ summaryText, pageMarkdown }) {
   const issues = [
     ...collectMarkdownIssues(summaryText, {
@@ -82,11 +180,11 @@ export function validateDailyPublication({ summaryText, pageMarkdown }) {
         "## **今日摘要**",
         "## ⚡ 快速导航",
         "## **今日AI资讯**",
-        "## **❓ 相关问题**",
         "aivora.cn",
       ],
       forbiddenPatterns: DAILY_META_PATTERNS,
     }),
+    ...collectDailyStructureIssues(pageMarkdown),
   ];
 
   return {

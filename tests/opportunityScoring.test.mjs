@@ -293,3 +293,32 @@ test("buildOpportunityCandidates downranks yesterday main topic to reduce back-t
   const penalizedClaude = withPenalty.find((candidate) => candidate.id === "claude");
   assert.ok(penalizedClaude.replayPenalty > 0);
 });
+
+test("buildOpportunityCandidates creates a generic GitHub hot project candidate for project-only signals", () => {
+  const candidates = buildOpportunityCandidates({
+    project: [
+      {
+        title: "screenpipe",
+        description: "open source AI desktop recorder for meeting notes and searchable workflows",
+        source: "GitHub Trending",
+        url: "https://github.com/mediar-ai/screenpipe",
+        published_date: "2026-04-07",
+        details: { content_html: "<p>workflow automation desktop recording</p>" },
+      },
+      {
+        title: "maybe-finance-ai",
+        description: "self-hosted AI finance copilot with templates, reports, and automation hooks",
+        source: "GitHub Trending",
+        url: "https://github.com/example/maybe-finance-ai",
+        published_date: "2026-04-07",
+        details: { content_html: "<p>template automation report workflow</p>" },
+      },
+    ],
+  });
+
+  const githubCandidate = candidates.find((candidate) => candidate.id === "github_hot_project");
+
+  assert.ok(githubCandidate);
+  assert.match(githubCandidate.productAngle, /模板包|跑通包|轻服务|部署/);
+  assert.ok(["bundle", "service"].includes(githubCandidate.preferredLane));
+});

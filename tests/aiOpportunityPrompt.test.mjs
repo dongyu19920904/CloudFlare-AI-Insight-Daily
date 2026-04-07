@@ -50,7 +50,7 @@ test("getSystemPromptAiOpportunity asks for a hooky and memorable card-style mar
   assert.match(prompt, /配图建议/);
   assert.match(prompt, /句子要短，有记忆点/);
   assert.match(prompt, /先说结论要像一条会被转发的导语/);
-  assert.match(prompt, /第一句要像朋友圈写发圈时的开场/);
+  assert.match(prompt, /第一句要像朋友圈发圈时的开场/);
   assert.match(prompt, /让小白看完后有“我也能试一下”的冲动/);
   assert.doesNotMatch(prompt, /为什么今天能卖：/);
   assert.doesNotMatch(prompt, /参考卖法：/);
@@ -67,4 +67,21 @@ test("getSystemPromptAiOpportunity prioritizes the strongest today angle instead
   assert.match(prompt, /不要写成段子、捧哏逗哏或表演腔/);
   assert.match(prompt, /只帮读者建立坐标/);
   assert.match(prompt, /分别对应引流、证明、成交/);
+});
+
+test("getSystemPromptAiOpportunity no longer defaults today's lead to account bundles", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-04-07", "### 当前业务");
+
+  assert.match(prompt, /不要默认写成账号搭售|账号类不是默认优先/);
+  assert.match(prompt, /综合得分最高|证据最强/);
+  assert.match(prompt, /GitHub|跑通包|模板包|轻服务/);
+});
+
+test("getSystemPromptAiOpportunity asks for creative-but-sellable variation instead of one repeated offer shape", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-04-07", "### 当前业务");
+
+  assert.match(prompt, /脑洞|反常识/);
+  assert.match(prompt, /今天就能试卖|今晚就能试卖/);
+  assert.match(prompt, /今日主推和本周可试不要写成同一种卖法模式/);
+  assert.match(prompt, /翻译包|组合包|迁移包|筛选服务|结果型模板包/);
 });
