@@ -753,6 +753,32 @@ async function loadFoloCookie(env) {
     return foloCookie;
 }
 
+async function loadCachedUnifiedData(env, dateStr) {
+    const allUnifiedData = {};
+    let hasAnyCachedItems = false;
+
+    for (const sourceType in dataSources) {
+        if (!Object.hasOwnProperty.call(dataSources, sourceType)) continue;
+
+        try {
+            const cachedItems = await getFromKV(env.DATA_KV, `${dateStr}-${sourceType}`);
+            if (Array.isArray(cachedItems)) {
+                allUnifiedData[sourceType] = cachedItems;
+                if (cachedItems.length > 0) {
+                    hasAnyCachedItems = true;
+                }
+            } else {
+                allUnifiedData[sourceType] = [];
+            }
+        } catch (error) {
+            console.warn(`[Scheduled] Failed to load cached ${sourceType} data for ${dateStr}: ${error.message}`);
+            allUnifiedData[sourceType] = [];
+        }
+    }
+
+    return hasAnyCachedItems ? allUnifiedData : null;
+}
+
 function buildPromptCollections(allUnifiedData, debugInfo) {
     const selectedContentItems = [];
     const itemsWithMedia = [];
@@ -829,10 +855,24 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
     return { selectedContentItems, mediaCandidates };
 }
 
-async function loadScheduledContext(env, dateStr, debugInfo) {
+async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     console.log(`[Scheduled] Fetching data for ${dateStr}...`);
-    const foloCookie = await loadFoloCookie(env);
-    const allUnifiedData = await fetchAllData(env, foloCookie);
+    let allUnifiedData = null;
+
+    if (options.preferCachedData) {
+        allUnifiedData = await loadCachedUnifiedData(env, dateStr);
+        if (allUnifiedData) {
+            debugInfo.usedCachedDailySourceData = true;
+            console.log(`[Scheduled] Reusing cached source data for ${dateStr}.`);
+        }
+    }
+
+    if (!allUnifiedData) {
+        const foloCookie = await loadFoloCookie(env);
+        allUnifiedData = await fetchAllData(env, foloCookie);
+        debugInfo.usedCachedDailySourceData = false;
+    }
+
     const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
     const {
         previousDate: previousOpportunityDate,
@@ -851,13 +891,15 @@ async function loadScheduledContext(env, dateStr, debugInfo) {
         debugInfo.previousDayFilteredNews = filteredCount;
     }
 
-    const fetchPromises = [];
-    for (const sourceType in dataSources) {
-        if (Object.hasOwnProperty.call(dataSources, sourceType)) {
-            fetchPromises.push(storeInKV(env.DATA_KV, `${dateStr}-${sourceType}`, allUnifiedData[sourceType] || []));
+    if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
+        const fetchPromises = [];
+        for (const sourceType in dataSources) {
+            if (Object.hasOwnProperty.call(dataSources, sourceType)) {
+                fetchPromises.push(storeInKV(env.DATA_KV, `${dateStr}-${sourceType}`, allUnifiedData[sourceType] || []));
+            }
         }
+        await Promise.all(fetchPromises);
     }
-    await Promise.all(fetchPromises);
 
     return {
         allUnifiedData,
@@ -1418,7 +1460,9 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo, {
+        preferCachedData: Boolean(specifiedDate),
+    });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
@@ -1457,7 +1501,9 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
     console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo, {
+        preferCachedData: Boolean(specifiedDate),
+    });
     const { opportunityPaths, opportunityMarkdownContent } = await generateOpportunityMarkdown(
         env,
         dateStr,
@@ -1490,7 +1536,9 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     const debugInfo = buildBaseDebugInfo(dateStr, 'account-opportunity');
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo);
+    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo, {
+        preferCachedData: Boolean(specifiedDate),
+    });
     const { accountOpportunityPaths, accountOpportunityMarkdownContent } = await generateAccountOpportunityMarkdown(
         env,
         dateStr,
