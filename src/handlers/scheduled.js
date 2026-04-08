@@ -1586,6 +1586,89 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
     );
 }
 
+function extractHomeNextPath(markdownContent) {
+    const match = String(markdownContent || '').match(/(?m)^next:\s*(\S+)\s*$/);
+    return match?.[1] || '';
+}
+
+async function checkScheduledOutputHealth(env, options = {}) {
+    const { pagePath, homePath, expectedHomeNext } = options;
+    const pageExists = Boolean(pagePath && await getGitHubFileSha(env, pagePath));
+    let homeCurrent = true;
+
+    if (homePath && expectedHomeNext) {
+        try {
+            const homeContent = await getGitHubFileContent(env, homePath);
+            homeCurrent = extractHomeNextPath(homeContent) === expectedHomeNext;
+        } catch (error) {
+            homeCurrent = false;
+        }
+    }
+
+    return {
+        pageExists,
+        homeCurrent,
+        healthy: pageExists && homeCurrent,
+    };
+}
+
+function buildSkippedScheduledResult(dateStr, mode, reason, extra = {}) {
+    return {
+        ...buildBaseDebugInfo(dateStr, mode),
+        skipped: true,
+        skipReason: reason,
+        ...extra,
+    };
+}
+
+async function handleScheduledDailyBackup(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    const yearMonth = getYearMonth(dateStr);
+    const health = await checkScheduledOutputHealth(env, {
+        pagePath: `content/cn/${yearMonth}/${dateStr}.md`,
+        homePath: 'content/cn/_index.md',
+        expectedHomeNext: `/${yearMonth}/${dateStr}`,
+    });
+
+    if (health.healthy) {
+        return buildSkippedScheduledResult(dateStr, 'daily-backup', 'daily-output-healthy', health);
+    }
+
+    return handleScheduledDaily(event, env, ctx, dateStr);
+}
+
+async function handleScheduledOpportunityBackup(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    const opportunityPaths = buildOpportunityPaths(dateStr);
+    const health = await checkScheduledOutputHealth(env, {
+        pagePath: opportunityPaths.pagePath,
+        homePath: opportunityPaths.homePath,
+        expectedHomeNext: opportunityPaths.publicPath.replace(/\/$/, ''),
+    });
+
+    if (health.healthy) {
+        return buildSkippedScheduledResult(dateStr, 'opportunity-backup', 'opportunity-output-healthy', health);
+    }
+
+    return handleScheduledOpportunity(event, env, ctx, dateStr);
+}
+
+async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    const accountOpportunityPaths = buildAccountOpportunityPaths(dateStr);
+    const health = await checkScheduledOutputHealth(env, {
+        pagePath: accountOpportunityPaths.pagePath,
+        homePath: accountOpportunityPaths.homePath,
+        expectedHomeNext: accountOpportunityPaths.publicPath.replace(/\/$/, ''),
+    });
+
+    if (health.healthy) {
+        return buildSkippedScheduledResult(dateStr, 'account-opportunity-backup', 'account-opportunity-output-healthy', health);
+    }
+
+    return handleScheduledAccountOpportunity(event, env, ctx, dateStr);
+}
+
 export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -1704,6 +1787,18 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
 
 export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto') {
     const resolvedMode = resolveScheduledModeFromEvent(event, env, mode);
+
+    if (resolvedMode === 'account-opportunity-backup') {
+        return handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate);
+    }
+
+    if (resolvedMode === 'opportunity-backup') {
+        return handleScheduledOpportunityBackup(event, env, ctx, specifiedDate);
+    }
+
+    if (resolvedMode === 'daily-backup') {
+        return handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+    }
 
     if (resolvedMode === 'account-opportunity') {
         return handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
