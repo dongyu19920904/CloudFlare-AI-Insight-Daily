@@ -1669,6 +1669,14 @@ async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifie
     return handleScheduledAccountOpportunity(event, env, ctx, dateStr);
 }
 
+async function handleScheduledBackup(event, env, ctx, specifiedDate = null) {
+    const daily = await handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+    const opportunity = await handleScheduledOpportunityBackup(event, env, ctx, specifiedDate);
+    const accountOpportunity = await handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate);
+
+    return { daily, opportunity, accountOpportunity };
+}
+
 export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -1788,16 +1796,8 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
 export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto') {
     const resolvedMode = resolveScheduledModeFromEvent(event, env, mode);
 
-    if (resolvedMode === 'account-opportunity-backup') {
-        return handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate);
-    }
-
-    if (resolvedMode === 'opportunity-backup') {
-        return handleScheduledOpportunityBackup(event, env, ctx, specifiedDate);
-    }
-
-    if (resolvedMode === 'daily-backup') {
-        return handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+    if (resolvedMode === 'backup') {
+        return handleScheduledBackup(event, env, ctx, specifiedDate);
     }
 
     if (resolvedMode === 'account-opportunity') {
