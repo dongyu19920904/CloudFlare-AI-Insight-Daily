@@ -452,6 +452,92 @@ function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
     return `${markdown}\n\n### **相关配图**\n\n${rendered}`;
 }
 
+function normalizeDailyLinkTitle(title) {
+    return String(title || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|，。！？、；：“”‘’（）【】《》·—…-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isRepeatedDailyStory(leftTitle, rightTitle) {
+    const left = normalizeDailyLinkTitle(leftTitle);
+    const right = normalizeDailyLinkTitle(rightTitle);
+
+    if (!left || !right) return false;
+    if (left === right) return true;
+
+    if (left.length >= 10 && right.length >= 10) {
+        return left.includes(right) || right.includes(left);
+    }
+
+    return false;
+}
+
+function sanitizeDuplicateDailySections(markdown) {
+    const content = String(markdown || '');
+    if (!content) return content;
+
+    const topMatch = content.match(/^##\s*\*\*.*TOP.*\*\*[\s\S]*?(?=\n##\s+|$)/im);
+    if (!topMatch) return content;
+
+    const topLinks = [...topMatch[0].matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)].map((match) => ({
+        title: match[1],
+        url: normalizeReplayUrl(match[2]),
+    }));
+
+    const seenStories = [...topLinks];
+    const sectionPatterns = [
+        /^##\s*\*\*.*值得关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+        /^##\s*\*\*.*AI趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+    ];
+
+    let sanitized = content;
+
+    for (const pattern of sectionPatterns) {
+        sanitized = sanitized.replace(pattern, (section) => {
+            const headingMatch = section.match(/^##[^\n]*/);
+            if (!headingMatch) return section;
+
+            const heading = headingMatch[0];
+            const body = section.slice(heading.length).trim();
+            if (!body) return section;
+
+            const chunks = body.split(/\n(?=(?:###\s+|- \*\*))/g).map((item) => item.trim()).filter(Boolean);
+            const keptChunks = [];
+
+            for (const chunk of chunks) {
+                const linkMatch = chunk.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
+                if (!linkMatch) {
+                    keptChunks.push(chunk);
+                    continue;
+                }
+
+                const title = linkMatch[1];
+                const url = normalizeReplayUrl(linkMatch[2]);
+                const duplicated = seenStories.some((story) => {
+                    if (story.url && url && story.url === url) return true;
+                    return isRepeatedDailyStory(story.title, title);
+                });
+
+                if (duplicated) continue;
+
+                seenStories.push({ title, url });
+                keptChunks.push(chunk);
+            }
+
+            if (keptChunks.length === 0) {
+                return '';
+            }
+
+            return `${heading}\n\n${keptChunks.join('\n\n')}`;
+        });
+    }
+
+    return sanitized.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
     // 濡傛灉鎸囧畾浜嗘棩鏈燂紝浣跨敤鎸囧畾鏃ユ湡锛涘惁鍒欎娇鐢ㄥ綋鍓嶆棩鏈?
     const dateStr = specifiedDate || getISODate();
@@ -932,6 +1018,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
+    dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
@@ -962,11 +1049,12 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         );
         repairedOutputOfCall3 = removeMarkdownCodeBlock(repairedOutputOfCall3);
 
-        const repairedDailySummaryMarkdownContent = assembleDailySummaryMarkdown(
+        let repairedDailySummaryMarkdownContent = assembleDailySummaryMarkdown(
             repairedOutputOfCall2,
             repairedOutputOfCall3,
             env
         );
+        repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
