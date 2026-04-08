@@ -538,6 +538,14 @@ function sanitizeDuplicateDailySections(markdown) {
     return sanitized.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function removeSecondaryDailySections(markdown) {
+    return String(markdown || '')
+        .replace(/^##\s*\*\*.*值得关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
+        .replace(/^##\s*\*\*.*AI趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
     // 濡傛灉鎸囧畾浜嗘棩鏈燂紝浣跨敤鎸囧畾鏃ユ湡锛涘惁鍒欎娇鐢ㄥ綋鍓嶆棩鏈?
     const dateStr = specifiedDate || getISODate();
@@ -1025,6 +1033,20 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         minimumTopItems: options.minimumTopItems || 0,
     });
 
+    if (!validation.ok && validation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
+        const fallbackDailySummaryMarkdownContent = removeSecondaryDailySections(dailySummaryMarkdownContent);
+        const fallbackValidation = validateDailyPublication({
+            summaryText: outputOfCall3,
+            pageMarkdown: fallbackDailySummaryMarkdownContent,
+            minimumTopItems: options.minimumTopItems || 0,
+        });
+
+        if (fallbackValidation.ok) {
+            dailySummaryMarkdownContent = fallbackDailySummaryMarkdownContent;
+            validation = fallbackValidation;
+        }
+    }
+
     if (!validation.ok) {
         console.warn(
             `[Scheduled][Daily] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
@@ -1060,6 +1082,28 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             pageMarkdown: repairedDailySummaryMarkdownContent,
             minimumTopItems: options.minimumTopItems || 0,
         });
+
+        if (!repairedValidation.ok && repairedValidation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
+            const fallbackDailySummaryMarkdownContent = removeSecondaryDailySections(repairedDailySummaryMarkdownContent);
+            const fallbackValidation = validateDailyPublication({
+                summaryText: repairedOutputOfCall3,
+                pageMarkdown: fallbackDailySummaryMarkdownContent,
+                minimumTopItems: options.minimumTopItems || 0,
+            });
+
+            if (fallbackValidation.ok) {
+                repairedDailySummaryMarkdownContent = fallbackDailySummaryMarkdownContent;
+                outputOfCall2 = repairedOutputOfCall2;
+                outputOfCall3 = repairedOutputOfCall3;
+                dailySummaryMarkdownContent = repairedDailySummaryMarkdownContent;
+                validation = fallbackValidation;
+                debugInfo.dailyRepairAttempted = true;
+                debugInfo.dailyRepairPassed = true;
+                debugInfo.dailyRepairIssues = [];
+                debugInfo.dailyGenerated = true;
+                return { outputOfCall3, dailySummaryMarkdownContent, validation };
+            }
+        }
 
         outputOfCall2 = repairedOutputOfCall2;
         outputOfCall3 = repairedOutputOfCall3;
