@@ -4,6 +4,7 @@ import { handleGetContent } from './handlers/getContent.js';
 import { handleGetContentHtml } from './handlers/getContentHtml.js';
 import { handleGenAIContent, handleGenAIPodcastScript, handleGenAIDailyAnalysis } from './handlers/genAIContent.js';
 import { handleGenAIDailyPage } from './handlers/genAIDailyPage.js';
+import { handleMediaProxy } from './handlers/mediaProxy.js';
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
@@ -97,6 +98,13 @@ export default {
         await handleScheduled(event, env, ctx);
     },
     async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+        const path = url.pathname;
+
+        if (path === '/mediaProxy' && (request.method === 'GET' || request.method === 'HEAD')) {
+            return await handleMediaProxy(request);
+        }
+
         const requiredEnvVars = [
             'DATA_KV', 'OPEN_TRANSLATE', 'USE_MODEL_PLATFORM',
             'GITHUB_TOKEN', 'GITHUB_REPO_OWNER', 'GITHUB_REPO_NAME', 'GITHUB_BRANCH',
@@ -138,8 +146,6 @@ export default {
             return new Response(errorPage, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
 
-        const url = new URL(request.url);
-        const path = url.pathname;
         console.log(`Request received: ${request.method} ${path}`);
 
         if (path === '/login') {
