@@ -1587,7 +1587,7 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
 }
 
 function extractHomeNextPath(markdownContent) {
-    const match = String(markdownContent || '').match(/(?m)^next:\s*(\S+)\s*$/);
+    const match = String(markdownContent || '').match(/^next:\s*(\S+)\s*$/m);
     return match?.[1] || '';
 }
 
