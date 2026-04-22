@@ -73,17 +73,17 @@ jobs:
           HOME_NEXT=""
           if [ "$HOME_STATUS_CODE" = "200" ]; then
             HOME_NEXT=$(python - <<'PY'
-          import base64
-          import json
-          import re
+import base64
+import json
+import re
 
-          with open("home-check.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
+with open("home-check.json", "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
 
-          content = base64.b64decode(payload["content"]).decode("utf-8")
-          match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
-          print(match.group(1) if match else "")
-          PY
+content = base64.b64decode(payload["content"]).decode("utf-8")
+match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
+print(match.group(1) if match else "")
+PY
             )
           fi
 
@@ -160,17 +160,17 @@ jobs:
             HOME_NEXT=""
             if [ "$HOME_STATUS_CODE" = "200" ]; then
               HOME_NEXT=$(python - <<'PY'
-          import base64
-          import json
-          import re
+import base64
+import json
+import re
 
-          with open("verify-home.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
+with open("verify-home.json", "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
 
-          content = base64.b64decode(payload["content"]).decode("utf-8")
-          match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
-          print(match.group(1) if match else "")
-          PY
+content = base64.b64decode(payload["content"]).decode("utf-8")
+match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
+print(match.group(1) if match else "")
+PY
               )
             fi
 

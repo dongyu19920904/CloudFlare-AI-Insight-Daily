@@ -1,65 +1,5 @@
 // src/github.js
 
-const GITHUB_API_MAX_ATTEMPTS = 4;
-const GITHUB_API_BASE_DELAY_MS = 1000;
-
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function parseGitHubErrorMessage(errorText) {
-    let errorJsonMessage = errorText;
-    try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson && errorJson.message) {
-            errorJsonMessage = errorJson.message;
-            if (errorJson.errors) {
-                errorJsonMessage += ` Details: ${JSON.stringify(errorJson.errors)}`;
-            }
-        }
-    } catch (e) {
-        // Ignore JSON parse failures and fall back to the raw response text.
-    }
-    return errorJsonMessage;
-}
-
-function shouldRetryGitHubResponse(response, errorMessage) {
-    if (!response) return false;
-
-    if (response.status === 408 || response.status === 429 || response.status >= 500) {
-        return true;
-    }
-
-    if (response.status === 403 && /secondary rate limit|abuse detection/i.test(errorMessage)) {
-        return true;
-    }
-
-    return false;
-}
-
-function getRetryDelayMs(attempt, response, errorMessage = '') {
-    const retryAfterHeader = response?.headers?.get?.('retry-after');
-    const retryAfterSeconds = Number.parseInt(retryAfterHeader || '', 10);
-
-    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
-        return retryAfterSeconds * 1000;
-    }
-
-    const exponentialDelay = GITHUB_API_BASE_DELAY_MS * (2 ** (attempt - 1));
-    if (/secondary rate limit|abuse detection/i.test(errorMessage)) {
-        return Math.max(exponentialDelay, 5000);
-    }
-
-    return exponentialDelay;
-}
-
-function shouldRetryGitHubNetworkError(error) {
-    if (!error?.message) return true;
-    if (error.message.startsWith('GitHub API request to')) return false;
-
-    return /fetch failed|network|timeout|timed out|econnreset|tls|socket/i.test(error.message);
-}
-
 /**
  * Generic wrapper for calling the GitHub API.
  */
@@ -84,52 +24,32 @@ export async function callGitHubApi(env, path, method = 'GET', body = null) {
         headers['Content-Type'] = 'application/json';
     }
 
-    for (let attempt = 1; attempt <= GITHUB_API_MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetch(url, {
+        method: method,
+        headers: headers,
+        body: body ? JSON.stringify(body) : null
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        let errorJsonMessage = errorText;
         try {
-            const response = await fetch(url, {
-                method: method,
-                headers: headers,
-                body: body ? JSON.stringify(body) : null
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                const errorJsonMessage = parseGitHubErrorMessage(errorText);
-
-                if (attempt < GITHUB_API_MAX_ATTEMPTS && shouldRetryGitHubResponse(response, errorJsonMessage)) {
-                    const delayMs = getRetryDelayMs(attempt, response, errorJsonMessage);
-                    console.warn(
-                        `GitHub API transient error (${response.status}) for ${method} ${url}. ` +
-                        `Attempt ${attempt}/${GITHUB_API_MAX_ATTEMPTS}. Retrying in ${delayMs}ms. Message: ${errorJsonMessage}`
-                    );
-                    await sleep(delayMs);
-                    continue;
-                }
-
-                console.error(`GitHub API Error: ${response.status} ${response.statusText} for ${method} ${url}. Message: ${errorJsonMessage}`);
-                throw new Error(`GitHub API request to ${path} failed: ${response.status} - ${errorJsonMessage}`);
+            const errorJson = JSON.parse(errorText);
+            if (errorJson && errorJson.message) {
+                errorJsonMessage = errorJson.message;
+                 if (errorJson.errors) {
+                     errorJsonMessage += ` Details: ${JSON.stringify(errorJson.errors)}`;
+                 }
             }
-
-            if (response.status === 204 || response.headers.get("content-length") === "0") {
-                return null;
-            }
-            return response.json();
-        } catch (error) {
-            if (attempt < GITHUB_API_MAX_ATTEMPTS && shouldRetryGitHubNetworkError(error)) {
-                const delayMs = getRetryDelayMs(attempt);
-                console.warn(
-                    `GitHub API network error for ${method} ${url}. ` +
-                    `Attempt ${attempt}/${GITHUB_API_MAX_ATTEMPTS}. Retrying in ${delayMs}ms. Error: ${error.message}`
-                );
-                await sleep(delayMs);
-                continue;
-            }
-
-            throw error;
-        }
+        } catch (e) { /* Ignore */ }
+        console.error(`GitHub API Error: ${response.status} ${response.statusText} for ${method} ${url}. Message: ${errorJsonMessage}`);
+        throw new Error(`GitHub API request to ${path} failed: ${response.status} - ${errorJsonMessage}`);
     }
 
-    throw new Error(`GitHub API request to ${path} exhausted all retry attempts.`);
+    if (response.status === 204 || response.headers.get("content-length") === "0") {
+        return null;
+    }
+    return response.json();
 }
 
 /**
@@ -211,7 +131,8 @@ function b64EncodeUnicode(str) {
         }));
     } catch (e) {
         console.error("Base64 Encoding Error:", e);
-        throw new Error("Could not encode content for GitHub.");
+        showStatus("Error: Could not encode content for GitHub.", true);
+        return null; // Return null on error
     }
 }
 
@@ -224,6 +145,7 @@ function b64DecodeUnicode(str) {
         }).join(''));
     } catch(e) {
         console.error("Base64 Decoding Error:", e);
-        throw new Error("Could not decode file content from GitHub.");
+        showStatus("Error: Could not decode file content from GitHub.", true);
+        return null; // Return null on error
     }
 }
