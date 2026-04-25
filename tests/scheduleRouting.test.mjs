@@ -10,7 +10,6 @@ const env = {
   DAILY_CRON_SCHEDULE: "0 1 * * *",
   OPPORTUNITY_CRON_SCHEDULE: "20 1 * * *",
   ACCOUNT_OPPORTUNITY_CRON_SCHEDULE: "50 1 * * *",
-  DAILY_BACKUP_CRON_SCHEDULE: "35 1 * * *",
   BACKUP_CRON_SCHEDULE: "10 2 * * *",
 };
 
@@ -79,16 +78,4 @@ test("resolveScheduledModeFromEvent maps the backup cron to backup", () => {
   );
 
   assert.equal(mode, "backup");
-});
-
-test("resolveScheduledModeFromEvent maps the daily backup cron to daily-backup", () => {
-  const mode = resolveScheduledModeFromEvent(
-    {
-      cron: "0,20,35,50 1 * * *",
-      scheduledTime: Date.parse("2026-03-28T01:35:00.000Z"),
-    },
-    env
-  );
-
-  assert.equal(mode, "daily-backup");
 });

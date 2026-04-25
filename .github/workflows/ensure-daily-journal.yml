@@ -1,6 +1,9 @@
 name: Ensure Daily Journal
 
 on:
+  schedule:
+    - cron: "11 1 * * *"
+    - cron: "19 1 * * *"
   workflow_dispatch:
     inputs:
       date:

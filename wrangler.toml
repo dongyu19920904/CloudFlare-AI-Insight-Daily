@@ -67,7 +67,6 @@ PODCAST_END = "感谢收听，我们下期再见"
 DAILY_CRON_SCHEDULE = "0 1 * * *"
 OPPORTUNITY_CRON_SCHEDULE = "20 1 * * *"
 ACCOUNT_OPPORTUNITY_CRON_SCHEDULE = "50 1 * * *"
-DAILY_BACKUP_CRON_SCHEDULE = "35 1 * * *"
 BACKUP_CRON_SCHEDULE = "10 2 * * *"
 
 BOOK_LINK = "https://news.aivora.cn"
@@ -77,6 +76,6 @@ INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)
 
 [triggers]
 crons = [
-  "0,20,35,50 1 * * *",
+  "0,20,50 1 * * *",
   "10 2 * * *"
 ]

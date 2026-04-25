@@ -31,7 +31,6 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
         "account-opportunity",
         extractCronMinute(env?.ACCOUNT_OPPORTUNITY_CRON_SCHEDULE),
       ],
-      ["daily-backup", extractCronMinute(env?.DAILY_BACKUP_CRON_SCHEDULE)],
     ];
 
     for (const [candidateMode, candidateMinute] of modeByMinute) {
@@ -42,9 +41,6 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
   }
 
   const cron = String(event?.cron || "").trim();
-  if (cron && cron === String(env?.DAILY_BACKUP_CRON_SCHEDULE || "").trim()) {
-    return "daily-backup";
-  }
   if (cron && cron === String(env?.BACKUP_CRON_SCHEDULE || "").trim()) {
     return "backup";
   }
