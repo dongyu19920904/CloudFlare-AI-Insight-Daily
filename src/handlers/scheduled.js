@@ -598,7 +598,7 @@ function removeTopSectionOverflow(markdown) {
 
     const lastItemStart = numberedItems[numberedItems.length - 1].index || 0;
     const lastItemText = topSection.slice(lastItemStart);
-    const overflowMatch = lastItemText.match(/\n---\s*\n(?=(?:\*\*\[[^\]]+\]\*\*|###\s+(?!\d+\.)))/m);
+    const overflowMatch = lastItemText.match(/\n---[ \t\r]*\n+(?=(?:\*\*\[[^\]]+\]\*\*|###\s+(?!\d+\.)))/m);
     if (!overflowMatch || overflowMatch.index == null) return content;
 
     const keepTopSection = topSection.slice(0, lastItemStart + overflowMatch.index).trimEnd();
