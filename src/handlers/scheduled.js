@@ -1744,6 +1744,10 @@ async function handleScheduledBackup(event, env, ctx, specifiedDate = null) {
     return { daily, opportunity, accountOpportunity };
 }
 
+function shouldPreferCachedDailyData(specifiedDate) {
+    return Boolean(specifiedDate) && specifiedDate !== getISODate();
+}
+
 export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -1751,7 +1755,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
     const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: Boolean(specifiedDate),
+        preferCachedData: shouldPreferCachedDailyData(specifiedDate),
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
