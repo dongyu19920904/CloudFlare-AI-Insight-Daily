@@ -531,8 +531,8 @@ function sanitizeDuplicateDailySections(markdown) {
 
     const seenStories = [...topLinks];
     const sectionPatterns = [
-        /^##\s*\*\*.*值得关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
-        /^##\s*\*\*.*AI趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+        /^##\s*\*\*.*关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+        /^##\s*\*\*.*AI.*趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
     ];
 
     let sanitized = content;
