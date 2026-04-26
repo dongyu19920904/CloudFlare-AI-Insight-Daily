@@ -399,6 +399,62 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
     ].join('\n');
 }
 
+function extractPromptFallbackSignals(selectedContentItems, existingMarkdown, limit = 2) {
+    const usedUrls = new Set(
+        [...String(existingMarkdown || '').matchAll(/https?:\/\/[^\s)]+/g)]
+            .map((match) => normalizeReplayUrl(match[0]))
+            .filter(Boolean)
+    );
+    const signals = [];
+
+    for (const itemText of selectedContentItems || []) {
+        const text = String(itemText || '');
+        const urlMatch = text.match(/^(?:Url|URL):\s*(https?:\/\/\S+)/im);
+        const urlKey = normalizeReplayUrl(urlMatch?.[1]);
+        if (urlKey && usedUrls.has(urlKey)) continue;
+
+        const titleMatch = text.match(/^(?:News Title|Project Name|Papers Title|Title):\s*(.+)$/im);
+        const title = String(titleMatch?.[1] || '').replace(/\s+/g, ' ').trim();
+        if (!title) continue;
+
+        signals.push(title.length > 42 ? `${title.slice(0, 42)}...` : title);
+        if (signals.length >= limit) break;
+    }
+
+    return signals;
+}
+
+function buildDailyFunObservation(selectedContentItems, existingMarkdown) {
+    const signals = extractPromptFallbackSignals(selectedContentItems, existingMarkdown);
+    if (signals.length >= 2) {
+        return `今天的轻观察：把「${signals[0]}」和「${signals[1]}」放在一起看，很像今天 AI 圈的日常切面：一边有人认真算成本、调提示词，一边有人把模型能力塞进具体工作流。热闹不在口号里，而在大家开始把 AI 当成手边工具反复试。`;
+    }
+    if (signals.length === 1) {
+        return `今天的轻观察：「${signals[0]}」这条素材像今天 AI 圈的小注脚：大家不只盯大模型参数，也开始认真计较价格、提示词、图片和工作流这些细节。AI 越像日用品，新闻就越像使用说明旁边的便利贴。`;
+    }
+    return '今天的轻观察：今天的素材更像一张工作台清单，模型价格、图像提示词和开发工作流挤在一起。AI 不再只像新闻标题里的大事件，而是开始变成每个人手边要调、要算、要试的小工具。';
+}
+
+function ensureDailyFunSection(markdown, selectedContentItems) {
+    let content = String(markdown || '');
+    const existingSection = findMarkdownHeadingSection(content, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
+    if (existingSection) {
+        const body = existingSection.section.replace(/^##[^\n]*/m, '').trim();
+        if (body) return content;
+        content = `${content.slice(0, existingSection.start)}${content.slice(existingSection.end)}`.replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    const section = `## **😄 AI趣闻**\n\n${buildDailyFunObservation(selectedContentItems, content)}`;
+    const tailMatch = content.match(/\n##\s+\*\*(?:[^*\n]*AI趋势预测|❓\s*相关问题)/m);
+    if (!tailMatch || tailMatch.index == null) {
+        return `${content}\n\n${section}`.replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    const before = content.slice(0, tailMatch.index).trimEnd();
+    const after = content.slice(tailMatch.index).trimStart();
+    return `${before}\n\n${section}\n\n${after}`.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function extractMatchTokens(item) {
     const text = [
         item?.title || '',
@@ -1147,6 +1203,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
+    const funEnsuredDailySummaryMarkdownContent = ensureDailyFunSection(dailySummaryMarkdownContent, selectedContentItems);
+    debugInfo.dailyFunSectionInserted = funEnsuredDailySummaryMarkdownContent !== dailySummaryMarkdownContent;
+    dailySummaryMarkdownContent = funEnsuredDailySummaryMarkdownContent;
     dailySummaryMarkdownContent = removeTopSectionOverflow(dailySummaryMarkdownContent);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
@@ -1184,6 +1243,13 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
+        const funEnsuredRepairedDailySummaryMarkdownContent = ensureDailyFunSection(
+            repairedDailySummaryMarkdownContent,
+            selectedContentItems
+        );
+        debugInfo.dailyRepairFunSectionInserted =
+            funEnsuredRepairedDailySummaryMarkdownContent !== repairedDailySummaryMarkdownContent;
+        repairedDailySummaryMarkdownContent = funEnsuredRepairedDailySummaryMarkdownContent;
         repairedDailySummaryMarkdownContent = removeTopSectionOverflow(repairedDailySummaryMarkdownContent);
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
