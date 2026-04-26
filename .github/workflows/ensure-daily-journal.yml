@@ -73,17 +73,17 @@ jobs:
           HOME_NEXT=""
           if [ "$HOME_STATUS_CODE" = "200" ]; then
             HOME_NEXT=$(python - <<'PY'
-import base64
-import json
-import re
+          import base64
+          import json
+          import re
 
-with open("home-check.json", "r", encoding="utf-8") as handle:
-    payload = json.load(handle)
+          with open("home-check.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
 
-content = base64.b64decode(payload["content"]).decode("utf-8")
-match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
-print(match.group(1) if match else "")
-PY
+          content = base64.b64decode(payload["content"]).decode("utf-8")
+          match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
+          print(match.group(1) if match else "")
+          PY
             )
           fi
 
@@ -118,8 +118,8 @@ PY
             echo "TEST_TRIGGER_SECRET is not configured in GitHub Actions. Falling back to the Worker's default test secret."
           fi
 
-          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}"
-          echo "Triggering ${TRIGGER_URL}"
+          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}&async=1"
+          echo "Queueing async daily generation for ${TARGET_DATE}."
           curl -sS "$TRIGGER_URL" > trigger-response.json
 
           python - <<'PY'
@@ -133,7 +133,43 @@ PY
           if not payload.get("success"):
               raise SystemExit("Worker trigger failed")
 
-          debug = payload.get("debug") or {}
+          status_key = payload.get("statusKey")
+          if not payload.get("queued") or not status_key:
+              raise SystemExit("Worker trigger did not return a queued status key")
+
+          with open("status-key.txt", "w", encoding="utf-8") as handle:
+              handle.write(status_key)
+          PY
+
+          STATUS_KEY=$(cat status-key.txt)
+          for attempt in $(seq 1 90); do
+            STATUS_URL="${WORKER_BASE_URL}/testTriggerScheduledStatus?key=${TEST_TRIGGER_SECRET}&mode=daily&date=${TARGET_DATE}&statusKey=${STATUS_KEY}"
+            curl -sS "$STATUS_URL" > status-response.json
+
+            STATE=$(python - <<'PY'
+          import json
+
+          with open("status-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          status = payload.get("status") or {}
+          print(status.get("state") or "missing")
+          PY
+            )
+
+            echo "Daily generation status attempt ${attempt}: ${STATE}"
+
+            if [ "$STATE" = "success" ]; then
+              python - <<'PY'
+          import json
+
+          with open("status-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          status = payload.get("status") or {}
+          debug = status.get("debug") or {}
+          print(json.dumps(debug, ensure_ascii=False, indent=2))
+
           if not debug.get("dailyGenerated"):
               raise SystemExit("Daily content was not generated")
 
@@ -141,6 +177,27 @@ PY
               issues = " | ".join(debug.get("dailyValidationIssues") or [])
               raise SystemExit(f"Daily content was not published: {issues}")
           PY
+              exit 0
+            fi
+
+            if [ "$STATE" = "error" ]; then
+              python - <<'PY'
+          import json
+
+          with open("status-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          status = payload.get("status") or {}
+          print(json.dumps(status, ensure_ascii=False, indent=2))
+          raise SystemExit("Async daily generation failed")
+          PY
+            fi
+
+            sleep 20
+          done
+
+          echo "Timed out waiting for async daily generation to finish."
+          exit 1
 
       - name: Verify today's page after trigger
         if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
@@ -157,20 +214,20 @@ PY
             PAGE_STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
             HOME_STATUS_CODE=$(curl -sS -o verify-home.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
 
-            HOME_NEXT=""
+          HOME_NEXT=""
             if [ "$HOME_STATUS_CODE" = "200" ]; then
               HOME_NEXT=$(python - <<'PY'
-import base64
-import json
-import re
+          import base64
+          import json
+          import re
 
-with open("verify-home.json", "r", encoding="utf-8") as handle:
-    payload = json.load(handle)
+          with open("verify-home.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
 
-content = base64.b64decode(payload["content"]).decode("utf-8")
-match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
-print(match.group(1) if match else "")
-PY
+          content = base64.b64decode(payload["content"]).decode("utf-8")
+          match = re.search(r"(?m)^next:\s*(\S+)\s*$", content)
+          print(match.group(1) if match else "")
+          PY
               )
             fi
 

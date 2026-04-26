@@ -1800,6 +1800,10 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null, mod
         return handleScheduledBackup(event, env, ctx, specifiedDate);
     }
 
+    if (resolvedMode === 'daily-backup') {
+        return handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+    }
+
     if (resolvedMode === 'account-opportunity') {
         return handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
     }
