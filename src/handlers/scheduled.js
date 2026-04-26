@@ -587,6 +587,27 @@ function sanitizeDuplicateDailySections(markdown) {
     return sanitized.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function removeTopSectionOverflow(markdown) {
+    const content = String(markdown || '');
+    const topMatch = content.match(/^##\s*\*\*.*TOP.*\*\*[\s\S]*?(?=\n##\s+|$)/im);
+    if (!topMatch || topMatch.index == null) return content;
+
+    const topSection = topMatch[0];
+    const numberedItems = [...topSection.matchAll(/^###\s+\d+\.\s+/gm)];
+    if (numberedItems.length === 0) return content;
+
+    const lastItemStart = numberedItems[numberedItems.length - 1].index || 0;
+    const lastItemText = topSection.slice(lastItemStart);
+    const overflowMatch = lastItemText.match(/\n---\s*\n(?=(?:\*\*\[[^\]]+\]\*\*|###\s+(?!\d+\.)))/m);
+    if (!overflowMatch || overflowMatch.index == null) return content;
+
+    const keepTopSection = topSection.slice(0, lastItemStart + overflowMatch.index).trimEnd();
+    const beforeTop = content.slice(0, topMatch.index);
+    const afterTop = content.slice(topMatch.index + topSection.length);
+
+    return `${beforeTop}${keepTopSection}${afterTop}`.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function removeSecondaryDailySections(markdown) {
     return String(markdown || '')
         .replace(/^##\s*\*\*.*关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
@@ -1117,6 +1138,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = removeTopSectionOverflow(dailySummaryMarkdownContent);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
@@ -1167,6 +1189,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
+        repairedDailySummaryMarkdownContent = removeTopSectionOverflow(repairedDailySummaryMarkdownContent);
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
