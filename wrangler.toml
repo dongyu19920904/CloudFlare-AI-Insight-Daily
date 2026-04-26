@@ -64,6 +64,7 @@ DAILY_TITLE_MIN = " `爱窝啦 AI 日报` "
 PODCAST_TITLE = "爱窝啦播报"
 PODCAST_BEGIN = "欢迎收听爱窝啦 AI 日报，每天为你精选 AI 领域最值得关注的动态"
 PODCAST_END = "感谢收听，我们下期再见"
+DAILY_PREFETCH_CRON_SCHEDULE = "45 0 * * *"
 DAILY_CRON_SCHEDULE = "0 1 * * *"
 OPPORTUNITY_CRON_SCHEDULE = "20 1 * * *"
 ACCOUNT_OPPORTUNITY_CRON_SCHEDULE = "50 1 * * *"
@@ -80,6 +81,7 @@ INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)
 
 [triggers]
 crons = [
+  "45 0 * * *",
   "0,20,35,50 1 * * *",
   "10 2 * * *"
 ]

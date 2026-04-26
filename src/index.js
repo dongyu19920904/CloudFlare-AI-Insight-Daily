@@ -14,6 +14,7 @@ import { getFromKV, storeInKV } from './kv.js';
 import {
     handleScheduled,
     handleScheduledDaily,
+    handleScheduledDailyPrefetch,
     handleScheduledOpportunity,
     handleScheduledAccountOpportunity,
 } from './handlers/scheduled.js';
@@ -88,6 +89,10 @@ async function runScheduledMode(mode, env, specifiedDate) {
 
     if (mode === 'daily') {
         return handleScheduledDaily(fakeEvent, env, fakeCtx, specifiedDate);
+    }
+
+    if (mode === 'daily-prefetch') {
+        return handleScheduledDailyPrefetch(fakeEvent, env, fakeCtx, specifiedDate);
     }
 
     return handleScheduled(fakeEvent, env, fakeCtx, specifiedDate, 'all');
@@ -210,7 +215,7 @@ export default {
                       ? 'opportunity'
                       : path === '/testTriggerScheduledAccountOpportunity'
                         ? 'account-opportunity'
-                        : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'account-opportunity' || requestedMode === 'all'
+                        : requestedMode === 'daily' || requestedMode === 'daily-prefetch' || requestedMode === 'opportunity' || requestedMode === 'account-opportunity' || requestedMode === 'all'
                         ? requestedMode
                         : 'daily';
             try {
@@ -299,7 +304,7 @@ export default {
                           ? 'opportunity'
                           : path === '/triggerScheduledAccountOpportunity'
                             ? 'account-opportunity'
-                          : requestedMode === 'daily' || requestedMode === 'opportunity' || requestedMode === 'account-opportunity' || requestedMode === 'all'
+                          : requestedMode === 'daily' || requestedMode === 'daily-prefetch' || requestedMode === 'opportunity' || requestedMode === 'account-opportunity' || requestedMode === 'all'
                             ? requestedMode
                             : 'daily';
                 if (runAsync) {

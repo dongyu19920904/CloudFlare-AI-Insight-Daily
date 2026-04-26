@@ -26,6 +26,7 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
   if (Number.isFinite(utcMinute)) {
     const modeByMinute = [
       ["daily", extractCronMinute(env?.DAILY_CRON_SCHEDULE)],
+      ["daily-prefetch", extractCronMinute(env?.DAILY_PREFETCH_CRON_SCHEDULE)],
       ["opportunity", extractCronMinute(env?.OPPORTUNITY_CRON_SCHEDULE)],
       [
         "account-opportunity",
@@ -42,6 +43,9 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
   }
 
   const cron = String(event?.cron || "").trim();
+  if (cron && cron === String(env?.DAILY_PREFETCH_CRON_SCHEDULE || "").trim()) {
+    return "daily-prefetch";
+  }
   if (cron && cron === String(env?.DAILY_BACKUP_CRON_SCHEDULE || "").trim()) {
     return "daily-backup";
   }

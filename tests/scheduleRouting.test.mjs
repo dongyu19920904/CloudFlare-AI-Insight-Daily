@@ -7,6 +7,7 @@ import {
 } from "../src/scheduleRouting.js";
 
 const env = {
+  DAILY_PREFETCH_CRON_SCHEDULE: "45 0 * * *",
   DAILY_CRON_SCHEDULE: "0 1 * * *",
   OPPORTUNITY_CRON_SCHEDULE: "20 1 * * *",
   ACCOUNT_OPPORTUNITY_CRON_SCHEDULE: "50 1 * * *",
@@ -30,6 +31,18 @@ test("resolveScheduledModeFromEvent maps the shared cron's 01:00 UTC run to dail
   );
 
   assert.equal(mode, "daily");
+});
+
+test("resolveScheduledModeFromEvent maps the prefetch cron to daily-prefetch", () => {
+  const mode = resolveScheduledModeFromEvent(
+    {
+      cron: "45 0 * * *",
+      scheduledTime: Date.parse("2026-03-28T00:45:00.000Z"),
+    },
+    env
+  );
+
+  assert.equal(mode, "daily-prefetch");
 });
 
 test("resolveScheduledModeFromEvent maps the shared cron's 01:20 UTC run to opportunity", () => {

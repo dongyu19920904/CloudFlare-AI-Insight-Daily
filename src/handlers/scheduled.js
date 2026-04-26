@@ -1183,6 +1183,31 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     };
 }
 
+export async function handleScheduledDailyPrefetch(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    setFetchDate(dateStr);
+    const debugInfo = buildBaseDebugInfo(dateStr, 'daily-prefetch');
+    console.log(`[Scheduled][DailyPrefetch] Starting source prefetch for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+
+    const foloCookie = await loadFoloCookie(env);
+    const allUnifiedData = await fetchAllData(env, foloCookie);
+    const storePromises = [];
+    const storedCounts = {};
+
+    for (const sourceType in dataSources) {
+        if (!Object.hasOwnProperty.call(dataSources, sourceType)) continue;
+        const items = allUnifiedData[sourceType] || [];
+        storedCounts[sourceType] = Array.isArray(items) ? items.length : 0;
+        storePromises.push(storeInKV(env.DATA_KV, `${dateStr}-${sourceType}`, items));
+    }
+
+    await Promise.all(storePromises);
+    debugInfo.prefetchStoredCounts = storedCounts;
+    debugInfo.prefetchStoredItemCount = countUnifiedDataItems(allUnifiedData);
+    debugInfo.usedCachedDailySourceData = false;
+    return debugInfo;
+}
+
 async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCandidates, debugInfo, options = {}) {
     if (selectedContentItems.length === 0) {
         throw new Error('No content items found for daily generation.');
@@ -1841,7 +1866,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
     const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: Boolean(specifiedDate),
+        preferCachedData: Boolean(specifiedDate) || String(env.DAILY_USE_PREFETCH_CACHE || 'true').toLowerCase() !== 'false',
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
@@ -1959,6 +1984,10 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null, mod
 
     if (resolvedMode === 'daily-backup') {
         return handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+    }
+
+    if (resolvedMode === 'daily-prefetch') {
+        return handleScheduledDailyPrefetch(event, env, ctx, specifiedDate);
     }
 
     if (resolvedMode === 'account-opportunity') {
