@@ -414,7 +414,12 @@ function extractPromptFallbackSignals(selectedContentItems, existingMarkdown, li
         if (urlKey && usedUrls.has(urlKey)) continue;
 
         const titleMatch = text.match(/^(?:News Title|Project Name|Papers Title|Title):\s*(.+)$/im);
-        const title = String(titleMatch?.[1] || '').replace(/\s+/g, ' ').trim();
+        const title = String(titleMatch?.[1] || '')
+            .replace(/https?:\/\/\S+/gi, '')
+            .replace(/^RT\s+[^:：]{1,40}[:：]\s*/i, '')
+            .replace(/^[\s:：,，。.!！？?、\-–—]+|[\s:：,，。.!！？?、\-–—]+$/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
         if (!title) continue;
 
         signals.push(title.length > 42 ? `${title.slice(0, 42)}...` : title);
