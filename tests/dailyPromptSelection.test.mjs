@@ -71,3 +71,29 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   assert.match(result.selectedContentItems.join("\n"), /Project Name:/);
   assert.match(result.selectedContentItems.join("\n"), /Stars Today:/);
 });
+
+test("buildDailyPromptSelection backfills same-topic items with distinct URLs when prompt would be too thin", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: Array.from({ length: 12 }, (_, index) => ({
+        ...buildNewsItem(index + 1),
+        title: "GPT Image 2 Prompt example",
+        url: `https://example.com/gpt-image-${index + 1}`,
+      })),
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 12,
+      DAILY_PROMPT_MIN_ITEMS: 12,
+      DAILY_PROMPT_NEWS_ITEMS: 10,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  assert.equal(result.selectedContentItems.length, 12);
+  assert.match(result.selectedContentItems.join("\n"), /gpt-image-12/);
+});

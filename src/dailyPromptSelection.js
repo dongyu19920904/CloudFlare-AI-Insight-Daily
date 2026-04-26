@@ -242,6 +242,7 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 28);
+  const minimumPromptItems = Math.min(maxItems, parsePositiveInt(env.DAILY_PROMPT_MIN_ITEMS, 12));
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 10),
     project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 8),
@@ -323,6 +324,18 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     for (const candidate of remainingCandidates) {
       if (selectedCandidates.length >= maxItems) break;
       tryAddCandidate(candidate);
+    }
+
+    if (selectedCandidates.length < minimumPromptItems) {
+      const selectedUrlKeys = new Set(selectedCandidates.map((candidate) => normalizeReplayUrl(candidate?.url)).filter(Boolean));
+
+      for (const candidate of remainingCandidates) {
+        if (selectedCandidates.length >= minimumPromptItems || selectedCandidates.length >= maxItems) break;
+        const urlKey = normalizeReplayUrl(candidate?.url);
+        if (!urlKey || selectedUrlKeys.has(urlKey)) continue;
+        selectedUrlKeys.add(urlKey);
+        selectedCandidates.push(candidate);
+      }
     }
   }
 
