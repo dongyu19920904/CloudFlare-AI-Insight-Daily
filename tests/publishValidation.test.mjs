@@ -52,6 +52,15 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "",
+    "## **📌 值得关注**",
+    "",
+    "- **[开源]** [另一个项目](https://example.com/watch-1) - 这条补充了 TOP 未覆盖的开发者工具。",
+    "",
+    "## **😄 AI趣闻**",
+    "",
+    "### [一个轻松观察](https://example.com/fun-1)",
+    "这条用轻一点的方式补充今天的产品变化，不重复 TOP 的同一条链接。",
+    "",
     "## **❓ 相关问题**",
     "",
     "### 如何体验 Claude 的电脑操控功能？",
@@ -68,6 +77,48 @@ test("validateDailyPublication accepts a structured daily page", () => {
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
+});
+
+test("validateDailyPublication rejects missing secondary daily sections", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天模型和工具更新不少，日报结构必须完整，不能丢掉补充栏目。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天模型和工具更新不少，日报结构必须完整，不能丢掉补充栏目。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+今天 AI 工具更新密集。
+
+### **🔑 3 个关键词**
+#模型 #工具 #日报
+
+## **🔥 重磅 TOP 1**
+
+### 1. [一条新闻](https://example.com/news-1)
+这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。
+这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。
+这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的工具？
+
+先确认官方入口，再决定是否使用成品服务。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /值得关注/);
+  assert.match(result.issues.join("\n"), /AI趣闻/);
 });
 
 test("validateDailyPublication rejects meta commentary and missing FAQ section", () => {
