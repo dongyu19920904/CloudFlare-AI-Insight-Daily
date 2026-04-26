@@ -13,6 +13,32 @@ import TwitterDataSource from './dataSources/twitter.js';
 import RedditDataSource from './dataSources/reddit.js';
 import { applyLinuxDoPolicy, applyNewsSourcePolicy, resolveLinuxDoPolicy } from './sourcePolicies.js';
 
+function getPositiveInteger(value, fallback) {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+    let timeoutId;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+                }, timeoutMs);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function getDataSourceTimeoutMs(env, dataSource) {
+    const sourceTimeout = env[`DATA_SOURCE_${String(dataSource.type || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_TIMEOUT_MS`];
+    const defaultTimeout = dataSource.type === 'folo-multi-feeds' ? 120000 : 45000;
+    return getPositiveInteger(sourceTimeout || env.DATA_SOURCE_FETCH_TIMEOUT_MS, defaultTimeout);
+}
 
 // Register data sources as arrays to support multiple sources per type
 export const dataSources = {
@@ -43,7 +69,12 @@ export async function fetchAndTransformDataForType(sourceType, env, foloCookie) 
     for (const dataSource of sources) {
         try {
             // Pass foloCookie to the fetch method of the data source
-            const rawData = await dataSource.fetch(env, foloCookie);
+            const sourceLabel = dataSource.type || dataSource.fetch?.name || sourceType;
+            const rawData = await withTimeout(
+                dataSource.fetch(env, foloCookie),
+                getDataSourceTimeoutMs(env, dataSource),
+                `${sourceType}/${sourceLabel}`
+            );
             const unifiedData = dataSource.transform(rawData, sourceType);
             allUnifiedDataForType = allUnifiedDataForType.concat(unifiedData);
         } catch (error) {

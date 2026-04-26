@@ -1,11 +1,45 @@
 ﻿import {
     getRandomUserAgent,
-    sleep,
     isDateWithinLastDays,
     stripHtml,
     formatDateToChineseWithTime,
     escapeHtml,
 } from '../helpers.js';
+
+function getPositiveInteger(value, fallback) {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(resource, {
+            ...options,
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    const workerCount = Math.min(Math.max(1, concurrency), items.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (true) {
+            const index = nextIndex;
+            nextIndex += 1;
+            if (index >= items.length) return;
+            results[index] = await mapper(items[index], index);
+        }
+    });
+
+    await Promise.all(workers);
+    return results;
+}
 
 /**
  * 通用 Folo 多 ID 抓取源：
@@ -41,8 +75,10 @@ const FoloMultiFeedsDataSource = {
             .filter(Boolean);
         const uniqueIds = [...new Set(ids)];
 
-        const fetchPages = parseInt(env.FOLO_NEWS_FETCH_PAGES || env.FOLO_FETCH_PAGES || '2', 10);
-        const filterDays = parseInt(env.FOLO_FILTER_DAYS || '3', 10);
+        const fetchPages = getPositiveInteger(env.FOLO_NEWS_FETCH_PAGES || env.FOLO_FETCH_PAGES, 2);
+        const filterDays = getPositiveInteger(env.FOLO_FILTER_DAYS, 3);
+        const concurrency = getPositiveInteger(env.FOLO_NEWS_FETCH_CONCURRENCY || env.FOLO_FETCH_CONCURRENCY, 4);
+        const requestTimeoutMs = getPositiveInteger(env.FOLO_NEWS_REQUEST_TIMEOUT_MS || env.FOLO_REQUEST_TIMEOUT_MS, 12000);
         const idType = String(env.FOLO_NEWS_ID_TYPE || 'auto').toLowerCase(); // feed | list | auto
 
         const allItems = [];
@@ -75,11 +111,15 @@ const FoloMultiFeedsDataSource = {
                 if (publishedAfter) body.publishedAfter = publishedAfter;
 
                 console.log(`Fetching Folo ${kind} ${id}, page ${i + 1}...`);
-                const response = await fetch(env.FOLO_DATA_API, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(body),
-                });
+                const response = await fetchWithTimeout(
+                    env.FOLO_DATA_API,
+                    {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify(body),
+                    },
+                    requestTimeoutMs
+                );
 
                 if (!response.ok) {
                     console.error(`Failed to fetch Folo ${kind} ${id}, page ${i + 1}: ${response.statusText}`);
@@ -107,29 +147,33 @@ const FoloMultiFeedsDataSource = {
                 );
 
                 publishedAfter = data.data[data.data.length - 1].entries.publishedAt;
-                await sleep(Math.random() * 1500);
             }
             return localItems;
         };
 
-        for (const id of uniqueIds) {
+        const fetchOneId = async (id) => {
             try {
                 if (idType === 'list') {
-                    allItems.push(...(await fetchOneKind(id, 'list')));
+                    return await fetchOneKind(id, 'list');
                 } else if (idType === 'feed') {
-                    allItems.push(...(await fetchOneKind(id, 'feed')));
+                    return await fetchOneKind(id, 'feed');
                 } else {
                     // auto: 先 feed 再 list
                     const feedItems = await fetchOneKind(id, 'feed');
                     if (feedItems.length > 0) {
-                        allItems.push(...feedItems);
-                    } else {
-                        allItems.push(...(await fetchOneKind(id, 'list')));
+                        return feedItems;
                     }
+                    return await fetchOneKind(id, 'list');
                 }
             } catch (error) {
-                console.error(`Error fetching Folo id ${id}:`, error);
+                console.error(`Error fetching Folo id ${id}:`, error?.message || error);
+                return [];
             }
+        };
+
+        const results = await mapWithConcurrency(uniqueIds, concurrency, fetchOneId);
+        for (const items of results) {
+            allItems.push(...(items || []));
         }
 
         return {
