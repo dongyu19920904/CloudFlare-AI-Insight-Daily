@@ -384,9 +384,9 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "",
         "请严格遵守以下规则：",
         "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
-        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **😄 AI趣闻` / `## **❓ 相关问题**`",
+        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📊 更多动态` / `## **😄 AI趣闻` / `## **❓ 相关问题**`",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
-        "- 「值得关注」和「AI趣闻」不要复用 TOP 里的同一条链接；如果剩余素材不足，AI趣闻可以写成不带链接的轻观察，也不要复用链接",
+        "- 「更多动态」和「AI趣闻」不要复用 TOP 里的同一条链接，也不要彼此复用同一条链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
         "- 直接输出可发布成稿，不要输出任何元话术",
@@ -526,14 +526,6 @@ function findMarkdownHeadingSection(content, headingPattern) {
     };
 }
 
-function buildSecondarySectionFallback(heading) {
-    if (/AI趣闻/i.test(heading)) {
-        return `${heading}\n\n今天最有意思的不是某一条链接，而是发布节奏本身：一句推文、一个 API 参数、一个命令，就足够让开发者社区立刻换模型、开任务、算成本。`;
-    }
-
-    return `${heading}\n\n- **[观察]** 今天的增量集中在模型 API、价格战和开发工作流三条主线，值得把 TOP 10 里的实测动作优先跑一遍。`;
-}
-
 function sanitizeDuplicateDailySections(markdown) {
     const content = String(markdown || '');
     if (!content) return content;
@@ -548,7 +540,7 @@ function sanitizeDuplicateDailySections(markdown) {
 
     const seenStories = [...topLinks];
     const sectionHeadingPatterns = [
-        /^##\s*\*\*.*关注.*\*\*/im,
+        /^##\s*\*\*.*更多动态.*\*\*/im,
         /^##\s*\*\*.*AI.*趣闻.*\*\*/im,
     ];
 
@@ -596,9 +588,7 @@ function sanitizeDuplicateDailySections(markdown) {
             keptChunks.push(chunk);
         }
 
-        const replacement = keptChunks.length === 0
-            ? buildSecondarySectionFallback(heading)
-            : `${heading}\n\n${keptChunks.join('\n\n')}`;
+        const replacement = keptChunks.length === 0 ? '' : `${heading}\n\n${keptChunks.join('\n\n')}`;
 
         sanitized = `${sanitized.slice(0, sectionMatch.start)}${replacement}${sanitized.slice(sectionMatch.end)}`;
     }
@@ -629,35 +619,13 @@ function removeTopSectionOverflow(markdown) {
 
 function removeSecondaryDailySections(markdown) {
     let content = String(markdown || '');
-    for (const pattern of [/^##\s*\*\*.*关注.*\*\*/im, /^##\s*\*\*.*AI.*趣闻.*\*\*/im]) {
+    for (const pattern of [/^##\s*\*\*.*更多动态.*\*\*/im, /^##\s*\*\*.*AI.*趣闻.*\*\*/im]) {
         const sectionMatch = findMarkdownHeadingSection(content, pattern);
         if (!sectionMatch) continue;
         content = `${content.slice(0, sectionMatch.start)}${content.slice(sectionMatch.end)}`;
     }
 
     return content.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function replaceSecondaryDailySectionsWithFallback(markdown) {
-    const stripped = removeSecondaryDailySections(markdown);
-    const fallbackSections = [
-        '## **📌 值得关注**',
-        '',
-        '- **[观察]** 今天的增量集中在模型 API、价格战和开发工作流三条主线，TOP 10 里的实测动作优先级最高。',
-        '',
-        '## **😄 AI趣闻**',
-        '',
-        '今天最有意思的不是某一条链接，而是发布节奏本身：一句推文、一个 API 参数、一个命令，就足够让开发者社区立刻换模型、开任务、算成本。',
-    ].join('\n');
-    const tailMatch = stripped.match(/\n##\s+\*\*(?:[^*\n]*AI趋势预测|❓\s*相关问题)/m);
-
-    if (!tailMatch || tailMatch.index == null) {
-        return `${stripped}\n\n${fallbackSections}`.replace(/\n{3,}/g, '\n\n').trim();
-    }
-
-    const before = stripped.slice(0, tailMatch.index).trimEnd();
-    const after = stripped.slice(tailMatch.index).trimStart();
-    return `${before}\n\n${fallbackSections}\n\n${after}`.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
@@ -1167,20 +1135,6 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         minimumTopItems: options.minimumTopItems || 0,
     });
 
-    if (!validation.ok && validation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
-        const fallbackDailySummaryMarkdownContent = replaceSecondaryDailySectionsWithFallback(dailySummaryMarkdownContent);
-        const fallbackValidation = validateDailyPublication({
-            summaryText: outputOfCall3,
-            pageMarkdown: fallbackDailySummaryMarkdownContent,
-            minimumTopItems: options.minimumTopItems || 0,
-        });
-
-        if (fallbackValidation.ok) {
-            dailySummaryMarkdownContent = fallbackDailySummaryMarkdownContent;
-            validation = fallbackValidation;
-        }
-    }
-
     if (!validation.ok) {
         console.warn(
             `[Scheduled][Daily] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
@@ -1217,28 +1171,6 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             pageMarkdown: repairedDailySummaryMarkdownContent,
             minimumTopItems: options.minimumTopItems || 0,
         });
-
-        if (!repairedValidation.ok && repairedValidation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
-            const fallbackDailySummaryMarkdownContent = replaceSecondaryDailySectionsWithFallback(repairedDailySummaryMarkdownContent);
-            const fallbackValidation = validateDailyPublication({
-                summaryText: repairedOutputOfCall3,
-                pageMarkdown: fallbackDailySummaryMarkdownContent,
-                minimumTopItems: options.minimumTopItems || 0,
-            });
-
-            if (fallbackValidation.ok) {
-                repairedDailySummaryMarkdownContent = fallbackDailySummaryMarkdownContent;
-                outputOfCall2 = repairedOutputOfCall2;
-                outputOfCall3 = repairedOutputOfCall3;
-                dailySummaryMarkdownContent = repairedDailySummaryMarkdownContent;
-                validation = fallbackValidation;
-                debugInfo.dailyRepairAttempted = true;
-                debugInfo.dailyRepairPassed = true;
-                debugInfo.dailyRepairIssues = [];
-                debugInfo.dailyGenerated = true;
-                return { outputOfCall3, dailySummaryMarkdownContent, validation };
-            }
-        }
 
         outputOfCall2 = repairedOutputOfCall2;
         outputOfCall3 = repairedOutputOfCall3;

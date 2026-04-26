@@ -198,7 +198,7 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const issues = [];
   const minimumTopItems = Math.max(0, Number(options.minimumTopItems) || 0);
   const faqHeadingPattern = /^##\s*\*\*❓\s*相关问题(?:（仅1条）)?\*\*/im;
-  const watchHeadingPattern = /^##\s*\*\*.*关注.*\*\*/im;
+  const moreHeadingPattern = /^##\s*\*\*.*更多动态.*\*\*/im;
   const funHeadingPattern = /^##\s*\*\*.*AI.*趣闻.*\*\*/im;
   const topSection = extractSection(pageMarkdown, /^##\s*\*\*.*TOP.*\*\*/im);
 
@@ -206,8 +206,8 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("日报页面缺少必需片段: ## **❓ 相关问题**");
   }
 
-  if (!watchHeadingPattern.test(String(pageMarkdown || ""))) {
-    issues.push("日报页面缺少必需片段: ## **📌 值得关注**");
+  if (!moreHeadingPattern.test(String(pageMarkdown || ""))) {
+    issues.push("日报页面缺少必需片段: ## **📊 更多动态**");
   }
 
   if (!funHeadingPattern.test(String(pageMarkdown || ""))) {
@@ -231,11 +231,11 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push(`Daily top items are insufficient: expected at least ${minimumTopItems}`);
   }
 
-  const watchSection = extractSection(pageMarkdown, watchHeadingPattern);
+  const moreSection = extractSection(pageMarkdown, moreHeadingPattern);
   const funSection = extractSection(pageMarkdown, funHeadingPattern);
   const duplicateUrls = collectDuplicateUrlsBySection({
     top: extractSectionUrls(topSection),
-    watch: extractSectionUrls(watchSection),
+    more: extractSectionUrls(moreSection),
     fun: extractSectionUrls(funSection),
   });
 
@@ -245,7 +245,7 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   const duplicateTopics = collectDuplicateTopicsBySection({
     top: extractSectionLinks(topSection),
-    watch: extractSectionLinks(watchSection),
+    more: extractSectionLinks(moreSection),
     fun: extractSectionLinks(funSection),
   });
 
