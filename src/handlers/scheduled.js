@@ -80,8 +80,12 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
 }
 
 function containsRenderedMedia(markdown) {
-    if (!markdown) return false;
-    return /!\[[^\]]*\]\([^)]+\)|<img\b|<video\b/i.test(markdown);
+    return countRenderedMedia(markdown) > 0;
+}
+
+function countRenderedMedia(markdown) {
+    if (!markdown) return 0;
+    return (String(markdown).match(/!\[[^\]]*\]\([^)]+\)|<img\b|<video\b/gi) || []).length;
 }
 
 function truncatePromptText(text, maxChars = 500) {
@@ -315,6 +319,32 @@ function filterNewsAgainstPreviousTop(newsItems, previousTopItems) {
     return { filteredNewsItems, filteredCount };
 }
 
+function getPositiveInteger(value, fallback) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function mergeReplayBackfillNewsItems(filteredNewsItems, originalNewsItems, minimumCount = 12) {
+    const output = [...(filteredNewsItems || [])];
+    if (output.length >= minimumCount || !Array.isArray(originalNewsItems) || originalNewsItems.length === 0) {
+        return { newsItems: output, backfillCount: 0 };
+    }
+
+    const seen = new Set(output.map((item) => `${normalizeReplayUrl(item?.url)}::${normalizeReplayTitle(item?.title)}`));
+    let backfillCount = 0;
+
+    for (const item of originalNewsItems) {
+        if (output.length >= minimumCount) break;
+        const key = `${normalizeReplayUrl(item?.url)}::${normalizeReplayTitle(item?.title)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        output.push(item);
+        backfillCount += 1;
+    }
+
+    return { newsItems: output, backfillCount };
+}
+
 async function generateContentWithTransportFallback(env, userPrompt, systemPrompt) {
     try {
         let output = "";
@@ -423,8 +453,9 @@ function scoreMediaCandidate(output, candidate) {
     return score;
 }
 
-function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
-    if (containsRenderedMedia(markdown)) return markdown;
+function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4, minimumMedia = 3) {
+    const existingMediaCount = countRenderedMedia(markdown);
+    if (existingMediaCount >= minimumMedia) return markdown;
 
     const ranked = [...(mediaCandidates || [])]
         .map((candidate) => ({ candidate, score: scoreMediaCandidate(markdown, candidate) }))
@@ -433,16 +464,18 @@ function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
 
     const placeholders = [];
     const seen = new Set();
+    const existingMarkdown = String(markdown || '');
+    const targetAdditionalMedia = Math.min(limit, Math.max(0, minimumMedia - existingMediaCount));
 
     for (const { candidate } of ranked) {
         for (const placeholder of candidate.placeholders) {
-            if (!seen.has(placeholder)) {
+            if (!seen.has(placeholder) && !existingMarkdown.includes(placeholder)) {
                 seen.add(placeholder);
                 placeholders.push(placeholder);
                 break;
             }
         }
-        if (placeholders.length >= limit) break;
+        if (placeholders.length >= targetAdditionalMedia) break;
     }
 
     if (placeholders.length === 0) return markdown;
@@ -559,6 +592,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         previousDayReplayDate: null,
         previousDayTopItems: 0,
         previousDayFilteredNews: 0,
+        previousDayBackfillNews: 0,
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
         fallbackInserted: false,
@@ -590,10 +624,18 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         debugInfo.previousDayTopItems = previousTopItems.length;
 
         if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
+            const originalNewsItems = [...allUnifiedData.news];
             const { filteredNewsItems, filteredCount } = filterNewsAgainstPreviousTop(allUnifiedData.news, previousTopItems);
-            allUnifiedData.news = filteredNewsItems;
+            const replayBackfillMinimum = getPositiveInteger(env.DAILY_REPLAY_BACKFILL_MIN_ITEMS, 12);
+            const { newsItems, backfillCount } = mergeReplayBackfillNewsItems(
+                filteredNewsItems,
+                originalNewsItems,
+                replayBackfillMinimum
+            );
+            allUnifiedData.news = newsItems;
             debugInfo.previousDayFilteredNews = filteredCount;
-            console.log(`[Scheduled] Filtered ${filteredCount} repeated news items from previous daily ${previousDate}.`);
+            debugInfo.previousDayBackfillNews = backfillCount;
+            console.log(`[Scheduled] Filtered ${filteredCount} repeated news items from previous daily ${previousDate}; backfilled ${backfillCount} items for prompt coverage.`);
         }
 
         const fetchPromises = [];
@@ -806,6 +848,7 @@ function buildBaseDebugInfo(dateStr, mode) {
         previousDayReplayDate: null,
         previousDayTopItems: 0,
         previousDayFilteredNews: 0,
+        previousDayBackfillNews: 0,
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
         fallbackInserted: false,
@@ -980,9 +1023,18 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         previousOpportunityReplaySignals.matchedRuleIds?.length || 0;
 
     if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
+        const originalNewsItems = [...allUnifiedData.news];
         const { filteredNewsItems, filteredCount } = filterNewsAgainstPreviousTop(allUnifiedData.news, previousTopItems);
-        allUnifiedData.news = filteredNewsItems;
+        const replayBackfillMinimum = getPositiveInteger(env.DAILY_REPLAY_BACKFILL_MIN_ITEMS, 12);
+        const { newsItems, backfillCount } = mergeReplayBackfillNewsItems(
+            filteredNewsItems,
+            originalNewsItems,
+            replayBackfillMinimum
+        );
+        allUnifiedData.news = newsItems;
         debugInfo.previousDayFilteredNews = filteredCount;
+        debugInfo.previousDayBackfillNews = backfillCount;
+        console.log(`[Scheduled] Filtered ${filteredCount} repeated news items from previous daily ${previousDate}; backfilled ${backfillCount} items for prompt coverage.`);
     }
 
     if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
