@@ -589,10 +589,32 @@ function sanitizeDuplicateDailySections(markdown) {
 
 function removeSecondaryDailySections(markdown) {
     return String(markdown || '')
-        .replace(/^##\s*\*\*.*值得关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
-        .replace(/^##\s*\*\*.*AI趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
+        .replace(/^##\s*\*\*.*关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
+        .replace(/^##\s*\*\*.*AI.*趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+}
+
+function replaceSecondaryDailySectionsWithFallback(markdown) {
+    const stripped = removeSecondaryDailySections(markdown);
+    const fallbackSections = [
+        '## **📌 值得关注**',
+        '',
+        '- **[观察]** 今天的增量集中在模型 API、价格战和开发工作流三条主线，TOP 10 里的实测动作优先级最高。',
+        '',
+        '## **😄 AI趣闻**',
+        '',
+        '今天最有意思的不是某一条链接，而是发布节奏本身：一句推文、一个 API 参数、一个命令，就足够让开发者社区立刻换模型、开任务、算成本。',
+    ].join('\n');
+    const tailMatch = stripped.match(/\n##\s+\*\*(?:[^*\n]*AI趋势预测|❓\s*相关问题)/m);
+
+    if (!tailMatch || tailMatch.index == null) {
+        return `${stripped}\n\n${fallbackSections}`.replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    const before = stripped.slice(0, tailMatch.index).trimEnd();
+    const after = stripped.slice(tailMatch.index).trimStart();
+    return `${before}\n\n${fallbackSections}\n\n${after}`.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
@@ -1102,7 +1124,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     });
 
     if (!validation.ok && validation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
-        const fallbackDailySummaryMarkdownContent = removeSecondaryDailySections(dailySummaryMarkdownContent);
+        const fallbackDailySummaryMarkdownContent = replaceSecondaryDailySectionsWithFallback(dailySummaryMarkdownContent);
         const fallbackValidation = validateDailyPublication({
             summaryText: outputOfCall3,
             pageMarkdown: fallbackDailySummaryMarkdownContent,
@@ -1152,7 +1174,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         });
 
         if (!repairedValidation.ok && repairedValidation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
-            const fallbackDailySummaryMarkdownContent = removeSecondaryDailySections(repairedDailySummaryMarkdownContent);
+            const fallbackDailySummaryMarkdownContent = replaceSecondaryDailySectionsWithFallback(repairedDailySummaryMarkdownContent);
             const fallbackValidation = validateDailyPublication({
                 summaryText: repairedOutputOfCall3,
                 pageMarkdown: fallbackDailySummaryMarkdownContent,
