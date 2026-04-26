@@ -509,6 +509,14 @@ function isRepeatedDailyStory(leftTitle, rightTitle) {
     return false;
 }
 
+function buildSecondarySectionFallback(heading) {
+    if (/AI趣闻/i.test(heading)) {
+        return `${heading}\n\n今天最有意思的不是某一条链接，而是发布节奏本身：一句推文、一个 API 参数、一个命令，就足够让开发者社区立刻换模型、开任务、算成本。`;
+    }
+
+    return `${heading}\n\n- **[观察]** 今天的增量集中在模型 API、价格战和开发工作流三条主线，值得把 TOP 10 里的实测动作优先跑一遍。`;
+}
+
 function sanitizeDuplicateDailySections(markdown) {
     const content = String(markdown || '');
     if (!content) return content;
@@ -542,27 +550,34 @@ function sanitizeDuplicateDailySections(markdown) {
             const keptChunks = [];
 
             for (const chunk of chunks) {
-                const linkMatch = chunk.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
-                if (!linkMatch) {
+                const links = [...chunk.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)];
+                if (links.length === 0) {
                     keptChunks.push(chunk);
                     continue;
                 }
 
-                const title = linkMatch[1];
-                const url = normalizeReplayUrl(linkMatch[2]);
-                const duplicated = seenStories.some((story) => {
-                    if (story.url && url && story.url === url) return true;
-                    return isRepeatedDailyStory(story.title, title);
+                const duplicated = links.some((linkMatch) => {
+                    const title = linkMatch[1];
+                    const url = normalizeReplayUrl(linkMatch[2]);
+                    return seenStories.some((story) => {
+                        if (story.url && url && story.url === url) return true;
+                        return isRepeatedDailyStory(story.title, title);
+                    });
                 });
 
                 if (duplicated) continue;
 
-                seenStories.push({ title, url });
+                for (const linkMatch of links) {
+                    seenStories.push({
+                        title: linkMatch[1],
+                        url: normalizeReplayUrl(linkMatch[2]),
+                    });
+                }
                 keptChunks.push(chunk);
             }
 
             if (keptChunks.length === 0) {
-                return '';
+                return buildSecondarySectionFallback(heading);
             }
 
             return `${heading}\n\n${keptChunks.join('\n\n')}`;
