@@ -965,6 +965,12 @@ async function loadCachedUnifiedData(env, dateStr) {
     return hasAnyCachedItems ? allUnifiedData : null;
 }
 
+function countUnifiedDataItems(allUnifiedData) {
+    return Object.values(allUnifiedData || {}).reduce((total, items) => {
+        return total + (Array.isArray(items) ? items.length : 0);
+    }, 0);
+}
+
 function buildPromptCollections(allUnifiedData, debugInfo) {
     const selectedContentItems = [];
     const itemsWithMedia = [];
@@ -1046,7 +1052,20 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     let allUnifiedData = null;
 
     if (options.preferCachedData) {
-        allUnifiedData = await loadCachedUnifiedData(env, dateStr);
+        const cachedUnifiedData = await loadCachedUnifiedData(env, dateStr);
+        if (cachedUnifiedData) {
+            const cachedItemCount = countUnifiedDataItems(cachedUnifiedData);
+            const minimumCachedItems = getPositiveInteger(env.DAILY_CACHED_SOURCE_MIN_ITEMS || env.DAILY_PROMPT_MIN_ITEMS, 12);
+            debugInfo.cachedDailySourceItemCount = cachedItemCount;
+            debugInfo.cachedDailySourceMinimum = minimumCachedItems;
+            if (cachedItemCount >= minimumCachedItems) {
+                allUnifiedData = cachedUnifiedData;
+            } else {
+                debugInfo.cachedDailySourceTooThin = true;
+                console.warn(`[Scheduled] Cached source data for ${dateStr} only has ${cachedItemCount} items; refreshing.`);
+            }
+        }
+
         if (allUnifiedData) {
             debugInfo.usedCachedDailySourceData = true;
             console.log(`[Scheduled] Reusing cached source data for ${dateStr}.`);
@@ -1744,10 +1763,6 @@ async function handleScheduledBackup(event, env, ctx, specifiedDate = null) {
     return { daily, opportunity, accountOpportunity };
 }
 
-function shouldPreferCachedDailyData(specifiedDate) {
-    return Boolean(specifiedDate) && specifiedDate !== getISODate();
-}
-
 export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -1755,7 +1770,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
     const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: shouldPreferCachedDailyData(specifiedDate),
+        preferCachedData: Boolean(specifiedDate),
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
