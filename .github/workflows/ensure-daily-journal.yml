@@ -118,8 +118,8 @@ jobs:
             echo "TEST_TRIGGER_SECRET is not configured in GitHub Actions. Falling back to the Worker's default test secret."
           fi
 
-          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}&async=1"
-          echo "Queueing async daily generation for ${TARGET_DATE}."
+          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}"
+          echo "Triggering daily generation for ${TARGET_DATE}."
           curl -sS "$TRIGGER_URL" > trigger-response.json
 
           python - <<'PY'
@@ -133,41 +133,7 @@ jobs:
           if not payload.get("success"):
               raise SystemExit("Worker trigger failed")
 
-          status_key = payload.get("statusKey")
-          if not payload.get("queued") or not status_key:
-              raise SystemExit("Worker trigger did not return a queued status key")
-
-          with open("status-key.txt", "w", encoding="utf-8") as handle:
-              handle.write(status_key)
-          PY
-
-          STATUS_KEY=$(cat status-key.txt)
-          for attempt in $(seq 1 90); do
-            STATUS_URL="${WORKER_BASE_URL}/testTriggerScheduledStatus?key=${TEST_TRIGGER_SECRET}&mode=daily&date=${TARGET_DATE}&statusKey=${STATUS_KEY}"
-            curl -sS "$STATUS_URL" > status-response.json
-
-            STATE=$(python - <<'PY'
-          import json
-
-          with open("status-response.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
-
-          status = payload.get("status") or {}
-          print(status.get("state") or "missing")
-          PY
-            )
-
-            echo "Daily generation status attempt ${attempt}: ${STATE}"
-
-            if [ "$STATE" = "success" ]; then
-              python - <<'PY'
-          import json
-
-          with open("status-response.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
-
-          status = payload.get("status") or {}
-          debug = status.get("debug") or {}
+          debug = payload.get("debug") or {}
           print(json.dumps(debug, ensure_ascii=False, indent=2))
 
           if not debug.get("dailyGenerated"):
@@ -177,27 +143,6 @@ jobs:
               issues = " | ".join(debug.get("dailyValidationIssues") or [])
               raise SystemExit(f"Daily content was not published: {issues}")
           PY
-              exit 0
-            fi
-
-            if [ "$STATE" = "error" ]; then
-              python - <<'PY'
-          import json
-
-          with open("status-response.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
-
-          status = payload.get("status") or {}
-          print(json.dumps(status, ensure_ascii=False, indent=2))
-          raise SystemExit("Async daily generation failed")
-          PY
-            fi
-
-            sleep 20
-          done
-
-          echo "Timed out waiting for async daily generation to finish."
-          exit 1
 
       - name: Verify today's page after trigger
         if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
