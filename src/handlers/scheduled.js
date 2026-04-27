@@ -406,6 +406,12 @@ function extractPromptFallbackCandidates(selectedContentItems, existingMarkdown)
             .map((match) => normalizeReplayUrl(match[0]))
             .filter(Boolean)
     );
+    const usedStories = [...String(existingMarkdown || '').matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+        .map((match) => ({
+            title: match[1],
+            url: normalizeReplayUrl(match[2]),
+        }))
+        .filter((story) => story.title || story.url);
     const candidates = [];
 
     for (const itemText of selectedContentItems || []) {
@@ -432,6 +438,10 @@ function extractPromptFallbackCandidates(selectedContentItems, existingMarkdown)
             .trim();
         if (!title && summary) title = summary.slice(0, 42);
         if (!title) continue;
+        if (usedStories.some((story) => {
+            if (story.url && urlKey && story.url === urlKey) return true;
+            return isRepeatedDailyStory(story.title, title);
+        })) continue;
 
         const mediaMatch = text.match(/Media References:\s*(.+)$/im);
         const searchText = `${title} ${summary}`.toLowerCase();
