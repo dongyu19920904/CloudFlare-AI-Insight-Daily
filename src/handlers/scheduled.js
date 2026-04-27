@@ -1,4 +1,4 @@
-import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia, replaceIncorrectDomainLinks } from '../helpers.js';
+﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia, replaceIncorrectDomainLinks } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
@@ -91,7 +91,7 @@ function countRenderedMedia(markdown) {
 function truncatePromptText(text, maxChars = 500) {
     const normalized = String(text || '').replace(/\s+/g, ' ').trim();
     if (normalized.length <= maxChars) return normalized;
-    return `${normalized.slice(0, maxChars)}?`;
+    return `${normalized.slice(0, maxChars)}…`;
 }
 
 function getPreviousDate(dateStr) {
@@ -126,7 +126,7 @@ function normalizeReplayTitle(title) {
     return String(title || '')
         .normalize('NFKC')
         .toLowerCase()
-        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|????????????????????-]+/g, ' ')
+        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|，。！？、；：“”‘’（）【】《》·—…-]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -208,12 +208,12 @@ function isUsablePreviousDaily(markdown, topItems) {
     if (!markdown || !Array.isArray(topItems) || topItems.length < 3) return false;
 
     const failurePatterns = [
-        /????/i,
-        /????/i,
-        /?????/i,
-        /?????/i,
-        /??????/i,
-        /???????/i,
+        /素材不足/i,
+        /无法生成/i,
+        /请补充素材/i,
+        /请提供完整/i,
+        /我需要你提供/i,
+        /我理解你的困惑/i,
         /i can't help/i,
         /would you like help/i,
         /set up an api integration/i,
@@ -276,7 +276,7 @@ async function loadPreviousOpportunityMainTopicSignals(env, dateStr) {
     try {
         const previousMarkdown = await getGitHubFileContent(env, previousPaths.pagePath);
         const mainTopicSection =
-            extractMarkdownSection(previousMarkdown, '????') || previousMarkdown;
+            extractMarkdownSection(previousMarkdown, '今日主推') || previousMarkdown;
         const signals = inferOpportunityReplaySignals(mainTopicSection, opportunityPlaybook);
 
         return { previousDate, signals };
@@ -364,9 +364,9 @@ async function generateContentWithTransportFallback(env, userPrompt, systemPromp
 
 function assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env) {
     const contentWithMidAd = insertMidAd(outputOfCall2);
-    let dailySummaryMarkdownContent = `## **????**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
-    dailySummaryMarkdownContent += '\n\n## ? ????\n\n';
-    dailySummaryMarkdownContent += '- [?? ?? AI ??](#??ai??) - ??????\n\n';
+    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
+    dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+    dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
     dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
 
     if (env.INSERT_AD == 'true') dailySummaryMarkdownContent += insertAd() + `\n`;
@@ -377,26 +377,26 @@ function assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env) {
 
 function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssues, dateStr) {
     return [
-        "??????????????????????????????????????",
-        `?????????? ${dateStr}?`,
-        "????????????",
+        "你上一次输出的日报正文不合格，请立即重写，不要解释原因，不要道歉，不要拒答。",
+        `这次重写的目标日期是 ${dateStr}。`,
+        "上一次输出存在这些问题：",
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
-        "??????????",
-        "- ???? `## **??AI??**` ??? Markdown ?????????????AI????????????",
-        "- ?????????`### **?? ?????**` / `### **?? 3 ????**` / `## **?? ?? TOP` / `## **?? ????` / `## **?? AI??` / `## **? ????**`",
-        "- FAQ ????? 1 ?????????? https://aivora.cn ???",
-        "- ????????AI??????? TOP ????????????????????",
-        "- AI??????????????? 1 ????? Markdown ??????????????AI??????????????",
-        "- ????? 2 ?????????????????????????????",
-        "- ???????????????????????????????????????????????????????",
-        "- ???????????????????",
+        "请严格遵守以下规则：",
+        "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
+        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📊 更多动态` / `## **😄 AI趣闻` / `## **❓ 相关问题**`",
+        "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
+        "- 「更多动态」和「AI趣闻」不要复用 TOP 里的同一条链接，也不要彼此复用同一条链接",
+        "- AI趣闻必须从未使用的真实素材里选 1 条，标题用 Markdown 链接；不要写“今日轻观察”“AI轻观察”或不带链接的观察段落",
+        "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
+        "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
+        "- 直接输出可发布成稿，不要输出任何元话术",
         "",
-        "????????",
+        "下面是原始素材：",
         basePromptInput,
         "",
-        "????????????????????",
-        invalidMarkdown || "(?)",
+        "下面是上一次不合格输出，仅供你纠错参考：",
+        invalidMarkdown || "(空)",
     ].join('\n');
 }
 
@@ -427,8 +427,8 @@ function extractPromptFallbackCandidates(selectedContentItems, existingMarkdown)
             text.match(/^socialMedia Post by\s+(.+)$/im);
         let title = String(titleMatch?.[1] || '')
             .replace(/https?:\/\/\S+/gi, '')
-            .replace(/^RT\s+[^:?]{1,40}[:?]\s*/i, '')
-            .replace(/^[\s:?,??.!????\-??]+|[\s:?,??.!????\-??]+$/g, '')
+            .replace(/^RT\s+[^:：]{1,40}[:：]\s*/i, '')
+            .replace(/^[\s:：,，。.!！？?、\-–—]+|[\s:：,，。.!！？?、\-–—]+$/g, '')
             .replace(/\s+/g, ' ')
             .trim();
         const summaryMatch = text.match(/^(?:Content Summary|Description|Abstract\/Content Summary|Content):\s*(.+)$/im);
@@ -446,9 +446,9 @@ function extractPromptFallbackCandidates(selectedContentItems, existingMarkdown)
         const mediaMatch = text.match(/Media References:\s*(.+)$/im);
         const searchText = `${title} ${summary}`.toLowerCase();
         const funTokens = [
-            '?', '??', '??', '?', 'token', '??', '??', '??', '??', 'bug',
-            '??', '??', '??', '??', '??', '??', 'psd', '??', '??',
-            '??', 'dating', '??', '???', '??', '??', '???', '??',
+            '睡', '熬夜', '好到', '怕', 'token', '成本', '账单', '烧掉', '翻车', 'bug',
+            '尴尬', '吐槽', '离谱', '梦回', '云朵', '涂鸦', 'psd', '图片', '刺绣',
+            '海报', 'dating', '采访', '工作流', '打工', '用户', '开发者', '日常',
         ];
         const score = funTokens.reduce((total, token) => total + (searchText.includes(token.toLowerCase()) ? 1 : 0), 0)
             + (mediaMatch ? 2 : 0);
@@ -470,7 +470,7 @@ function cleanMarkdownLinkTitle(title) {
         .replace(/[\[\]\(\)\n\r]/g, '')
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 80) || '?? AI ????';
+        .slice(0, 80) || '一条 AI 圈小插曲';
 }
 
 function truncateDailyFunSubject(text, limit = 34) {
@@ -487,16 +487,16 @@ function buildDailyFunStory(selectedContentItems, existingMarkdown) {
     const searchText = `${candidate.title} ${candidate.summary}`.toLowerCase();
     let body;
 
-    if (/token|??|??|??|??/.test(searchText)) {
-        body = `?????????????? AI ?????????????${subject}????????????????? token ??????????????????`;
-    } else if (/?|??|?|??/.test(searchText)) {
-        body = `????????????${subject}??????????????????????????????????AI ??????????????????????`;
-    } else if (/?|??|psd|??|??|??|??|??|ppt/.test(searchText)) {
-        body = `????????????????????? ${subject} ??????????????? AI ?????????????????????????????`;
-    } else if (/dating|??|???|??|???|??|??/.test(searchText)) {
-        body = `???????????????????????????????${subject}?AI ?????????????????????????????`;
+    if (/token|成本|账单|烧掉|价格/.test(searchText)) {
+        body = `这条适合放进趣闻，是因为它把 AI 的强弱直接翻译成了账单感：${subject}。模型再聪明，开发者最后还是要盯着 token 数深呼吸，这种反差比跑分更有现实味。`;
+    } else if (/睡|熬夜|怕|好到/.test(searchText)) {
+        body = `最有画面感的是人的反应：${subject}。一个工具好不好，平时看参数；真到兴奋处，就变成有人开始舍不得睡觉。AI 新闻偶尔也会这么朴素，像加班前的一杯浓咖啡。`;
+    } else if (/图|图片|psd|海报|刺绣|云朵|涂鸦|视觉|ppt/.test(searchText)) {
+        body = `这条的趣味不在“又一个图像模型很强”，而在 ${subject} 这种具体玩法。大家已经不是围观 AI 作画了，而是像调滤镜、改模板一样试它，手感一下子生活化了。`;
+    } else if (/dating|采访|工作流|用户|开发者|打工|日常/.test(searchText)) {
+        body = `这条有趣，是因为它没有停在大词上，而是落到一个具体人的动作里：${subject}。AI 真正变日常，往往就是从这种小工作流、小反应、小别扭开始的。`;
     } else {
-        body = `?????????????????? AI ???????????${subject}???????????????????????????? AI ????????`;
+        body = `这条最适合当趣闻的地方，是它把宏大的 AI 叙事缩成了一个小场景：${subject}。不用喊口号，读者也能看见大家正在怎么试、怎么改、怎么把 AI 塞进手边事情里。`;
     }
 
     const media = candidate.media ? `\n\n${candidate.media}` : '';
@@ -506,13 +506,13 @@ function buildDailyFunStory(selectedContentItems, existingMarkdown) {
 function isInvalidDailyFunSection(sectionMarkdown) {
     const body = String(sectionMarkdown || '').replace(/^##[^\n]*/m, '').trim();
     if (!body) return true;
-    if (/???|????|AI???|????/.test(body)) return true;
+    if (/轻观察|今日观察|AI轻观察|不带链接/.test(body)) return true;
     return !/^###\s+\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(body);
 }
 
 export function ensureDailyFunSection(markdown, selectedContentItems) {
     let content = String(markdown || '');
-    const existingSection = findMarkdownHeadingSection(content, /^##\s*\*\*.*AI.*??.*\*\*/im);
+    const existingSection = findMarkdownHeadingSection(content, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
     if (existingSection) {
         if (!isInvalidDailyFunSection(existingSection.section)) return content;
         content = `${content.slice(0, existingSection.start)}${content.slice(existingSection.end)}`.replace(/\n{3,}/g, '\n\n').trim();
@@ -520,8 +520,8 @@ export function ensureDailyFunSection(markdown, selectedContentItems) {
 
     const funStory = buildDailyFunStory(selectedContentItems, content);
     if (!funStory) return content;
-    const section = `## **?? AI??**\n\n${funStory}`;
-    const tailMatch = content.match(/\n##\s+\*\*(?:[^*\n]*AI????|?\s*????)/m);
+    const section = `## **😄 AI趣闻**\n\n${funStory}`;
+    const tailMatch = content.match(/\n##\s+\*\*(?:[^*\n]*AI趋势预测|❓\s*相关问题)/m);
     if (!tailMatch || tailMatch.index == null) {
         return `${content}\n\n${section}`.replace(/\n{3,}/g, '\n\n').trim();
     }
@@ -615,14 +615,14 @@ function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4, minimu
 
     const rendered = placeholders.join('\n\n');
 
-    return `${markdown}\n\n### **????**\n\n${rendered}`;
+    return `${markdown}\n\n### **相关配图**\n\n${rendered}`;
 }
 
 function normalizeDailyLinkTitle(title) {
     return String(title || '')
         .normalize('NFKC')
         .toLowerCase()
-        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|????????????????????-]+/g, ' ')
+        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|，。！？、；：“”‘’（）【】《》·—…-]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -691,8 +691,8 @@ function sanitizeDuplicateDailySections(markdown) {
 
     const seenStories = [...topLinks];
     const sectionHeadingPatterns = [
-        /^##\s*\*\*.*????.*\*\*/im,
-        /^##\s*\*\*.*AI.*??.*\*\*/im,
+        /^##\s*\*\*.*更多动态.*\*\*/im,
+        /^##\s*\*\*.*AI.*趣闻.*\*\*/im,
     ];
 
     let sanitized = content;
@@ -783,7 +783,7 @@ function removeTopSectionOverflow(markdown) {
 
 function removeSecondaryDailySections(markdown) {
     let content = String(markdown || '');
-    for (const pattern of [/^##\s*\*\*.*????.*\*\*/im, /^##\s*\*\*.*AI.*??.*\*\*/im]) {
+    for (const pattern of [/^##\s*\*\*.*更多动态.*\*\*/im, /^##\s*\*\*.*AI.*趣闻.*\*\*/im]) {
         const sectionMatch = findMarkdownHeadingSection(content, pattern);
         if (!sectionMatch) continue;
         content = `${content.slice(0, sectionMatch.start)}${content.slice(sectionMatch.end)}`;
@@ -793,7 +793,7 @@ function removeSecondaryDailySections(markdown) {
 }
 
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
-    // ???????????????????????????????????
+    // 濡傛灉鎸囧畾浜嗘棩鏈燂紝浣跨敤鎸囧畾鏃ユ湡锛涘惁鍒欎娇鐢ㄥ綋鍓嶆棩鏈?
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     console.log(`[Scheduled] Starting daily automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
@@ -819,8 +819,8 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
     try {
         // 1. Fetch Data
         console.log(`[Scheduled] Fetching data...`);
-        // ??????????????? localStorage ??? Cookie?????????????????FOLO_COOKIE??
-        // ??????????????KV(FOLO_COOKIE_KV_KEY) ?????
+        // 瀹氭椂浠诲姟鏃犳硶浠庢祻瑙堝櫒 localStorage 鑾峰彇 Cookie锛岃繖閲屼紭鍏堜娇鐢ㄧ幆澧冨彉閲?FOLO_COOKIE锛?
+        // 濡傛灉鏈缃垯灏濊瘯浠?KV(FOLO_COOKIE_KV_KEY) 璇诲彇銆?
         let foloCookie = env.FOLO_COOKIE;
         if (!foloCookie && env.FOLO_COOKIE_KV_KEY) {
             try {
@@ -896,7 +896,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
         debugInfo.fallbackInserted = outputBeforeFallback !== outputOfCall2;
         debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
-        // ??????????????
+        // 鏇挎崲閿欒鐨勫煙鍚嶉摼鎺?
         outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
 
         // 4. Generate Summary (Call 3)
@@ -921,8 +921,8 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
 
         console.log(`[Scheduled] Generating AI opportunity content...`);
         const opportunityPromptInput = [
-            `## ????\n\n${opportunityCandidatesText}`,
-            `## ????\n\n${outputOfCall3}`,
+            `## 候选主题\n\n${opportunityCandidatesText}`,
+            `## 今日摘要\n\n${outputOfCall3}`,
         ].join('\n\n');
 
         let opportunityMarkdownContent = await generateContentWithTransportFallback(
@@ -936,14 +936,14 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             opportunityMarkdownContent,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
-        opportunityMarkdownContent = `## ? ????\n\n- [?? ????](#????) - ??????????\n- [?? ????](#????) - ???????????\n- [?? ????](#????) - ????????????\n- [??? ???](#???) - ?????????\n- [? ????](#????) - ???????????\n\n${opportunityMarkdownContent}`;
+        opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日主推](#今日主推) - 今天最值得先试的机会\n- [🧪 本周可试](#本周可试) - 适合先低成本测试的方向\n- [🚫 今天别碰](#今天别碰) - 看着热，但不建议小白跟进\n- [🗺️ 地图感](#地图感) - 知道就行的背景概念\n- [✅ 今日动作](#今日动作) - 今天先发什么、先卖什么\n\n${opportunityMarkdownContent}`;
         debugInfo.opportunityGenerated = true;
 
         // 6. Assemble Markdown
         const contentWithMidAd = insertMidAd(outputOfCall2);
-        let dailySummaryMarkdownContent = `## **????**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
-        dailySummaryMarkdownContent += '\n\n## ? ????\n\n';
-        dailySummaryMarkdownContent += '- [?? ?? AI ??](#??ai??) - ??????\n\n';
+        let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
+        dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
+        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
         dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
         dailySummaryMarkdownContent = insertOpportunityLinkIntoDailyNavigation(
             dailySummaryMarkdownContent,
@@ -963,9 +963,9 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
 
         const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
         const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, { title: dailyPageTitle });
-        const opportunityTitleBase = env.DAILY_TITLE.includes('??')
-            ? env.DAILY_TITLE.replace('??', '??')
-            : `${env.DAILY_TITLE} ??`;
+        const opportunityTitleBase = env.DAILY_TITLE.includes('日报')
+            ? env.DAILY_TITLE.replace('日报', '商机')
+            : `${env.DAILY_TITLE} 商机`;
         const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
         const opportunityDescription = DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION;
         const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
@@ -1162,7 +1162,7 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
                     itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
                     break;
                 case 'socialMedia':
-                    itemText = `socialMedia Post by ${item.authors}??ublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${truncatePromptText(stripHtml(item.details.content_html))}`;
+                    itemText = `socialMedia Post by ${item.authors}锛歅ublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${truncatePromptText(stripHtml(item.details.content_html))}`;
                     break;
                 default:
                     itemText = `Type: ${item.type}\nTitle: ${item.title || 'N/A'}\nDescription: ${truncatePromptText(item.description || 'N/A')}\nURL: ${item.url || 'N/A'}`;
@@ -1413,83 +1413,83 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPerCandidate = 2) {
     const visibleCandidates = (candidates || []).slice(0, maxCandidates);
     if (visibleCandidates.length === 0) {
-        return '??????????????????????';
+        return '今天候选主题较弱，请保守输出，不要硬凑热门。';
     }
 
     return visibleCandidates.map((candidate) => {
         const supportingText = (candidate.supportingItems || [])
             .slice(0, maxItemsPerCandidate)
-            .map((item, index) => `${index + 1}. ${item.title || item.source} - ${item.description || item.plainText || '?'}`)
+            .map((item, index) => `${index + 1}. ${item.title || item.source} - ${item.description || item.plainText || '无'}`)
             .join('\n');
 
         return [
             `### ${candidate.label}`,
-            `- ????: ${candidate.preferredLaneName}`,
-            `- ?????: ${candidate.productAngle || '????????????????'}`,
-            `- ??????: ${candidate.buyerHint || '???????????????'}`,
-            `- ????: ${candidate.deliveryHint || '??????????????'}`,
-            `- ?????: ${candidate.channelHint || '??????????'}`,
-            `- ????: ${candidate.titleHint || '?????????????'}`,
-            `- ????: ${candidate.avoidLeadHint || '????????stars?????????'}`,
-            `- ????: ${candidate.sellFormats.join('?') || '???????'}`,
-            `- ????:\n${supportingText || '- ?'}`,
+            `- 优先卖法: ${candidate.preferredLaneName}`,
+            `- 商品化角度: ${candidate.productAngle || '先写今天能卖的商品，再补技术解释'}`,
+            `- 更适合成交给: ${candidate.buyerHint || '优先写成中文新手也能买懂的商品'}`,
+            `- 你能交付: ${candidate.deliveryHint || '写清楚交付内容，不要只写热点'}`,
+            `- 更适合发到: ${candidate.channelHint || '群里、朋友圈、商品页'}`,
+            `- 标题写法: ${candidate.titleHint || '先写结果或场景，再写工具名'}`,
+            `- 不要主写: ${candidate.avoidLeadHint || '不要把技术热闹、stars、安装量写成主卖点'}`,
+            `- 建议形式: ${candidate.sellFormats.join('、') || '按热点灵活处理'}`,
+            `- 证据片段:\n${supportingText || '- 无'}`,
         ].join('\n');
     }).join('\n\n');
 }
 
 function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validationIssues) {
     return [
-        "????????????????????????????????????",
-        "????????????",
+        "你上一次输出不合格，请立即按要求重写，不要解释原因，不要道歉，不要拒答。",
+        "上一次输出存在这些问题：",
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
-        "??????????",
-        "- ??? Markdown ?????????????????",
-        "- ?????????# ??AI?? / ## ???? / ## ???? / ## ???? / ## ???? / ## ??? / ## ????",
-        "- ???????? 2-3 ???????????????????????????????????????????????????????",
-        "- ???????? 1-2 ??????????????????????????????????????",
-        "- ??????????????????????????????",
-        "- ??????????????????????????????",
-        "- ?????? token????????????",
-        "- ?????????????????? GitHub stars?????SDK ??????",
-        "- ??????????????????????????????? 1-2 ?",
-        "- ???????????????????????????",
-        "- ????????????????????????????",
-        "- ???????????????????????????????????",
+        "请严格遵守以下规则：",
+        "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
+        "- 必须包含完整结构：# 今日AI商机 / ## 先说结论 / ## 今日主推 / ## 本周可试 / ## 今天别碰 / ## 地图感 / ## 今日动作",
+        "- 今日主推必须先用 2-3 句短段落讲场景、痛点和结果，再包含：适合谁、这钱从哪来、最简单卖法、今天先做哪一步、今天就能发的文案、配图建议",
+        "- 本周可试必须先用 1-2 句短段落讲为什么值得盯，再包含：适合谁、先怎么试、为什么先别冲太猛、配图建议",
+        "- 整篇要像日报在讲赚钱机会，不要像系统填表，也不要写成长篇分析",
+        "- 如果证据偏弱，可以写成先试、先观察、先小范围验证，但不能拒答",
+        "- 不要出现便宜 token、风险自负、多用户商业化",
+        "- 标题先写结果、场景或交付动作，不要把 GitHub stars、安装量、SDK 名词堆进标题",
+        "- “这钱从哪来”先写买家今天为什么会心动，再补当天新变化，控制在 1-2 句",
+        "- 少写技术圈热闹，多写买家今天为什么会心动、今天先做什么",
+        "- 今日主推和本周可试不要写成同一种卖法模式，至少换一个角度",
+        "- 至少保留一个带点脑洞但今晚就能试卖的方向，不要所有机会都像同一张报价单",
         "",
-        "??????????",
+        "下面是原始候选素材：",
         basePromptInput,
         "",
-        "????????????????????",
-        invalidMarkdown || "(?)",
+        "下面是上一次不合格输出，仅供你纠错参考：",
+        invalidMarkdown || "(空)",
     ].join('\n');
 }
 
 function buildAccountOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validationIssues) {
     return [
-        "????????????????????????????????????",
-        "????????????",
+        "你上一次输出不合格，请立即按要求重写，不要解释原因，不要道歉，不要拒答。",
+        "上一次输出存在这些问题：",
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
-        "??????????",
-        "- ??? Markdown ?????????????????",
-        "- ?????????# ??AI???? / ## ???? / ## ???? / ## ???? / ## ???? / ## ???? / ## ????",
-        "- ???????? 2-3 ????????????????????????????????",
-        "- ?????????????????????????????????",
-        "- ????????????????????????????????",
-        "- ?????????????????????????????????",
-        "- ???????????????????????",
-        "- ?????? token????????????",
-        "- ????????????????????????",
-        "- ???????????????????????????????",
-        "- ??????????????????????????",
-        "- ???????????????????????????????????????",
+        "请严格遵守以下规则：",
+        "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
+        "- 必须包含完整结构：# 今日AI账号商机 / ## 先看信号 / ## 今日主推 / ## 平替机会 / ## 闲鱼新品 / ## 今天别碰 / ## 今日动作",
+        "- 今日主推必须先用 2-3 句短段落讲清今天发生了什么、买家为什么会动、你今天最适合先挂什么",
+        "- 今日主推必须包含：发生了什么、今天先挂什么、今天先测什么、售后风险",
+        "- 整篇像账号卖家给自己做盘货判断，不像公开科普，也不要写成长篇分析",
+        "- 必须从账号、镜像、平替、组合包、迁移包里做判断，不要只写原账号新闻",
+        "- 可以写先试挂、先观察、先低成本验证，但不能拒答",
+        "- 不要出现便宜 token、风险自负、多用户商业化",
+        "- 不要假装知道闲鱼实时销量、真实利润率或全网成交量",
+        "- 闲鱼新品部分要写今天适合测试的新标题、新组合或新卖法，不要空泛",
+        "- 今日主推、平替机会、闲鱼新品至少覆盖两种不同卖法模式",
+        "- 至少保留一个不是原账号直接卖的方向，比如迁移包、组合体验包、筛选服务或标题实验",
         "",
-        "??????????",
+        "下面是原始候选素材：",
         basePromptInput,
         "",
-        "????????????????????",
-        invalidMarkdown || "(?)",
+        "下面是上一次不合格输出，仅供你纠错参考：",
+        invalidMarkdown || "(空)",
     ].join('\n');
 }
 
@@ -1513,8 +1513,8 @@ async function generateOpportunityMarkdown(
     const playbookText = [
         serializeOpportunityPlaybook(opportunityPlaybook),
         buildDailyCreativityBrief(opportunityPlaybook, dateStr, {
-            issueLabel: 'AI??',
-            sectionLabels: ['????', '????'],
+            issueLabel: 'AI商机',
+            sectionLabels: ['今日主推', '本周可试'],
         }),
     ].join('\n\n');
     const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
@@ -1532,8 +1532,8 @@ async function generateOpportunityMarkdown(
 
     console.log(`[Scheduled][Opportunity] Generating content...`);
     const opportunityPromptInput = [
-        `## ????\n\n${opportunityCandidatesText}`,
-        `## ????\n\n${opportunitySourceDigest}`,
+        `## 候选主题\n\n${opportunityCandidatesText}`,
+        `## 今日摘要\n\n${opportunitySourceDigest}`,
     ].join('\n\n');
 
     const opportunitySystemPrompt = getSystemPromptAiOpportunity(dateStr, playbookText);
@@ -1588,7 +1588,7 @@ async function generateOpportunityMarkdown(
         }
     }
 
-    opportunityMarkdownContent = `## ? ????\n\n- [?? ????](#????) - ??????????\n- [?? ????](#????) - ???????????\n- [?? ????](#????) - ????????????\n- [??? ???](#???) - ?????????\n- [? ????](#????) - ???????????\n\n${opportunityMarkdownContent}`;
+    opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日主推](#今日主推) - 今天最值得先试的机会\n- [🧪 本周可试](#本周可试) - 适合先低成本测试的方向\n- [🚫 今天别碰](#今天别碰) - 看着热，但不建议小白跟进\n- [🗺️ 地图感](#地图感) - 知道就行的背景概念\n- [✅ 今日动作](#今日动作) - 今天先发什么、先卖什么\n\n${opportunityMarkdownContent}`;
 
     debugInfo.opportunityGenerated = true;
 
@@ -1619,8 +1619,8 @@ async function generateAccountOpportunityMarkdown(
     const playbookText = [
         serializeAccountOpportunityPlaybook(accountOpportunityPlaybook),
         buildDailyCreativityBrief(accountOpportunityPlaybook, dateStr, {
-            issueLabel: 'AI????',
-            sectionLabels: ['????', '????'],
+            issueLabel: 'AI账号商机',
+            sectionLabels: ['今日主推', '平替机会'],
         }),
     ].join('\n\n');
     const accountOpportunityCandidatesText = formatOpportunityCandidatesForPrompt(
@@ -1638,8 +1638,8 @@ async function generateAccountOpportunityMarkdown(
 
     console.log(`[Scheduled][AccountOpportunity] Generating content...`);
     const accountOpportunityPromptInput = [
-        `## ????\n\n${accountOpportunityCandidatesText}`,
-        `## ????\n\n${accountOpportunitySourceDigest}`,
+        `## 候选主题\n\n${accountOpportunityCandidatesText}`,
+        `## 今日摘要\n\n${accountOpportunitySourceDigest}`,
     ].join('\n\n');
 
     const accountOpportunitySystemPrompt = getSystemPromptAiAccountOpportunity(dateStr, playbookText);
@@ -1689,7 +1689,7 @@ async function generateAccountOpportunityMarkdown(
         accountOpportunityMarkdownContent = repairedMarkdownContent;
     }
 
-    accountOpportunityMarkdownContent = `## ? ????\n\n- [?? ????](#????) - ?????????????\n- [?? ????](#????) - ??????????\n- [?? ????](#????) - ??????????\n- [?? ????](#????) - ????????????\n- [?? ????](#????) - ???????????\n- [? ????](#????) - ????????????????\n\n${accountOpportunityMarkdownContent}`;
+    accountOpportunityMarkdownContent = `## ⚡ 快速导航\n\n- [📡 先看信号](#先看信号) - 今天先盯哪些账号与入口变化\n- [🎯 今日主推](#今日主推) - 今天最值得先挂的方向\n- [🪄 平替机会](#平替机会) - 可接住流量的替代入口\n- [🛒 闲鱼新品](#闲鱼新品) - 适合上新测试的标题和组合\n- [🚫 今天别碰](#今天别碰) - 售后重、不稳或不值得追\n- [✅ 今日动作](#今日动作) - 今天先发什么、先录什么、先卖什么\n\n${accountOpportunityMarkdownContent}`;
 
     debugInfo.accountOpportunityGenerated = true;
 
@@ -1760,9 +1760,9 @@ async function commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent) {
 }
 
 async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportunityMarkdownContent) {
-    const opportunityTitleBase = env.DAILY_TITLE.includes('??')
-        ? env.DAILY_TITLE.replace('??', '??')
-        : `${env.DAILY_TITLE} ??`;
+    const opportunityTitleBase = env.DAILY_TITLE.includes('日报')
+        ? env.DAILY_TITLE.replace('日报', '商机')
+        : `${env.DAILY_TITLE} 商机`;
     const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
     const opportunityDescription = DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION;
     const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
@@ -1819,9 +1819,9 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
 }
 
 async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityPaths, accountOpportunityMarkdownContent) {
-    const accountOpportunityTitleBase = env.DAILY_TITLE.includes('??')
-        ? env.DAILY_TITLE.replace('??', '????')
-        : `${env.DAILY_TITLE} ????`;
+    const accountOpportunityTitleBase = env.DAILY_TITLE.includes('日报')
+        ? env.DAILY_TITLE.replace('日报', '账号商机')
+        : `${env.DAILY_TITLE} 账号商机`;
     const accountOpportunityPageTitle = `${accountOpportunityTitleBase} ${formatDateToChinese(dateStr)}`;
     const accountOpportunityDescription = DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION;
     const accountOpportunityPageContent = buildDailyContentWithFrontMatter(dateStr, accountOpportunityMarkdownContent, {
