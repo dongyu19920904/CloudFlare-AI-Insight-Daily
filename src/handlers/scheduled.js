@@ -690,14 +690,14 @@ function sanitizeDuplicateDailySections(markdown) {
     }));
 
     const seenStories = [...topLinks];
-    const sectionHeadingPatterns = [
-        /^##\s*\*\*.*更多动态.*\*\*/im,
-        /^##\s*\*\*.*AI.*趣闻.*\*\*/im,
+    const sectionSpecs = [
+        { pattern: /^##\s*\*\*.*更多动态.*\*\*/im, syncCount: true },
+        { pattern: /^##\s*\*\*.*AI.*趣闻.*\*\*/im, syncCount: false },
     ];
 
     let sanitized = content;
 
-    for (const pattern of sectionHeadingPatterns) {
+    for (const { pattern, syncCount } of sectionSpecs) {
         const sectionMatch = findMarkdownHeadingSection(sanitized, pattern);
         if (!sectionMatch) continue;
 
@@ -705,7 +705,7 @@ function sanitizeDuplicateDailySections(markdown) {
         const headingMatch = section.match(/^##[^\n]*/);
         if (!headingMatch) continue;
 
-        const heading = headingMatch[0];
+        let heading = headingMatch[0];
         const body = section.slice(heading.length).trim();
         if (!body) continue;
 
@@ -739,6 +739,9 @@ function sanitizeDuplicateDailySections(markdown) {
             keptChunks.push(chunk);
         }
 
+        if (syncCount) {
+            heading = heading.replace(/[（(]\d+\s*条[）)]/, `（${keptChunks.length}条）`);
+        }
         const replacement = keptChunks.length === 0 ? '' : `${heading}\n\n${keptChunks.join('\n\n')}`;
 
         sanitized = `${sanitized.slice(0, sectionMatch.start)}${replacement}${sanitized.slice(sectionMatch.end)}`;
