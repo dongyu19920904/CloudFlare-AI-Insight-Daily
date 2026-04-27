@@ -74,10 +74,12 @@ test("summary prompt asks for a three-line progression instead of three parallel
   assert.match(prompt, /bottom line/);
 });
 
-test("daily prompt requires the AI fun section even when no linked fun item fits", () => {
+test("daily prompt avoids forcing low-quality AI fun items", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-04-26");
 
-  assert.match(prompt, /\u8fd9\u4e00\u680f\u6bcf\u5929\u90fd\u8981\u8f93\u51fa/);
-  assert.match(prompt, /\u4e0d\u5e26\u94fe\u63a5\u7684\u4eca\u65e5\u8f7b\u89c2\u5bdf/);
-  assert.doesNotMatch(prompt, /\u53ef\u4ee5\u4e0d\u5199\u8fd9\u4e00\u680f/);
+  assert.match(prompt, /如果笑点主要来自技术圈黑话/);
+  assert.match(prompt, /硬凹段子或搬运评论/);
+  assert.match(prompt, /可以不写这一栏/);
+  assert.doesNotMatch(prompt, /\u8fd9\u4e00\u680f\u6bcf\u5929\u90fd\u8981\u8f93\u51fa/);
+  assert.doesNotMatch(prompt, /\u4e0d\u5e26\u94fe\u63a5\u7684\u4eca\u65e5\u8f7b\u89c2\u5bdf/);
 });
