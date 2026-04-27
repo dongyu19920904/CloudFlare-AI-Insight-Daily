@@ -740,7 +740,8 @@ function sanitizeDuplicateDailySections(markdown) {
         }
 
         if (syncCount) {
-            heading = heading.replace(/[（(]\d+\s*条[）)]/, `（${keptChunks.length}条）`);
+            const storyCount = keptChunks.filter((chunk) => /\[[^\]]+\]\(https?:\/\/[^\s)]+\)/.test(chunk)).length;
+            heading = heading.replace(/[（(]\d+\s*条[）)]/, `（${storyCount}条）`);
         }
         const replacement = keptChunks.length === 0 ? '' : `${heading}\n\n${keptChunks.join('\n\n')}`;
 
