@@ -50,6 +50,7 @@ test("daily prompt sharpens one-liner, watchlist, trend, and FAQ sections withou
   assert.match(prompt, /这条真正的新意是什么/);
   assert.match(prompt, /为什么值得多看一眼/);
   assert.match(prompt, /更多动态/);
+  assert.match(prompt, /标题写几条，正文就必须真的给几条/);
   assert.doesNotMatch(prompt, /## \*\*📌 值得关注/);
   assert.match(prompt, /基于今天信号做近未来推演/);
   assert.match(prompt, /像真人答疑/);
