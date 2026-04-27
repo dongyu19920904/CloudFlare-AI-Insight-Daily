@@ -387,6 +387,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📊 更多动态` / `## **😄 AI趣闻` / `## **❓ 相关问题**`",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 「更多动态」和「AI趣闻」不要复用 TOP 里的同一条链接，也不要彼此复用同一条链接",
+        "- AI趣闻必须从未使用的真实素材里选 1 条，标题用 Markdown 链接；不要写“今日轻观察”“AI轻观察”或不带链接的观察段落",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
         "- 直接输出可发布成稿，不要输出任何元话术",
@@ -399,57 +400,117 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
     ].join('\n');
 }
 
-function extractPromptFallbackSignals(selectedContentItems, existingMarkdown, limit = 2) {
+function extractPromptFallbackCandidates(selectedContentItems, existingMarkdown) {
     const usedUrls = new Set(
         [...String(existingMarkdown || '').matchAll(/https?:\/\/[^\s)]+/g)]
             .map((match) => normalizeReplayUrl(match[0]))
             .filter(Boolean)
     );
-    const signals = [];
+    const candidates = [];
 
     for (const itemText of selectedContentItems || []) {
         const text = String(itemText || '');
         const urlMatch = text.match(/^(?:Url|URL):\s*(https?:\/\/\S+)/im);
-        const urlKey = normalizeReplayUrl(urlMatch?.[1]);
+        const url = urlMatch?.[1]?.trim();
+        const urlKey = normalizeReplayUrl(url);
         if (urlKey && usedUrls.has(urlKey)) continue;
+        if (!url || !urlKey) continue;
 
-        const titleMatch = text.match(/^(?:News Title|Project Name|Papers Title|Title):\s*(.+)$/im);
-        const title = String(titleMatch?.[1] || '')
+        const titleMatch =
+            text.match(/^(?:News Title|Project Name|Papers Title|Title):\s*(.+)$/im) ||
+            text.match(/^socialMedia Post by\s+(.+)$/im);
+        let title = String(titleMatch?.[1] || '')
             .replace(/https?:\/\/\S+/gi, '')
             .replace(/^RT\s+[^:：]{1,40}[:：]\s*/i, '')
             .replace(/^[\s:：,，。.!！？?、\-–—]+|[\s:：,，。.!！？?、\-–—]+$/g, '')
             .replace(/\s+/g, ' ')
             .trim();
+        const summaryMatch = text.match(/^(?:Content Summary|Description|Abstract\/Content Summary|Content):\s*(.+)$/im);
+        const summary = String(summaryMatch?.[1] || '')
+            .replace(/https?:\/\/\S+/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!title && summary) title = summary.slice(0, 42);
         if (!title) continue;
 
-        signals.push(title.length > 42 ? `${title.slice(0, 42)}...` : title);
-        if (signals.length >= limit) break;
+        const mediaMatch = text.match(/Media References:\s*(.+)$/im);
+        const searchText = `${title} ${summary}`.toLowerCase();
+        const funTokens = [
+            '睡', '熬夜', '好到', '怕', 'token', '成本', '账单', '烧掉', '翻车', 'bug',
+            '尴尬', '吐槽', '离谱', '梦回', '云朵', '涂鸦', 'psd', '图片', '刺绣',
+            '海报', 'dating', '采访', '工作流', '打工', '用户', '开发者', '日常',
+        ];
+        const score = funTokens.reduce((total, token) => total + (searchText.includes(token.toLowerCase()) ? 1 : 0), 0)
+            + (mediaMatch ? 2 : 0);
+
+        candidates.push({
+            title,
+            summary,
+            url,
+            media: mediaMatch?.[1]?.trim() || '',
+            score,
+        });
     }
 
-    return signals;
+    return candidates.sort((left, right) => right.score - left.score);
 }
 
-function buildDailyFunObservation(selectedContentItems, existingMarkdown) {
-    const signals = extractPromptFallbackSignals(selectedContentItems, existingMarkdown);
-    if (signals.length >= 2) {
-        return `今天的轻观察：把「${signals[0]}」和「${signals[1]}」放在一起看，很像今天 AI 圈的日常切面：一边有人认真算成本、调提示词，一边有人把模型能力塞进具体工作流。热闹不在口号里，而在大家开始把 AI 当成手边工具反复试。`;
-    }
-    if (signals.length === 1) {
-        return `今天的轻观察：「${signals[0]}」这条素材像今天 AI 圈的小注脚：大家不只盯大模型参数，也开始认真计较价格、提示词、图片和工作流这些细节。AI 越像日用品，新闻就越像使用说明旁边的便利贴。`;
-    }
-    return '今天的轻观察：今天的素材更像一张工作台清单，模型价格、图像提示词和开发工作流挤在一起。AI 不再只像新闻标题里的大事件，而是开始变成每个人手边要调、要算、要试的小工具。';
+function cleanMarkdownLinkTitle(title) {
+    return String(title || '')
+        .replace(/[\[\]\(\)\n\r]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80) || '一条 AI 圈小插曲';
 }
 
-function ensureDailyFunSection(markdown, selectedContentItems) {
+function truncateDailyFunSubject(text, limit = 34) {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+}
+
+function buildDailyFunStory(selectedContentItems, existingMarkdown) {
+    const [candidate] = extractPromptFallbackCandidates(selectedContentItems, existingMarkdown);
+    if (!candidate) return '';
+
+    const title = cleanMarkdownLinkTitle(candidate.title);
+    const subject = truncateDailyFunSubject(candidate.title);
+    const searchText = `${candidate.title} ${candidate.summary}`.toLowerCase();
+    let body;
+
+    if (/token|成本|账单|烧掉|价格/.test(searchText)) {
+        body = `这条适合放进趣闻，是因为它把 AI 的强弱直接翻译成了账单感：${subject}。模型再聪明，开发者最后还是要盯着 token 数深呼吸，这种反差比跑分更有现实味。`;
+    } else if (/睡|熬夜|怕|好到/.test(searchText)) {
+        body = `最有画面感的是人的反应：${subject}。一个工具好不好，平时看参数；真到兴奋处，就变成有人开始舍不得睡觉。AI 新闻偶尔也会这么朴素，像加班前的一杯浓咖啡。`;
+    } else if (/图|图片|psd|海报|刺绣|云朵|涂鸦|视觉|ppt/.test(searchText)) {
+        body = `这条的趣味不在“又一个图像模型很强”，而在 ${subject} 这种具体玩法。大家已经不是围观 AI 作画了，而是像调滤镜、改模板一样试它，手感一下子生活化了。`;
+    } else if (/dating|采访|工作流|用户|开发者|打工|日常/.test(searchText)) {
+        body = `这条有趣，是因为它没有停在大词上，而是落到一个具体人的动作里：${subject}。AI 真正变日常，往往就是从这种小工作流、小反应、小别扭开始的。`;
+    } else {
+        body = `这条最适合当趣闻的地方，是它把宏大的 AI 叙事缩成了一个小场景：${subject}。不用喊口号，读者也能看见大家正在怎么试、怎么改、怎么把 AI 塞进手边事情里。`;
+    }
+
+    const media = candidate.media ? `\n\n${candidate.media}` : '';
+    return `### [${title}](${candidate.url})\n${body}${media}`;
+}
+
+function isInvalidDailyFunSection(sectionMarkdown) {
+    const body = String(sectionMarkdown || '').replace(/^##[^\n]*/m, '').trim();
+    if (!body) return true;
+    if (/轻观察|今日观察|AI轻观察|不带链接/.test(body)) return true;
+    return !/^###\s+\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(body);
+}
+
+export function ensureDailyFunSection(markdown, selectedContentItems) {
     let content = String(markdown || '');
     const existingSection = findMarkdownHeadingSection(content, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
     if (existingSection) {
-        const body = existingSection.section.replace(/^##[^\n]*/m, '').trim();
-        if (body) return content;
+        if (!isInvalidDailyFunSection(existingSection.section)) return content;
         content = `${content.slice(0, existingSection.start)}${content.slice(existingSection.end)}`.replace(/\n{3,}/g, '\n\n').trim();
     }
 
-    const section = `## **😄 AI趣闻**\n\n${buildDailyFunObservation(selectedContentItems, content)}`;
+    const funStory = buildDailyFunStory(selectedContentItems, content);
+    if (!funStory) return content;
+    const section = `## **😄 AI趣闻**\n\n${funStory}`;
     const tailMatch = content.match(/\n##\s+\*\*(?:[^*\n]*AI趋势预测|❓\s*相关问题)/m);
     if (!tailMatch || tailMatch.index == null) {
         return `${content}\n\n${section}`.replace(/\n{3,}/g, '\n\n').trim();

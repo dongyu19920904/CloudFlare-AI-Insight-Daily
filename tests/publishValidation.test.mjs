@@ -121,6 +121,59 @@ test("validateDailyPublication rejects missing secondary daily sections", () => 
   assert.match(result.issues.join("\n"), /AI趣闻/);
 });
 
+test("validateDailyPublication rejects unlinked light-observation fun section", () => {
+  const pageMarkdown = [
+    "## **今日摘要**",
+    "",
+    "```",
+    "今天模型、图片和开发工作流都有更新，日报结构完整且有可读性。",
+    "```",
+    "",
+    "## ⚡ 快速导航",
+    "",
+    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "",
+    "## **今日AI资讯**",
+    "",
+    "### **👀 只有一句话**",
+    "今天 AI 图像和开发工具都很热。",
+    "",
+    "### **🔑 3 个关键词**",
+    "#图像 #开发 #工具",
+    "",
+    "## **🔥 重磅 TOP 1**",
+    "",
+    "### 1. [一条新闻](https://example.com/news-1)",
+    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
+    "",
+    "## **📊 更多动态**",
+    "",
+    "- **[其他]** [另一个素材](https://example.com/more-1) - 这条补充 TOP 未覆盖的角度。",
+    "",
+    "## **😄 AI趣闻**",
+    "",
+    "今天的轻观察：这段没有真实素材链接，只是在概括今天的气氛。",
+    "",
+    "## **❓ 相关问题**",
+    "",
+    "### 如何体验今天提到的工具？",
+    "",
+    "先确认官方入口，再决定是否使用成品服务。",
+    "",
+    "**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。",
+  ].join("\n");
+
+  const result = validateDailyPublication({
+    summaryText: "今天模型、图片和开发工作流都有更新，日报结构完整且有可读性。",
+    pageMarkdown,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /AI趣闻.*链接|轻观察/);
+});
+
 test("validateDailyPublication rejects meta commentary and missing FAQ section", () => {
   const result = validateDailyPublication({
     summaryText: "谷歌发了新模型，开源工具也不少。",

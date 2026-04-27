@@ -233,6 +233,14 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   const moreSection = extractSection(pageMarkdown, moreHeadingPattern);
   const funSection = extractSection(pageMarkdown, funHeadingPattern);
+  const funHasStoryLink = /^###\s+\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(funSection);
+  if (funHeadingPattern.test(String(pageMarkdown || "")) && !funHasStoryLink) {
+    issues.push("AI趣闻必须使用一条真实素材 Markdown 链接");
+  }
+  if (/轻观察|今日观察|AI轻观察|不带链接/.test(funSection)) {
+    issues.push("AI趣闻不能写成无链接轻观察");
+  }
+
   const duplicateUrls = collectDuplicateUrlsBySection({
     top: extractSectionUrls(topSection),
     more: extractSectionUrls(moreSection),

@@ -75,12 +75,13 @@ test("summary prompt asks for a three-line progression instead of three parallel
   assert.match(prompt, /bottom line/);
 });
 
-test("daily prompt avoids forcing low-quality AI fun items", () => {
+test("daily prompt requires AI fun to use a real unused source link", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-04-26");
 
-  assert.match(prompt, /如果笑点主要来自技术圈黑话/);
-  assert.match(prompt, /硬凹段子或搬运评论/);
-  assert.match(prompt, /可以不写这一栏/);
-  assert.doesNotMatch(prompt, /\u8fd9\u4e00\u680f\u6bcf\u5929\u90fd\u8981\u8f93\u51fa/);
+  assert.match(prompt, /每天必须输出 \*\*1 条\*\*/);
+  assert.match(prompt, /独立素材链接/);
+  assert.match(prompt, /要换一条素材/);
+  assert.match(prompt, /不要写“今日轻观察”/);
+  assert.doesNotMatch(prompt, /可以不写这一栏/);
   assert.doesNotMatch(prompt, /\u4e0d\u5e26\u94fe\u63a5\u7684\u4eca\u65e5\u8f7b\u89c2\u5bdf/);
 });
