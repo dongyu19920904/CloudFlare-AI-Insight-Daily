@@ -16,6 +16,33 @@ const DAILY_META_PATTERNS = [
   /我会按照.{0,12}筛选/,
 ];
 
+const OPPORTUNITY_BRAND_FAMILIES = [
+  {
+    label: "OpenAI/GPT",
+    pattern: /\b(?:openai|chatgpt|gpt(?:[-\s]?(?:[0-9]+(?:\.[0-9]+)?|image|oss|realtime))?|sora|sam altman)\b|奥特曼|山姆/i,
+  },
+  {
+    label: "Claude",
+    pattern: /\b(?:claude|anthropic|sonnet|opus)\b/i,
+  },
+  {
+    label: "Gemini",
+    pattern: /\b(?:gemini|google ai studio|google gemini)\b/i,
+  },
+  {
+    label: "Cursor",
+    pattern: /\bcursor\b/i,
+  },
+  {
+    label: "DeepSeek",
+    pattern: /\bdeepseek\b/i,
+  },
+  {
+    label: "Kimi",
+    pattern: /\b(?:kimi|moonshot)\b|月之暗面/i,
+  },
+];
+
 function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
@@ -109,6 +136,41 @@ function collectMarkdownIssues(markdown, options = {}) {
   }
 
   return issues;
+}
+
+function countPatternMatches(text, pattern) {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const regex = new RegExp(pattern.source, flags);
+  return [...String(text || "").matchAll(regex)].length;
+}
+
+function collectDominantBrandIssues(markdown, options = {}) {
+  const {
+    label = "内容",
+    maxMentions = 10,
+    maxShare = 0.55,
+    minTotalBrandMentions = 8,
+  } = options;
+  const text = String(markdown || "");
+  const counts = OPPORTUNITY_BRAND_FAMILIES
+    .map((family) => ({
+      label: family.label,
+      count: countPatternMatches(text, family.pattern),
+    }))
+    .filter((family) => family.count > 0)
+    .sort((left, right) => right.count - left.count);
+  const total = counts.reduce((sum, family) => sum + family.count, 0);
+
+  if (total < minTotalBrandMentions || counts.length === 0) return [];
+
+  const dominant = counts[0];
+  if (dominant.count <= maxMentions || dominant.count / total < maxShare) {
+    return [];
+  }
+
+  return [
+    `${label}品牌露出过密: ${dominant.label} 出现 ${dominant.count} 次，请保留主推必要名称，其余栏目改写成场景、品类、买家痛点或交付形式`,
+  ];
 }
 
 function extractSection(markdown, headingPattern) {
@@ -298,27 +360,33 @@ export function validateOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
 }) {
-  const issues = collectMarkdownIssues(markdown, {
-    label: "商机页面",
-    minChars: 260,
-    requiredPhrases: [
-      "# 今日AI商机",
-      "## 先说结论",
-      "## 今日主推",
-      "## 本周可试",
-      "## 今天别碰",
-      "## 地图感",
-      "## 今日动作",
-      "这钱从哪来",
-      "最简单卖法",
-      "今天先做哪一步",
-      "今天就能发的文案",
-      "配图建议",
-      "先怎么试",
-      "为什么先别冲太猛",
-    ],
-    forbiddenPhrases: bannedPublicPhrases,
-  });
+  const issues = [
+    ...collectMarkdownIssues(markdown, {
+      label: "商机页面",
+      minChars: 260,
+      requiredPhrases: [
+        "# 今日AI商机",
+        "## 先说结论",
+        "## 今日主推",
+        "## 本周可试",
+        "## 今天别碰",
+        "## 地图感",
+        "## 今日动作",
+        "这钱从哪来",
+        "最简单卖法",
+        "今天先做哪一步",
+        "今天就能发的文案",
+        "配图建议",
+        "先怎么试",
+        "为什么先别冲太猛",
+      ],
+      forbiddenPhrases: bannedPublicPhrases,
+    }),
+    ...collectDominantBrandIssues(markdown, {
+      label: "商机页面",
+      maxMentions: 10,
+    }),
+  ];
 
   return {
     ok: issues.length === 0,
@@ -330,24 +398,30 @@ export function validateAccountOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
 }) {
-  const issues = collectMarkdownIssues(markdown, {
-    label: "账号商机页面",
-    minChars: 180,
-    requiredPhrases: [
-      "# 今日AI账号商机",
-      "## 先看信号",
-      "## 今日主推",
-      "## 平替机会",
-      "## 闲鱼新品",
-      "## 今天别碰",
-      "## 今日动作",
-      "发生了什么",
-      "今天先挂什么",
-      "今天先测什么",
-      "售后风险",
-    ],
-    forbiddenPhrases: bannedPublicPhrases,
-  });
+  const issues = [
+    ...collectMarkdownIssues(markdown, {
+      label: "账号商机页面",
+      minChars: 180,
+      requiredPhrases: [
+        "# 今日AI账号商机",
+        "## 先看信号",
+        "## 今日主推",
+        "## 平替机会",
+        "## 闲鱼新品",
+        "## 今天别碰",
+        "## 今日动作",
+        "发生了什么",
+        "今天先挂什么",
+        "今天先测什么",
+        "售后风险",
+      ],
+      forbiddenPhrases: bannedPublicPhrases,
+    }),
+    ...collectDominantBrandIssues(markdown, {
+      label: "账号商机页面",
+      maxMentions: 12,
+    }),
+  ];
 
   return {
     ok: issues.length === 0,

@@ -79,6 +79,8 @@ test("getSystemPromptAiOpportunity no longer defaults today's lead to account bu
   assert.match(prompt, /同一家公司、同一产品线、同一核心人物/);
   assert.match(prompt, /GPT Image、ChatGPT、Sam Altman/);
   assert.match(prompt, /至少保留 1 条/);
+  assert.match(prompt, /如果主推已经写 Claude 或 Gemini/);
+  assert.match(prompt, /不要让 Claude、Gemini、OpenAI\/GPT 任何一个品牌在全文形成刷屏感/);
 });
 
 test("getSystemPromptAiOpportunity asks for creative-but-sellable variation instead of one repeated offer shape", () => {

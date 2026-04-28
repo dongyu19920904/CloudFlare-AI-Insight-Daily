@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   validateDailyPublication,
+  validateAccountOpportunityPublication,
   validateOpportunityPublication,
 } from "../src/publishValidation.js";
 
@@ -429,4 +430,89 @@ test("validateOpportunityPublication accepts the lighter daily-style opportunity
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
+});
+
+test("validateOpportunityPublication rejects one brand dominating the whole article", () => {
+  const result = validateOpportunityPublication({
+    markdown: `# 今日AI商机
+
+## 先说结论
+今天先试 Claude 跑通包，但不要整篇只念 Claude。
+
+## 今日主推
+### Claude 中文跑通包
+Claude 今天很热，Claude Code 也很热，很多人有 Claude 账号但不会用 Claude Code。这个机会不是卖 Claude 概念，而是把 Claude 的配置、Claude 的模板、Claude 的常见报错整理成 Claude 新手包。
+
+- 适合谁：买了 Claude 但不会配置的人
+- 这钱从哪来：Claude 用户想省时间，Claude 配置本身有门槛
+- 最简单卖法：Claude 跑通包
+- 今天先做哪一步：跑通 Claude 模板
+- 今天就能发的文案：Claude 不会配，我帮你整理好
+- 配图建议：Claude 配置截图
+
+## 本周可试
+### Claude 模板精选
+继续围着 Claude 写，Claude 模板、Claude 示例、Claude 场景都可以试。
+- 适合谁：Claude 新手
+- 先怎么试：先做 Claude 清单
+- 为什么先别冲太猛：Claude 售后边界要写清楚
+- 配图建议：Claude 截图
+
+## 今天别碰
+### 只讲模型参数
+看着热，但不适合小白直接卖。
+
+## 地图感
+### 跑通包
+跑通包卖的是省折腾，不是技术名词。
+
+## 今日动作
+- 先发什么：Claude 跑通包
+- 先录什么：Claude 配置录屏
+- 先卖哪一款：Claude 新手包`,
+    bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /品牌露出过密: Claude/);
+});
+
+test("validateAccountOpportunityPublication rejects Gemini dominating account opportunities", () => {
+  const result = validateAccountOpportunityPublication({
+    markdown: `# 今日AI账号商机
+
+## 先看信号
+- Gemini 讨论升温，Gemini 体验号有人问，Gemini 平替也有人看。
+- 继续写 Gemini 容易刷屏，所以这里故意构造不合格内容。
+
+## 今日主推
+### Gemini 低门槛体验号
+Gemini 今天被讨论，Gemini 买家想试，Gemini 账号可以低价挂，Gemini 体验号适合今天主推。
+
+- 发生了什么：Gemini 热度起来
+- 今天先挂什么：Gemini 体验号
+- 今天先测什么：Gemini 标题
+- 售后风险：Gemini 时效边界要写清
+
+## 平替机会
+- Gemini 短期号
+- Gemini 组合包
+- Gemini 对照包
+
+## 闲鱼新品
+- Gemini 低价先试
+- Gemini 不想年付先体验
+
+## 今天别碰
+- Gemini 长期稳定承诺不要写。
+
+## 今日动作
+- 先发什么：Gemini 体验号
+- 先录什么：Gemini 登录录屏
+- 先卖哪一款：Gemini 低价款`,
+    bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /品牌露出过密: Gemini/);
 });
