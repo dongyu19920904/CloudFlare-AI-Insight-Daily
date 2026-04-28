@@ -34,6 +34,22 @@ const COMMUNITY_HEAT_SIGNAL_PATTERN =
 const NOISY_DEMAND_PATTERN =
   /token|求|快不行|有没有风险|假如|如果|转发了|转发 @|instagram|ins\b|哈哈|bro|meme|吐槽/i;
 
+const TOPIC_FAMILY_PATTERNS = [
+  { key: "openai", pattern: /\b(openai|chatgpt|gpt(?:[-\s]?(?:[0-9]+|image|oss|realtime))?|sora|dall[-\s]?e|sam altman|chatgpt\s+(?:plus|pro))\b|奥特曼|山姆/i },
+  { key: "anthropic", pattern: /\b(anthropic|claude|opus|sonnet)\b/i },
+  { key: "google", pattern: /\b(google|gemini|deepmind|ai studio)\b|谷歌/i },
+  { key: "cursor", pattern: /\bcursor\b/i },
+  { key: "github_open_source", pattern: /\b(github trending|github\.com|open source|open-source)\b|开源/i },
+  { key: "moonshot", pattern: /\b(kimi|moonshot)\b|月之暗面/i },
+  { key: "deepseek", pattern: /\bdeepseek\b/i },
+  { key: "alibaba", pattern: /\b(qwen|tongyi|alibaba|通义|happyhorse)\b|阿里/i },
+  { key: "bytedance", pattern: /\b(bytedance|doubao|seedance)\b|字节|豆包/i },
+  { key: "tencent", pattern: /\b(tencent|hunyuan)\b|腾讯|混元/i },
+  { key: "baidu", pattern: /\b(baidu|ernie)\b|百度|文心/i },
+  { key: "mcp_workflow", pattern: /\b(mcp|workflow|plugin|sdk|integration)\b/i },
+  { key: "mirror_risk", pattern: /\b(mirror|third-party|api key|shared site)\b|镜像|第三方入口|共享站/i },
+];
+
 function isNoisyItem(item) {
   return NOISY_DEMAND_PATTERN.test(item?.searchText || "");
 }
@@ -55,6 +71,53 @@ function hasCommunityHeatSignal(item) {
 
 function isCommunityHeatOnlyItem(item) {
   return hasCommunityHeatSignal(item) && !hasBuyerOutcomeSignal(item);
+}
+
+function normalizeTopicFamilyText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getCandidateTopicFamily(candidate) {
+  if (!candidate) return "";
+
+  const evidenceText = (candidate.supportingItems || [])
+    .map((item) =>
+      [
+        item.title,
+        item.description,
+        item.plainText,
+        item.source,
+        item.url,
+      ].filter(Boolean).join(" ")
+    )
+    .join(" ");
+  const text = normalizeTopicFamilyText([
+    candidate.id,
+    candidate.label,
+    candidate.productAngle,
+    candidate.matchedTerms?.join(" "),
+    evidenceText,
+  ].filter(Boolean).join(" "));
+
+  for (const { key, pattern } of TOPIC_FAMILY_PATTERNS) {
+    if (pattern.test(text)) return key;
+  }
+
+  return String(candidate.id || candidate.label || "").replace(/-(account|pricing|limit|wave)$/i, "");
+}
+
+function isGithubOpenSourceCandidate(candidate) {
+  return (
+    candidate?.id === "github_hot_project" ||
+    getCandidateTopicFamily(candidate) === "github_open_source" ||
+    (candidate?.supportingItems || []).some((item) =>
+      /github\.com|github trending/i.test(`${item?.url || ""} ${item?.source || ""}`)
+    )
+  );
 }
 
 function truncate(text, maxChars = 220) {
@@ -215,8 +278,37 @@ function getEditorialHint(candidate) {
 
 function selectPromptCandidates(candidates, playbook) {
   const maxCandidates = playbook.outputRules.maxPromptCandidates || 4;
+  const maxPerTopicFamily = Math.max(
+    1,
+    Number(playbook.outputRules.maxPromptCandidatesPerTopicFamily) || 1
+  );
   const sortedCandidates = [...(candidates || [])];
-  const selectedCandidates = sortedCandidates.slice(0, maxCandidates);
+  const selectedCandidates = [];
+  const topicFamilyCounts = new Map();
+
+  const tryAddCandidate = (candidate) => {
+    if (!candidate || selectedCandidates.length >= maxCandidates) return false;
+    if (selectedCandidates.some((item) => item.id === candidate.id)) return false;
+
+    const topicFamily = getCandidateTopicFamily(candidate);
+    if (
+      topicFamily &&
+      (topicFamilyCounts.get(topicFamily) || 0) >= maxPerTopicFamily
+    ) {
+      return false;
+    }
+
+    selectedCandidates.push(candidate);
+    if (topicFamily) {
+      topicFamilyCounts.set(topicFamily, (topicFamilyCounts.get(topicFamily) || 0) + 1);
+    }
+    return true;
+  };
+
+  for (const candidate of sortedCandidates) {
+    if (selectedCandidates.length >= maxCandidates) break;
+    tryAddCandidate(candidate);
+  }
 
   if (selectedCandidates.length === 0) {
     return selectedCandidates;
@@ -229,7 +321,30 @@ function selectPromptCandidates(candidates, playbook) {
     const accountCandidates = sortedCandidates.filter(isAccountCandidate);
 
     if (nonAccountCandidates.length >= 2) {
-      const visibleCandidates = nonAccountCandidates.slice(0, maxCandidates);
+      const visibleCandidates = [];
+      const visibleTopicFamilyCounts = new Map();
+      const tryAddVisibleCandidate = (candidate) => {
+        if (!candidate || visibleCandidates.length >= maxCandidates) return false;
+        if (visibleCandidates.some((item) => item.id === candidate.id)) return false;
+        const topicFamily = getCandidateTopicFamily(candidate);
+        if (
+          topicFamily &&
+          (visibleTopicFamilyCounts.get(topicFamily) || 0) >= maxPerTopicFamily
+        ) {
+          return false;
+        }
+        visibleCandidates.push(candidate);
+        if (topicFamily) {
+          visibleTopicFamilyCounts.set(topicFamily, (visibleTopicFamilyCounts.get(topicFamily) || 0) + 1);
+        }
+        return true;
+      };
+
+      for (const candidate of nonAccountCandidates) {
+        if (visibleCandidates.length >= maxCandidates) break;
+        tryAddVisibleCandidate(candidate);
+      }
+
       const bestNonAccountScore = nonAccountCandidates[0]?.score || 0;
       const standoutAccountCandidates = accountCandidates.filter(
         (candidate) => candidate.score >= bestNonAccountScore + 8
@@ -237,17 +352,32 @@ function selectPromptCandidates(candidates, playbook) {
 
       for (const candidate of standoutAccountCandidates) {
         if (visibleCandidates.length >= maxCandidates) break;
-        visibleCandidates.push(candidate);
+        tryAddVisibleCandidate(candidate);
       }
 
-      return visibleCandidates.slice(0, maxCandidates);
+      return ensureRequiredPromptCandidates(
+        visibleCandidates.slice(0, maxCandidates),
+        sortedCandidates,
+        playbook,
+        maxCandidates
+      );
     }
 
-    return selectedCandidates;
+    return ensureRequiredPromptCandidates(
+      selectedCandidates,
+      sortedCandidates,
+      playbook,
+      maxCandidates
+    );
   }
 
   if (selectedCandidates.some(isAccountCandidate)) {
-    return selectedCandidates;
+    return ensureRequiredPromptCandidates(
+      selectedCandidates,
+      sortedCandidates,
+      playbook,
+      maxCandidates
+    );
   }
 
   const allCandidates = candidates || [];
@@ -257,11 +387,21 @@ function selectPromptCandidates(candidates, playbook) {
 
   if (accountFallback) {
     selectedCandidates[selectedCandidates.length - 1] = accountFallback;
-    return selectedCandidates;
+    return ensureRequiredPromptCandidates(
+      selectedCandidates,
+      sortedCandidates,
+      playbook,
+      maxCandidates
+    );
   }
 
   if (selectedCandidates.some(isAccountLikeCandidate)) {
-    return selectedCandidates;
+    return ensureRequiredPromptCandidates(
+      selectedCandidates,
+      sortedCandidates,
+      playbook,
+      maxCandidates
+    );
   }
 
   const accountLikeFallback = allCandidates.find(
@@ -273,7 +413,72 @@ function selectPromptCandidates(candidates, playbook) {
     selectedCandidates[selectedCandidates.length - 1] = accountLikeFallback;
   }
 
-  return selectedCandidates;
+  return ensureRequiredPromptCandidates(
+    selectedCandidates,
+    sortedCandidates,
+    playbook,
+    maxCandidates
+  );
+}
+
+function ensureRequiredPromptCandidates(
+  selectedCandidates,
+  allCandidates,
+  playbook,
+  maxCandidates
+) {
+  let output = [...selectedCandidates].filter(Boolean);
+
+  if (
+    playbook.outputRules.requireGithubOpenSourceCandidateInPrompt &&
+    !output.some(isGithubOpenSourceCandidate)
+  ) {
+    const githubCandidate = (allCandidates || []).find(isGithubOpenSourceCandidate);
+    if (githubCandidate) {
+      output = output.filter((candidate) => candidate.id !== githubCandidate.id);
+      if (output.length >= maxCandidates) {
+        const replaceIndex = Math.max(
+          0,
+          output.findLastIndex
+            ? output.findLastIndex((candidate) => !isAccountCandidate(candidate))
+            : output.length - 1
+        );
+        output.splice(replaceIndex, 1, githubCandidate);
+      } else {
+        output.push(githubCandidate);
+      }
+    }
+  }
+
+  if (
+    playbook.outputRules.requireAccountLikeOpportunityInTodayCanSell &&
+    !output.some(isAccountCandidate)
+  ) {
+    const accountCandidate = (allCandidates || []).find(isAccountCandidate);
+    if (accountCandidate) {
+      output = output.filter((candidate) => candidate.id !== accountCandidate.id);
+      if (output.length >= maxCandidates) {
+        const replaceIndex = Math.max(
+          0,
+          output.findLastIndex
+            ? output.findLastIndex((candidate) => !isGithubOpenSourceCandidate(candidate))
+            : output.length - 1
+        );
+        output.splice(replaceIndex, 1, accountCandidate);
+      } else {
+        output.push(accountCandidate);
+      }
+    }
+  }
+
+  const seenIds = new Set();
+  return output
+    .filter((candidate) => {
+      if (!candidate || seenIds.has(candidate.id)) return false;
+      seenIds.add(candidate.id);
+      return true;
+    })
+    .slice(0, maxCandidates);
 }
 
 function scoreClearChange(items) {

@@ -75,6 +75,10 @@ test("getSystemPromptAiOpportunity no longer defaults today's lead to account bu
   assert.match(prompt, /不要默认写成账号搭售|账号类不是默认优先/);
   assert.match(prompt, /综合得分最高|证据最强/);
   assert.match(prompt, /GitHub|跑通包|模板包|轻服务/);
+  assert.match(prompt, /最近 24 小时/);
+  assert.match(prompt, /同一家公司、同一产品线、同一核心人物/);
+  assert.match(prompt, /GPT Image、ChatGPT、Sam Altman/);
+  assert.match(prompt, /至少保留 1 条/);
 });
 
 test("getSystemPromptAiOpportunity asks for creative-but-sellable variation instead of one repeated offer shape", () => {

@@ -198,6 +198,8 @@ export const opportunityPlaybook = {
     maxEvidenceItemsPerCandidate: 2,
     allowWeakDaySingleOpportunity: true,
     requireAccountLikeOpportunityInTodayCanSell: false,
+    requireGithubOpenSourceCandidateInPrompt: true,
+    maxPromptCandidatesPerTopicFamily: 1,
     requireDistinctCreativityModes: true,
     dailyCreativityModeCount: 3,
     weakDayLanguage: ["先小范围试发", "先观察", "先低成本验证"],
@@ -343,6 +345,10 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
     }`,
     `- 今日至少轮换 ${playbook.outputRules.dailyCreativityModeCount || 3} 种创意卖法候选，并保证主推与次推不是同一种模式: ${
       playbook.outputRules.requireDistinctCreativityModes ? "是" : "否"
+    }`,
+    `- 同一家公司/产品线在候选主题里最多主写 ${playbook.outputRules.maxPromptCandidatesPerTopicFamily || 1} 条，其余信息合并成补充证据，不要刷屏`,
+    `- 如果有 GitHub Trending 或开源项目候选，至少保留 1 条并翻译成跑通包、部署包、模板包或轻服务: ${
+      playbook.outputRules.requireGithubOpenSourceCandidateInPrompt ? "是" : "否"
     }`,
     `- 参考卖法可自然带出: ${playbook.outputRules.offerTiers.join("、")}，但不要机械写成报价表`,
     `- 弱证据时允许语气: ${playbook.outputRules.weakDayLanguage.join("、")}`,

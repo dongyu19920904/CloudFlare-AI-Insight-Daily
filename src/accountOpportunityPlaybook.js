@@ -52,7 +52,7 @@ export const accountOpportunityPlaybook = {
     {
       id: "gpt-account",
       label: "GPT / OpenAI 账号波动机会",
-      match: ["openai", "gpt", "chatgpt", "plus", "pro", "openai account"],
+      match: ["openai", "gpt", "chatgpt", "chatgpt plus", "chatgpt pro", "openai account"],
       preferredLane: "account",
       secondaryLane: "bundle",
       defaultAdvice: "先写 GPT 账号异常后的平替和组合体验机会，不要只写 GPT 本身。",
@@ -161,6 +161,21 @@ export const accountOpportunityPlaybook = {
       titleHint: "先写今天先挂什么，再写账号或包名",
       avoidLeadHint: "不要假装知道实时销量，只写新品苗头",
     },
+    {
+      id: "github_hot_project",
+      label: "GitHub 开源平替 / 部署包机会",
+      match: ["github trending", "github.com", "open source", "开源"],
+      preferredLane: "service",
+      secondaryLane: "bundle",
+      defaultAdvice:
+        "只把能降低买家使用门槛的开源项目写成平替、部署包、跑通包或筛选服务，不要硬写成原账号。",
+      productAngle: "开源平替部署包 / 跑通包 / 筛选服务",
+      buyerHint: "账号波动时想找备用方案，但不会自己部署或筛选开源项目的人",
+      deliveryHint: "项目筛选、部署说明、跑通截图、配置边界、替代建议",
+      channelHint: "闲鱼、私聊、社群",
+      titleHint: "先写它能替代什么麻烦，再写 GitHub 项目名",
+      avoidLeadHint: "不要把 stars、fork 数、GitHub 排名写成账号商品卖点",
+    },
   ],
 
   outputRules: {
@@ -170,6 +185,8 @@ export const accountOpportunityPlaybook = {
     maxEvidenceItemsPerCandidate: 2,
     allowWeakDaySingleOpportunity: true,
     requireAccountLikeOpportunityInTodayCanSell: true,
+    requireGithubOpenSourceCandidateInPrompt: true,
+    maxPromptCandidatesPerTopicFamily: 1,
     requireDistinctCreativityModes: true,
     dailyCreativityModeCount: 3,
     weakDayLanguage: ["先小范围试挂", "先观察", "先低成本验证"],
@@ -297,6 +314,10 @@ export function serializeAccountOpportunityPlaybook(
     }`,
     `- 今日至少轮换 ${playbook.outputRules.dailyCreativityModeCount || 3} 种创意卖法候选，并保证主推、平替机会、闲鱼新品至少覆盖两种不同模式: ${
       playbook.outputRules.requireDistinctCreativityModes ? "是" : "否"
+    }`,
+    `- 同一家公司/产品线在候选主题里最多主写 ${playbook.outputRules.maxPromptCandidatesPerTopicFamily || 1} 条，其余信息合并成补充证据，不要刷屏`,
+    `- 如果有 GitHub Trending 或开源项目候选，至少保留 1 条并翻译成开源平替、部署包、跑通包或筛选服务: ${
+      playbook.outputRules.requireGithubOpenSourceCandidateInPrompt ? "是" : "否"
     }`,
     `- 可自然带出的卖法: ${playbook.outputRules.offerTiers.join("、")}`,
     `- 弱证据时允许语气: ${playbook.outputRules.weakDayLanguage.join("、")}`,

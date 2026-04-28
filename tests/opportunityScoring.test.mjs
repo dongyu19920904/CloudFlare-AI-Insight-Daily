@@ -6,6 +6,7 @@ import {
   formatOpportunityCandidatesForPrompt,
   inferOpportunityReplaySignals,
 } from "../src/opportunityScoring.js";
+import { accountOpportunityPlaybook } from "../src/accountOpportunityPlaybook.js";
 
 test("buildOpportunityCandidates groups raw items into lane-aware topics", () => {
   const candidates = buildOpportunityCandidates({
@@ -321,4 +322,121 @@ test("buildOpportunityCandidates creates a generic GitHub hot project candidate 
   assert.ok(githubCandidate);
   assert.match(githubCandidate.productAngle, /模板包|跑通包|轻服务|部署/);
   assert.ok(["bundle", "service"].includes(githubCandidate.preferredLane));
+});
+
+test("formatOpportunityCandidatesForPrompt keeps a GitHub project in diversified AI opportunity candidates", () => {
+  const candidates = buildOpportunityCandidates({
+    news: [
+      {
+        title: "OpenAI 发布 GPT Image 新更新",
+        description: "ChatGPT GPT Image release，适合做上手说明和中文玩法包",
+        source: "AI Base",
+        url: "https://example.com/openai-image",
+        published_date: "2026-04-27",
+        details: { content_html: "<p>OpenAI ChatGPT GPT Image release</p>" },
+      },
+      {
+        title: "Cursor Pro Agent 模式更新",
+        description: "Cursor Pro release，适合做安装配置和提效工作流",
+        source: "X",
+        url: "https://example.com/cursor-pro",
+        published_date: "2026-04-27",
+        details: { content_html: "<p>Cursor Pro Agent workflow release</p>" },
+      },
+      {
+        title: "Claude Sonnet 工作区能力更新",
+        description: "Claude Sonnet update，适合内容处理和写作提效包",
+        source: "Anthropic",
+        url: "https://example.com/claude-sonnet",
+        published_date: "2026-04-27",
+        details: { content_html: "<p>Claude Sonnet release support</p>" },
+      },
+      {
+        title: "Gemini AI Studio 推出新模板",
+        description: "Gemini AI Studio template release，适合低门槛体验包",
+        source: "Google",
+        url: "https://example.com/gemini-template",
+        published_date: "2026-04-27",
+        details: { content_html: "<p>Gemini template release</p>" },
+      },
+    ],
+    project: [
+      {
+        title: "agent-kit",
+        description: "GitHub Trending open source agent workflow with deployment template",
+        source: "GitHub Trending",
+        url: "https://github.com/example/agent-kit",
+        published_date: "2026-04-27",
+        details: { content_html: "<p>open source deployment template workflow</p>" },
+      },
+    ],
+  });
+
+  const output = formatOpportunityCandidatesForPrompt(candidates);
+
+  assert.match(output, /GitHub 热门 AI 项目机会|agent-kit/);
+  assert.match(output, /跑通包|部署包|模板包|轻服务/);
+});
+
+test("account opportunity prompt candidates keep GitHub open-source alternatives and cap repeated OpenAI signals", () => {
+  const candidates = buildOpportunityCandidates(
+    {
+      news: [
+        {
+          title: "ChatGPT 登录入口出现波动",
+          description: "openai chatgpt account login issue，适合做平替体验和组合包",
+          source: "账号观察",
+          url: "https://example.com/chatgpt-login",
+          published_date: "2026-04-27",
+          details: { content_html: "<p>openai chatgpt account login issue</p>" },
+        },
+        {
+          title: "OpenAI API pricing 和 quota 调整",
+          description: "OpenAI pricing quota update，买家开始找低价替代入口",
+          source: "AI Base",
+          url: "https://example.com/openai-pricing",
+          published_date: "2026-04-27",
+          details: { content_html: "<p>OpenAI pricing quota update</p>" },
+        },
+        {
+          title: "Claude 账号体验入口升温",
+          description: "Claude account alternative for ChatGPT users",
+          source: "社群",
+          url: "https://example.com/claude-account",
+          published_date: "2026-04-27",
+          details: { content_html: "<p>Claude account alternative</p>" },
+        },
+        {
+          title: "Gemini 平替账号讨论增加",
+          description: "Gemini account low barrier alternative",
+          source: "X",
+          url: "https://example.com/gemini-account",
+          published_date: "2026-04-27",
+          details: { content_html: "<p>Gemini account alternative</p>" },
+        },
+      ],
+      project: [
+        {
+          title: "local-ai-dashboard",
+          description: "GitHub Trending open source ChatGPT alternative dashboard with deploy docs",
+          source: "GitHub Trending",
+          url: "https://github.com/example/local-ai-dashboard",
+          published_date: "2026-04-27",
+          details: { content_html: "<p>open source alternative deploy docs</p>" },
+        },
+      ],
+    },
+    accountOpportunityPlaybook
+  );
+
+  const output = formatOpportunityCandidatesForPrompt(
+    candidates,
+    accountOpportunityPlaybook
+  );
+  const openaiFamilyLabels = (
+    output.match(/GPT \/ OpenAI 账号波动机会|涨价 \/ 免费缩水机会/g) || []
+  ).length;
+
+  assert.match(output, /GitHub 开源平替 \/ 部署包机会|local-ai-dashboard/);
+  assert.ok(openaiFamilyLabels <= 1);
 });
