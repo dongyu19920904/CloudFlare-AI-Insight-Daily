@@ -31,4 +31,5 @@ test("getSystemPromptAiAccountOpportunity asks for diverse 24h signals and open-
   assert.match(prompt, /不要让今日主推、平替机会、闲鱼新品都围着 OpenAI\/GPT 转/);
   assert.match(prompt, /如果主推已经写 Gemini 或 Claude/);
   assert.match(prompt, /不要让 Claude、Gemini、OpenAI\/GPT 任何一个品牌在全文形成刷屏感/);
+  assert.match(prompt, /不要为了避免重复而把关键对象写成谜语/);
 });
