@@ -50,6 +50,11 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseNonNegativeInt(value, fallback) {
+  const parsed = parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function normalizeReplayUrl(url) {
   if (!url) return "";
 
@@ -138,6 +143,69 @@ function scoreDailyPromptCandidate(candidate) {
   return score;
 }
 
+const COMPANY_TOPIC_PATTERNS = [
+  { key: "openai", pattern: /\b(openai|chatgpt|gpt[-\s]?(?:[0-9]|image|oss|realtime)|sora|dall[-\s]?e|sam altman)\b|奥特曼|山姆/i },
+  { key: "google", pattern: /\b(google|gemini|deepmind|alphafold|notebooklm|ai studio)\b|谷歌/i },
+  { key: "anthropic", pattern: /\b(anthropic|claude)\b/i },
+  { key: "meta", pattern: /\b(meta|llama|fair)\b/i },
+  { key: "microsoft", pattern: /\b(microsoft|copilot|bing|azure ai)\b|微软/i },
+  { key: "github", pattern: /\b(github copilot|github models|github spark)\b/i },
+  { key: "xai", pattern: /\b(xai|grok)\b/i },
+  { key: "perplexity", pattern: /\bperplexity\b/i },
+  { key: "cursor", pattern: /\bcursor\b/i },
+  { key: "windsurf", pattern: /\b(windsurf|codeium)\b/i },
+  { key: "mistral", pattern: /\bmistral\b/i },
+  { key: "nvidia", pattern: /\b(nvidia|cuda|dgx|blackwell)\b|英伟达/i },
+  { key: "apple", pattern: /\b(apple intelligence|apple|wwdc)\b|苹果/i },
+  { key: "amazon", pattern: /\b(amazon|aws|bedrock)\b/i },
+  { key: "midjourney", pattern: /\bmidjourney\b/i },
+  { key: "stability", pattern: /\b(stability ai|stable diffusion)\b/i },
+  { key: "runway", pattern: /\brunway\b/i },
+  { key: "alibaba", pattern: /\b(qwen|tongyi|alibaba|通义)\b|阿里/i },
+  { key: "deepseek", pattern: /\bdeepseek\b/i },
+  { key: "moonshot", pattern: /\b(kimi|moonshot)\b|月之暗面/i },
+  { key: "zhipu", pattern: /\b(zhipu|glm)\b|智谱/i },
+  { key: "tencent", pattern: /\b(tencent|hunyuan)\b|腾讯|混元/i },
+  { key: "baidu", pattern: /\b(baidu|ernie)\b|百度|文心/i },
+  { key: "bytedance", pattern: /\b(bytedance|doubao|seedance)\b|字节|豆包/i },
+  { key: "minimax", pattern: /\b(minimax|hailuo)\b|海螺/i },
+  { key: "kuaishou", pattern: /\b(kling|kuaishou)\b|可灵|快手/i },
+  { key: "huggingface", pattern: /\b(hugging face|huggingface)\b/i },
+];
+
+function normalizeDiversityText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getCandidateTopicKey(candidate) {
+  const sourceText = candidate?.sourceType === "project" ? "" : candidate?.source || "";
+  const text = normalizeDiversityText([
+    candidate?.title || "",
+    candidate?.description || "",
+    candidate?.plainText || "",
+    candidate?.authors || "",
+    sourceText,
+  ].join(" "));
+
+  if (!text) return "";
+
+  for (const { key, pattern } of COMPANY_TOPIC_PATTERNS) {
+    if (pattern.test(text)) return key;
+  }
+
+  return "";
+}
+
+function getCandidateSourceKey(candidate) {
+  const source = normalizeDiversityText(candidate?.source || "");
+  if (!source) return "";
+  return source.replace(/\s+-\s+.+$/, "").replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ").trim();
+}
+
 function extractMatchTokens(item) {
   const text = [
     item?.title || "",
@@ -209,6 +277,7 @@ function buildDailyPromptCandidate(item) {
     title: item.title,
     description: item.description,
     source: item.source,
+    authors: item.authors,
     url: item.url,
     plainText: plainTextContent,
     placeholders: mediaPlaceholders,
@@ -222,7 +291,7 @@ function buildDailyPromptCandidate(item) {
   };
 }
 
-function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
+function isDuplicateDailyPromptCandidate(candidate, selectedCandidates, options = {}) {
   const candidateUrlKey = normalizeReplayUrl(candidate?.url);
   const candidateTitle = candidate?.title || "";
 
@@ -232,7 +301,7 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
       return true;
     }
 
-    if (!candidateTitle || !existingCandidate?.title) {
+    if (options.allowSimilarTitle || !candidateTitle || !existingCandidate?.title) {
       return false;
     }
 
@@ -243,6 +312,9 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 28);
   const minimumPromptItems = Math.min(maxItems, parsePositiveInt(env.DAILY_PROMPT_MIN_ITEMS, 12));
+  const maxTopicItems = parseNonNegativeInt(env.DAILY_PROMPT_TOPIC_MAX_ITEMS, 1);
+  const maxSourceItems = parseNonNegativeInt(env.DAILY_PROMPT_SOURCE_MAX_ITEMS, 4);
+  const minimumProjectItems = parseNonNegativeInt(env.DAILY_PROMPT_MIN_PROJECT_ITEMS, 1);
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 10),
     project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 8),
@@ -288,38 +360,60 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     ...[...buckets.keys()].filter((sourceType) => !preferredSourceOrder.includes(sourceType)),
   ];
   const selectedCandidates = [];
+  const topicCounts = new Map();
+  const sourceCounts = new Map();
 
-  const tryAddCandidate = (candidate) => {
+  const sortedBucketFor = (sourceType) => {
+    const bucket = [...(buckets.get(sourceType) || [])].sort((left, right) => right.score - left.score);
+    return [
+      ...bucket.filter((candidate) => candidate.itemHasMedia),
+      ...bucket.filter((candidate) => !candidate.itemHasMedia),
+    ];
+  };
+
+  const tryAddCandidate = (candidate, options = {}) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
-    if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates)) return false;
+    if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates, options)) return false;
+
+    const topicKey = getCandidateTopicKey(candidate);
+    if (maxTopicItems > 0 && topicKey && (topicCounts.get(topicKey) || 0) >= maxTopicItems) {
+      return false;
+    }
+
+    const sourceKey = getCandidateSourceKey(candidate);
+    if (maxSourceItems > 0 && sourceKey && (sourceCounts.get(sourceKey) || 0) >= maxSourceItems) {
+      return false;
+    }
+
     selectedCandidates.push(candidate);
+    if (topicKey) topicCounts.set(topicKey, (topicCounts.get(topicKey) || 0) + 1);
+    if (sourceKey) sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
     return true;
   };
 
+  if (minimumProjectItems > 0) {
+    let addedProjects = 0;
+    for (const candidate of sortedBucketFor("project")) {
+      if (addedProjects >= minimumProjectItems || selectedCandidates.length >= maxItems) break;
+      if (tryAddCandidate(candidate)) addedProjects += 1;
+    }
+  }
+
   for (const sourceType of orderedSourceTypes) {
-    const bucket = buckets.get(sourceType) || [];
-    const sortedBucket = [...bucket].sort((left, right) => right.score - left.score);
-    const withMedia = sortedBucket.filter((candidate) => candidate.itemHasMedia);
-    const withoutMedia = sortedBucket.filter((candidate) => !candidate.itemHasMedia);
+    const sortedBucket = sortedBucketFor(sourceType);
     const quota = quotas[sourceType] || 0;
 
     if (quota <= 0) continue;
 
-    let added = 0;
-    for (const candidate of [...withMedia, ...withoutMedia]) {
+    let added = selectedCandidates.filter((candidate) => candidate.sourceType === sourceType).length;
+    for (const candidate of sortedBucket) {
       if (added >= quota || selectedCandidates.length >= maxItems) break;
       if (tryAddCandidate(candidate)) added += 1;
     }
   }
 
   if (selectedCandidates.length < maxItems) {
-    const remainingCandidates = orderedSourceTypes.flatMap((sourceType) => {
-      const bucket = [...(buckets.get(sourceType) || [])].sort((left, right) => right.score - left.score);
-      return [
-        ...bucket.filter((candidate) => candidate.itemHasMedia),
-        ...bucket.filter((candidate) => !candidate.itemHasMedia),
-      ];
-    });
+    const remainingCandidates = orderedSourceTypes.flatMap(sortedBucketFor);
 
     for (const candidate of remainingCandidates) {
       if (selectedCandidates.length >= maxItems) break;
@@ -327,14 +421,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
 
     if (selectedCandidates.length < minimumPromptItems) {
-      const selectedUrlKeys = new Set(selectedCandidates.map((candidate) => normalizeReplayUrl(candidate?.url)).filter(Boolean));
-
       for (const candidate of remainingCandidates) {
         if (selectedCandidates.length >= minimumPromptItems || selectedCandidates.length >= maxItems) break;
-        const urlKey = normalizeReplayUrl(candidate?.url);
-        if (!urlKey || selectedUrlKeys.has(urlKey)) continue;
-        selectedUrlKeys.add(urlKey);
-        selectedCandidates.push(candidate);
+        tryAddCandidate(candidate, { allowSimilarTitle: true });
       }
     }
   }

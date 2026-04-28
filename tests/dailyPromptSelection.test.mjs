@@ -72,14 +72,32 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   assert.match(result.selectedContentItems.join("\n"), /Stars Today:/);
 });
 
-test("buildDailyPromptSelection backfills same-topic items with distinct URLs when prompt would be too thin", () => {
+test("buildDailyPromptSelection caps one company topic instead of backfilling repeats", () => {
   const result = buildDailyPromptSelection(
     {
-      news: Array.from({ length: 12 }, (_, index) => ({
-        ...buildNewsItem(index + 1),
-        title: "GPT Image 2 Prompt example",
-        url: `https://example.com/gpt-image-${index + 1}`,
-      })),
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "OpenAI launches GPT Image 2",
+          description: "ChatGPT image generation gets a new model.",
+          source: "OpenAI Blog",
+          url: "https://example.com/openai-gpt-image-2",
+        },
+        {
+          ...buildNewsItem(2),
+          title: "Sam Altman says image generation demand is high",
+          description: "Sam Altman comments on OpenAI capacity and image demand.",
+          source: "X - Sam Altman",
+          url: "https://example.com/sam-altman-image-demand",
+        },
+        {
+          ...buildNewsItem(3),
+          title: "ChatGPT gets another image workflow update",
+          description: "OpenAI adds a related image editing workflow.",
+          source: "OpenAI Blog",
+          url: "https://example.com/chatgpt-image-workflow",
+        },
+      ],
       project: [],
       socialMedia: [],
       paper: [],
@@ -94,6 +112,29 @@ test("buildDailyPromptSelection backfills same-topic items with distinct URLs wh
     }
   );
 
-  assert.equal(result.selectedContentItems.length, 12);
-  assert.match(result.selectedContentItems.join("\n"), /gpt-image-12/);
+  assert.equal(result.selectedContentItems.length, 1);
+  assert.match(result.selectedContentItems.join("\n"), /OpenAI|ChatGPT|Sam Altman|GPT Image/i);
+});
+
+test("buildDailyPromptSelection keeps at least one GitHub project even when project quota is zero", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: Array.from({ length: 8 }, (_, index) => buildNewsItem(index + 1)),
+      project: [buildProjectItem(1)],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 4,
+      DAILY_PROMPT_NEWS_ITEMS: 4,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  assert.equal(result.selectedContentItems.length, 4);
+  assert.equal(result.selectedCounts.project, 1);
+  assert.equal(result.selectedCounts.news, 3);
+  assert.match(result.selectedContentItems.join("\n"), /Project Name:/);
 });
