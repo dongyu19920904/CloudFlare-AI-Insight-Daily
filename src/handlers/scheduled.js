@@ -204,6 +204,28 @@ function extractPreviousTopItems(markdown) {
     return items;
 }
 
+function extractPreviousDailyItems(markdown) {
+    const content = String(markdown || '');
+    if (!content) return [];
+
+    const items = [];
+    const seen = new Set();
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+
+    for (const match of content.matchAll(linkRegex)) {
+        const title = match[1]?.trim();
+        const url = match[2]?.trim();
+        const urlKey = normalizeReplayUrl(url);
+        const titleKey = normalizeReplayTitle(title);
+        const dedupeKey = `${urlKey}::${titleKey}`;
+        if (!title || !url || seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        items.push({ title, url, urlKey, titleKey });
+    }
+
+    return items;
+}
+
 function isUsablePreviousDaily(markdown, topItems) {
     if (!markdown || !Array.isArray(topItems) || topItems.length < 3) return false;
 
@@ -225,20 +247,21 @@ function isUsablePreviousDaily(markdown, topItems) {
 async function loadPreviousTopItems(env, dateStr) {
     const previousDate = getPreviousDate(dateStr);
     if (!previousDate) {
-        return { previousDate: null, items: [] };
+        return { previousDate: null, items: [], dailyItems: [] };
     }
 
     try {
         const previousMarkdown = await getGitHubFileContent(env, `daily/${previousDate}.md`);
         const topItems = extractPreviousTopItems(previousMarkdown);
+        const dailyItems = extractPreviousDailyItems(previousMarkdown);
         if (!isUsablePreviousDaily(previousMarkdown, topItems)) {
             console.warn(`[Scheduled] Previous daily ${previousDate} missing usable TOP section, skipping replay filter.`);
-            return { previousDate, items: [] };
+            return { previousDate, items: [], dailyItems: [] };
         }
-        return { previousDate, items: topItems };
+        return { previousDate, items: topItems, dailyItems };
     } catch (error) {
         console.warn(`[Scheduled] Failed to load previous daily ${previousDate}, skipping replay filter: ${error.message}`);
-        return { previousDate, items: [] };
+        return { previousDate, items: [], dailyItems: [] };
     }
 }
 
@@ -808,8 +831,10 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         mediaCandidates: 0,
         previousDayReplayDate: null,
         previousDayTopItems: 0,
+        previousDayDailyItems: 0,
         previousDayFilteredNews: 0,
         previousDayBackfillNews: 0,
+        previousDayFilteredProjects: 0,
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
         fallbackInserted: false,
@@ -836,9 +861,10 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         }
 
         const allUnifiedData = await fetchAllData(env, foloCookie);
-        const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
+        const { previousDate, items: previousTopItems, dailyItems: previousDailyItems = [] } = await loadPreviousTopItems(env, dateStr);
         debugInfo.previousDayReplayDate = previousDate;
         debugInfo.previousDayTopItems = previousTopItems.length;
+        debugInfo.previousDayDailyItems = previousDailyItems.length;
 
         if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
             const originalNewsItems = [...allUnifiedData.news];
@@ -871,7 +897,10 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             itemsWithMedia,
             itemsWithoutMedia,
             selectedCounts,
-        } = buildDailyPromptSelection(allUnifiedData, env);
+            selectedProjectLikeCount,
+            selectedGithubProjectCount,
+            previousProjectFiltered,
+        } = buildDailyPromptSelection(allUnifiedData, env, { previousDailyItems });
 
         if (itemsWithMedia > 0) {
             console.log(`[Scheduled] Found ${itemsWithMedia} items with images/videos, ${itemsWithoutMedia} items without.`);
@@ -881,6 +910,9 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         debugInfo.itemsWithoutMedia = itemsWithoutMedia;
         debugInfo.mediaCandidates = mediaCandidates.length;
         debugInfo.promptSourceMix = selectedCounts;
+        debugInfo.promptSelectedGithubOpenSourceProjects = selectedProjectLikeCount || 0;
+        debugInfo.promptSelectedGithubProjects = selectedGithubProjectCount || 0;
+        debugInfo.previousDayFilteredProjects = previousProjectFiltered || 0;
 
         if (selectedContentItems.length === 0) {
             console.log(`[Scheduled] No items found. Skipping generation.`);
@@ -1064,8 +1096,10 @@ function buildBaseDebugInfo(dateStr, mode) {
         mediaCandidates: 0,
         previousDayReplayDate: null,
         previousDayTopItems: 0,
+        previousDayDailyItems: 0,
         previousDayFilteredNews: 0,
         previousDayBackfillNews: 0,
+        previousDayFilteredProjects: 0,
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
         fallbackInserted: false,
@@ -1074,6 +1108,8 @@ function buildBaseDebugInfo(dateStr, mode) {
         dailyPublished: false,
         dailyValidationPassed: false,
         dailyValidationIssues: [],
+        promptSelectedGithubOpenSourceProjects: 0,
+        promptSelectedGithubProjects: 0,
         opportunityGenerated: false,
         opportunityPublished: false,
         opportunityValidationPassed: false,
@@ -1246,7 +1282,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         debugInfo.usedCachedDailySourceData = false;
     }
 
-    const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
+    const { previousDate, items: previousTopItems, dailyItems: previousDailyItems = [] } = await loadPreviousTopItems(env, dateStr);
     const {
         previousDate: previousOpportunityDate,
         signals: previousOpportunityReplaySignals,
@@ -1254,6 +1290,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
 
     debugInfo.previousDayReplayDate = previousDate;
     debugInfo.previousDayTopItems = previousTopItems.length;
+    debugInfo.previousDayDailyItems = previousDailyItems.length;
     debugInfo.previousOpportunityReplayDate = previousOpportunityDate;
     debugInfo.previousOpportunityReplayRules =
         previousOpportunityReplaySignals.matchedRuleIds?.length || 0;
@@ -1286,7 +1323,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     return {
         allUnifiedData,
         previousOpportunityReplaySignals,
-        ...buildDailyPromptSelection(allUnifiedData, env),
+        ...buildDailyPromptSelection(allUnifiedData, env, { previousDailyItems }),
     };
 }
 
@@ -1352,6 +1389,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
         minimumTopItems: options.minimumTopItems || 0,
+        requireGithubProjectInTop: Boolean(options.requireGithubProjectInTop),
+        requireGithubProjectInMore: Boolean(options.requireGithubProjectInMore),
     });
 
     if (!validation.ok) {
@@ -1398,6 +1437,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
             minimumTopItems: options.minimumTopItems || 0,
+            requireGithubProjectInTop: Boolean(options.requireGithubProjectInTop),
+            requireGithubProjectInMore: Boolean(options.requireGithubProjectInMore),
         });
 
         outputOfCall2 = repairedOutputOfCall2;
@@ -1984,12 +2025,28 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo, {
+    const {
+        selectedContentItems,
+        mediaCandidates,
+        totalCandidateCount,
+        selectedCounts,
+        selectedProjectLikeCount,
+        selectedGithubProjectCount,
+        previousProjectFiltered,
+    } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate) || String(env.DAILY_USE_PREFETCH_CACHE || 'true').toLowerCase() !== 'false',
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
+    debugInfo.promptSelectedGithubOpenSourceProjects = selectedProjectLikeCount || 0;
+    debugInfo.promptSelectedGithubProjects = selectedGithubProjectCount || 0;
+    debugInfo.previousDayFilteredProjects = previousProjectFiltered || 0;
+    const dailyValidationOptions = {
+        minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+        requireGithubProjectInTop: (selectedGithubProjectCount || 0) >= 1,
+        requireGithubProjectInMore: (selectedGithubProjectCount || 0) >= 2,
+    };
 
     const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
@@ -1997,15 +2054,13 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedContentItems,
         mediaCandidates,
         debugInfo,
-        {
-            minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
-        }
+        dailyValidationOptions
     );
 
     const validation = generatedValidation || validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
-        minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+        ...dailyValidationOptions,
     });
     debugInfo.dailyValidationPassed = validation.ok;
     debugInfo.dailyValidationIssues = validation.issues;

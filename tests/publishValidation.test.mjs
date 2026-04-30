@@ -7,6 +7,64 @@ import {
   validateOpportunityPublication,
 } from "../src/publishValidation.js";
 
+function buildDailyValidationPage({ topItems, moreItems }) {
+  const topMarkdown = topItems
+    .map(
+      (item, index) => [
+        `### ${index + 1}. [${item.title}](${item.url})`,
+        "这是一段足够长的日报正文，用来模拟真实发布内容。它会说明这条消息的新意、读者为什么今天需要知道，以及下一步可以关注什么变化，避免测试样例因为正文太短被误伤。",
+      ].join("\n")
+    )
+    .join("\n\n");
+  const moreMarkdown = moreItems
+    .map(
+      (item) =>
+        `- **[${item.category || "其他"}]** [${item.title}](${item.url}) - 这条补充了 TOP 没覆盖的角度，也保持了真实链接和独立主题。`
+    )
+    .join("\n");
+
+  return [
+    "## **今日摘要**",
+    "",
+    "```",
+    "今天 AI 工具、模型和开源生态都有更新，日报结构完整，内容可以直接发布给读者阅读。",
+    "```",
+    "",
+    "## ⚡ 快速导航",
+    "",
+    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "",
+    "## **今日AI资讯**",
+    "",
+    "### **👀 只有一句话**",
+    "今天真正值得关注的是不同类型信号一起出现，而不是单一来源刷屏。",
+    "",
+    "### **🔎 3 个关键词**",
+    "#模型 #开源 #工具",
+    "",
+    `## **🔥 重磅 TOP ${topItems.length}**`,
+    "",
+    topMarkdown,
+    "",
+    "## **📊 更多动态**",
+    "",
+    moreMarkdown,
+    "",
+    "## **😄 AI趣闻**",
+    "",
+    "### [一个轻松但真实的 AI 小插曲](https://example.com/fun-unique)",
+    "一个开发者把自动化流程跑通后，第一反应不是庆祝，而是先检查有没有写错配置。这个小场景很轻，但能让读者看到工具更新背后真实的人。",
+    "",
+    "## **❓ 相关问题**",
+    "",
+    "### 今天提到的 AI 工具怎么体验？",
+    "",
+    "先确认官方入口和适用门槛，再判断是否需要成品服务辅助。",
+    "",
+    "**解决方案**：访问 **[爱窝客 Aivora](https://aivora.cn)** 获取成品账号。",
+  ].join("\n");
+}
+
 test("validateDailyPublication rejects fallback refusal output", () => {
   const result = validateDailyPublication({
     summaryText: "I can't discuss that.",
@@ -74,6 +132,63 @@ test("validateDailyPublication accepts a structured daily page", () => {
   const result = validateDailyPublication({
     summaryText: "今天微信 Agent 和开源框架都在加速，开发者生态正在快速成形。",
     pageMarkdown,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.issues, []);
+});
+
+test("validateDailyPublication rejects more than one GitHub project in Top 10", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天模型、工具和开源项目都有更新，GitHub 项目不能在 TOP 里连续刷屏。",
+    pageMarkdown: buildDailyValidationPage({
+      topItems: [
+        { title: "AI 项目一发布新版本", url: "https://github.com/example/project-one" },
+        { title: "AI 项目二登上趋势榜", url: "https://github.com/example/project-two" },
+      ],
+      moreItems: [
+        { category: "产品", title: "一个产品补充动态", url: "https://example.com/product-extra" },
+      ],
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /TOP 10 GitHub\/开源项目最多只能 1 条/);
+});
+
+test("validateDailyPublication rejects more than one GitHub project in more dynamics", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天模型、工具和开源项目都有更新，更多动态里也不能连续堆 GitHub 链接。",
+    pageMarkdown: buildDailyValidationPage({
+      topItems: [
+        { title: "一个模型发布动态", url: "https://example.com/model-news" },
+      ],
+      moreItems: [
+        { category: "开源", title: "AI 项目三发布新版本", url: "https://github.com/example/project-three" },
+        { category: "开源", title: "AI 项目四登上趋势榜", url: "https://github.com/example/project-four" },
+      ],
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /更多动态 GitHub\/开源项目最多只能 1 条/);
+});
+
+test("validateDailyPublication accepts one GitHub project in Top and one in more dynamics", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天模型、工具和开源项目都有更新，开源项目在 TOP 和更多动态中各保留一条。",
+    pageMarkdown: buildDailyValidationPage({
+      topItems: [
+        { title: "AI 项目五发布新版本", url: "https://github.com/example/project-five" },
+        { title: "一个模型发布动态", url: "https://example.com/model-news" },
+      ],
+      moreItems: [
+        { category: "开源", title: "AI 项目六登上趋势榜", url: "https://github.com/example/project-six" },
+        { category: "产品", title: "一个产品补充动态", url: "https://example.com/product-extra" },
+      ],
+    }),
+    requireGithubProjectInTop: true,
+    requireGithubProjectInMore: true,
   });
 
   assert.equal(result.ok, true);

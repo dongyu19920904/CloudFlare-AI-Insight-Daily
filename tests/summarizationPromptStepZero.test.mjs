@@ -65,7 +65,9 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
   assert.match(prompt, /GPT Image、ChatGPT、Sam Altman/);
   assert.match(prompt, /最近 24 小时/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
-  assert.match(prompt, /每天至少保留 \*\*1 条\*\*项目\/开源更新/);
+  assert.match(prompt, /TOP 10 里每天至少保留 \*\*1 条\*\*、最多 \*\*1 条\*\*项目\/开源更新/);
+  assert.match(prompt, /「更多动态」也至少保留 \*\*1 条\*\*、最多 \*\*1 条\*\*不同的项目\/开源更新/);
+  assert.match(prompt, /不要让 GitHub\/开源项目刷屏/);
 });
 
 test("summary prompt asks for a three-line progression instead of three parallel headlines", () => {

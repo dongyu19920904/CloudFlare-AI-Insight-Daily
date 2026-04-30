@@ -138,3 +138,60 @@ test("buildDailyPromptSelection keeps at least one GitHub project even when proj
   assert.equal(result.selectedCounts.news, 3);
   assert.match(result.selectedContentItems.join("\n"), /Project Name:/);
 });
+
+test("buildDailyPromptSelection caps GitHub projects to two prompt slots", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: Array.from({ length: 10 }, (_, index) => buildNewsItem(index + 1)),
+      project: Array.from({ length: 6 }, (_, index) => buildProjectItem(index + 1)),
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 10,
+      DAILY_PROMPT_NEWS_ITEMS: 8,
+      DAILY_PROMPT_PROJECT_ITEMS: 8,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.equal((promptText.match(/Project Name:/g) || []).length, 2);
+  assert.equal(result.selectedProjectLikeCount, 2);
+  assert.equal(result.selectedGithubProjectCount, 2);
+  assert.match(promptText, /TOP10_PROJECT_ONLY/);
+  assert.match(promptText, /MORE_DYNAMICS_PROJECT_ONLY/);
+});
+
+test("buildDailyPromptSelection filters GitHub projects repeated from previous daily", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: Array.from({ length: 6 }, (_, index) => buildNewsItem(index + 1)),
+      project: Array.from({ length: 3 }, (_, index) => buildProjectItem(index + 1)),
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 6,
+      DAILY_PROMPT_NEWS_ITEMS: 4,
+      DAILY_PROMPT_PROJECT_ITEMS: 8,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    },
+    {
+      previousDailyItems: [
+        {
+          title: "Project 3",
+          url: "https://github.com/example/project-3",
+        },
+      ],
+    }
+  );
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.equal(result.previousProjectFiltered, 1);
+  assert.doesNotMatch(promptText, /project-3/);
+  assert.match(promptText, /project-2/);
+  assert.match(promptText, /project-1/);
+});

@@ -143,6 +143,47 @@ function scoreDailyPromptCandidate(candidate) {
   return score;
 }
 
+function isGithubProjectUrl(url) {
+  if (!url) return false;
+
+  try {
+    const parsed = new URL(String(url).trim());
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    return host === "github.com" && parts.length >= 2;
+  } catch {
+    return /github\.com\/[^/?#\s]+\/[^/?#\s]+/i.test(String(url || ""));
+  }
+}
+
+function isGithubOpenSourceProjectCandidate(candidate) {
+  if (!candidate) return false;
+  if (candidate.sourceType === "project") return true;
+  if (isGithubProjectUrl(candidate.url)) return true;
+
+  const text = [
+    candidate.source || "",
+    candidate.title || "",
+    candidate.description || "",
+    candidate.plainText || "",
+  ].join(" ");
+
+  return /github\s+trending|open source|open-source|开源项目|开源工具|开源模型|开源框架|开源库|开源发布|开源更新/i.test(text);
+}
+
+function isRepeatedAgainstPreviousDaily(candidate, previousDailyItems = []) {
+  if (!candidate || !Array.isArray(previousDailyItems) || previousDailyItems.length === 0) return false;
+
+  const candidateUrlKey = normalizeReplayUrl(candidate.url);
+  const candidateTitle = candidate.title || "";
+
+  return previousDailyItems.some((previousItem) => {
+    const previousUrlKey = previousItem?.urlKey || normalizeReplayUrl(previousItem?.url);
+    if (candidateUrlKey && previousUrlKey && candidateUrlKey === previousUrlKey) return true;
+    return candidateTitle && previousItem?.title && isSimilarReplayTitle(candidateTitle, previousItem.title);
+  });
+}
+
 const COMPANY_TOPIC_PATTERNS = [
   { key: "openai", pattern: /\b(openai|chatgpt|gpt[-\s]?(?:[0-9]|image|oss|realtime)|sora|dall[-\s]?e|sam altman)\b|奥特曼|山姆/i },
   { key: "google", pattern: /\b(google|gemini|deepmind|alphafold|notebooklm|ai studio)\b|谷歌/i },
@@ -309,12 +350,21 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates, options 
   });
 }
 
-export function buildDailyPromptSelection(allUnifiedData, env = {}) {
+export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}) {
   const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 28);
   const minimumPromptItems = Math.min(maxItems, parsePositiveInt(env.DAILY_PROMPT_MIN_ITEMS, 12));
   const maxTopicItems = parseNonNegativeInt(env.DAILY_PROMPT_TOPIC_MAX_ITEMS, 1);
   const maxSourceItems = parseNonNegativeInt(env.DAILY_PROMPT_SOURCE_MAX_ITEMS, 4);
-  const minimumProjectItems = parseNonNegativeInt(env.DAILY_PROMPT_MIN_PROJECT_ITEMS, 1);
+  const maxProjectLikeItems = Math.min(
+    maxItems,
+    2,
+    parseNonNegativeInt(env.DAILY_PROMPT_MAX_PROJECT_ITEMS, 2)
+  );
+  const targetProjectLikeItems = Math.min(
+    maxProjectLikeItems,
+    parseNonNegativeInt(env.DAILY_PROMPT_TARGET_PROJECT_ITEMS, 2)
+  );
+  const previousDailyItems = Array.isArray(options.previousDailyItems) ? options.previousDailyItems : [];
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 10),
     project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 8),
@@ -326,6 +376,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const mediaCandidates = [];
   let itemsWithMedia = 0;
   let itemsWithoutMedia = 0;
+  let previousProjectFiltered = 0;
 
   for (const [sourceType, items] of Object.entries(allUnifiedData || {})) {
     const bucket = [];
@@ -333,6 +384,16 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
       candidate.score = scoreDailyPromptCandidate(candidate);
+      candidate.isGithubOpenSourceProject = isGithubOpenSourceProjectCandidate(candidate);
+      candidate.isGithubProject = isGithubProjectUrl(candidate.url);
+
+      if (
+        candidate.isGithubOpenSourceProject &&
+        isRepeatedAgainstPreviousDaily(candidate, previousDailyItems)
+      ) {
+        previousProjectFiltered += 1;
+        continue;
+      }
 
       bucket.push(candidate);
 
@@ -362,6 +423,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const selectedCandidates = [];
   const topicCounts = new Map();
   const sourceCounts = new Map();
+  let selectedProjectLikeCount = 0;
+  let selectedGithubProjectCount = 0;
 
   const sortedBucketFor = (sourceType) => {
     const bucket = [...(buckets.get(sourceType) || [])].sort((left, right) => right.score - left.score);
@@ -374,6 +437,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const tryAddCandidate = (candidate, options = {}) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
     if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates, options)) return false;
+    if (candidate.isGithubOpenSourceProject && selectedProjectLikeCount >= maxProjectLikeItems) return false;
 
     const topicKey = getCandidateTopicKey(candidate);
     if (maxTopicItems > 0 && topicKey && (topicCounts.get(topicKey) || 0) >= maxTopicItems) {
@@ -386,15 +450,22 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
 
     selectedCandidates.push(candidate);
+    if (candidate.isGithubOpenSourceProject) selectedProjectLikeCount += 1;
+    if (candidate.isGithubProject) selectedGithubProjectCount += 1;
     if (topicKey) topicCounts.set(topicKey, (topicCounts.get(topicKey) || 0) + 1);
     if (sourceKey) sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
     return true;
   };
 
-  if (minimumProjectItems > 0) {
+  if (targetProjectLikeItems > 0) {
     let addedProjects = 0;
-    for (const candidate of sortedBucketFor("project")) {
-      if (addedProjects >= minimumProjectItems || selectedCandidates.length >= maxItems) break;
+    const projectLikeCandidates = orderedSourceTypes
+      .flatMap(sortedBucketFor)
+      .filter((candidate) => candidate.isGithubOpenSourceProject)
+      .sort((left, right) => right.score - left.score);
+
+    for (const candidate of projectLikeCandidates) {
+      if (addedProjects >= targetProjectLikeItems || selectedCandidates.length >= maxItems) break;
       if (tryAddCandidate(candidate)) addedProjects += 1;
     }
   }
@@ -428,11 +499,27 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
   }
 
+  let projectSlotIndex = 0;
+  const selectedContentItems = selectedCandidates.map((candidate) => {
+    if (!candidate.isGithubOpenSourceProject) return candidate.itemText;
+
+    projectSlotIndex += 1;
+    const slot =
+      projectSlotIndex === 1
+        ? "TOP10_PROJECT_ONLY - Use this as the only GitHub/open-source project in TOP 10."
+        : "MORE_DYNAMICS_PROJECT_ONLY - Use this as the only GitHub/open-source project in 更多动态; do not place it in TOP 10.";
+
+    return `Daily Project Slot: ${slot}\n${candidate.itemText}`;
+  });
+
   return {
-    selectedContentItems: selectedCandidates.map((candidate) => candidate.itemText),
+    selectedContentItems,
     mediaCandidates,
     itemsWithMedia,
     itemsWithoutMedia,
+    selectedProjectLikeCount,
+    selectedGithubProjectCount,
+    previousProjectFiltered,
     totalCandidateCount: orderedSourceTypes.reduce(
       (count, sourceType) => count + (buckets.get(sourceType) || []).length,
       0

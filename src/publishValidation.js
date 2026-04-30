@@ -203,6 +203,32 @@ function extractSectionLinks(markdown) {
     .filter((item) => item.url);
 }
 
+function isGithubProjectUrl(url) {
+  if (!url) return false;
+
+  try {
+    const parsed = new URL(String(url).trim());
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    return host === "github.com" && parts.length >= 2;
+  } catch {
+    return /github\.com\/[^/?#\s]+\/[^/?#\s]+/i.test(String(url || ""));
+  }
+}
+
+function countGithubProjectLinks(sectionMarkdown) {
+  const seen = new Set();
+  let count = 0;
+
+  for (const link of extractSectionLinks(sectionMarkdown)) {
+    if (!isGithubProjectUrl(link.url) || seen.has(link.url)) continue;
+    seen.add(link.url);
+    count += 1;
+  }
+
+  return count;
+}
+
 function collectDuplicateUrlsBySection(sectionMap) {
   const firstSeenSectionByUrl = new Map();
   const duplicates = [];
@@ -259,6 +285,8 @@ function collectDuplicateTopicsBySection(sectionMap) {
 function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const issues = [];
   const minimumTopItems = Math.max(0, Number(options.minimumTopItems) || 0);
+  const requireGithubProjectInTop = Boolean(options.requireGithubProjectInTop);
+  const requireGithubProjectInMore = Boolean(options.requireGithubProjectInMore);
   const faqHeadingPattern = /^##\s*\*\*❓\s*相关问题(?:（仅1条）)?\*\*/im;
   const moreHeadingPattern = /^##\s*\*\*.*更多动态.*\*\*/im;
   const funHeadingPattern = /^##\s*\*\*.*AI.*趣闻.*\*\*/im;
@@ -295,6 +323,25 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   const moreSection = extractSection(pageMarkdown, moreHeadingPattern);
   const funSection = extractSection(pageMarkdown, funHeadingPattern);
+  const topGithubProjectCount = countGithubProjectLinks(topSection);
+  const moreGithubProjectCount = countGithubProjectLinks(moreSection);
+
+  if (topGithubProjectCount > 1) {
+    issues.push("TOP 10 GitHub/开源项目最多只能 1 条");
+  }
+
+  if (moreGithubProjectCount > 1) {
+    issues.push("更多动态 GitHub/开源项目最多只能 1 条");
+  }
+
+  if (requireGithubProjectInTop && topGithubProjectCount !== 1) {
+    issues.push("TOP 10 GitHub/开源项目必须正好 1 条");
+  }
+
+  if (requireGithubProjectInMore && moreGithubProjectCount !== 1) {
+    issues.push("更多动态 GitHub/开源项目必须正好 1 条");
+  }
+
   const funHasStoryLink = /^###\s+\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(funSection);
   if (funHeadingPattern.test(String(pageMarkdown || "")) && !funHasStoryLink) {
     issues.push("AI趣闻必须使用一条真实素材 Markdown 链接");
@@ -330,6 +377,8 @@ export function validateDailyPublication({
   summaryText,
   pageMarkdown,
   minimumTopItems = 0,
+  requireGithubProjectInTop = false,
+  requireGithubProjectInMore = false,
 }) {
   const issues = [
     ...collectMarkdownIssues(summaryText, {
@@ -347,7 +396,11 @@ export function validateDailyPublication({
       ],
       forbiddenPatterns: DAILY_META_PATTERNS,
     }),
-    ...collectDailyStructureIssues(pageMarkdown, { minimumTopItems }),
+    ...collectDailyStructureIssues(pageMarkdown, {
+      minimumTopItems,
+      requireGithubProjectInTop,
+      requireGithubProjectInMore,
+    }),
   ];
 
   return {
