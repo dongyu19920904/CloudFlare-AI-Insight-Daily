@@ -30,7 +30,7 @@ GEMINI_RETRY_MAX = "3"
 GEMINI_RETRY_BASE_MS = "2000"
 
 FOLO_COOKIE_KV_KEY = "folo_auth_cookie"
-FOLO_DATA_API = "https://api.follow.is/entries"
+FOLO_DATA_API = "https://api.folo.is/entries"
 FOLO_FILTER_DAYS = 2
 
 NEWS_AGGREGATOR_LIST_ID = "220872364473472000"
