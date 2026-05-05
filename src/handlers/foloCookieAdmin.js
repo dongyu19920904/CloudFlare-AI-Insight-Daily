@@ -125,7 +125,7 @@ async function verifyTarget(env, cookie, target) {
         'x-app-version': '0.4.9',
         Cookie: cookie,
     };
-    const body = { view: 1, withContent: false };
+    const body = { view: 1, withContent: true };
     if (target.type === 'list') body.listId = target.id;
     else body.feedId = target.id;
 
@@ -147,6 +147,10 @@ async function verifyTarget(env, cookie, target) {
 
     if (!response.ok) {
         result.statusText = response.statusText;
+        const responseBody = await response.text().catch(() => '');
+        if (responseBody) {
+            result.errorBody = responseBody.slice(0, 200);
+        }
         return result;
     }
 
