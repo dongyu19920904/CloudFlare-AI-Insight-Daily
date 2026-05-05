@@ -117,7 +117,7 @@ async function verifyTarget(env, cookie, target) {
         'Content-Type': 'application/json',
         accept: 'application/json',
         'accept-language': 'zh-CN,zh;q=0.9',
-        origin: 'https://app.follow.is',
+        origin: 'https://app.folo.is',
         'sec-fetch-dest': 'empty',
         'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-site',
