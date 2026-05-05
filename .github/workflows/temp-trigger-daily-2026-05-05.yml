@@ -1,0 +1,40 @@
+name: Temp Trigger Daily 2026-05-05
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/temp-trigger-daily-2026-05-05.yml"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger 2026-05-05 daily generation
+        shell: bash
+        env:
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+          WORKER_BASE_URL: https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev
+        run: |
+          set -euo pipefail
+          curl -sS "${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=2026-05-05" > trigger-response.json
+          python3 - <<'PY'
+          import json
+
+          with open("trigger-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+          if not payload.get("success"):
+              raise SystemExit("Worker trigger failed")
+
+          debug = payload.get("debug") or {}
+          if not debug.get("dailyGenerated"):
+              raise SystemExit("Daily content was not generated")
+          if not debug.get("dailyPublished"):
+              raise SystemExit("Daily content was not published")
+          PY
