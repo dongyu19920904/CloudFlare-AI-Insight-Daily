@@ -8,6 +8,7 @@ import { handleMediaProxy } from './handlers/mediaProxy.js';
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
+import { handleFoloCookieAdmin } from './handlers/foloCookieAdmin.js';
 import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { getFromKV, storeInKV } from './kv.js';
@@ -160,6 +161,18 @@ export default {
             return await handleWriteRssData(request, env);
         } else if (path === '/generateRssContent' && request.method === 'GET') {
             return await handleGenerateRssContent(request, env);
+        } else if (path === '/testFoloCookie' && (request.method === 'GET' || request.method === 'POST')) {
+            const secretKey = url.searchParams.get('key');
+            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
+            if (secretKey !== expectedKey) {
+                return new Response(JSON.stringify({
+                    error: 'Unauthorized. Please provide correct secret key.'
+                }), {
+                    status: 401,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            }
+            return await handleFoloCookieAdmin(request, env);
         } else if (path === '/testTriggerScheduledStatus' && request.method === 'GET') {
             const secretKey = url.searchParams.get('key');
             const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';

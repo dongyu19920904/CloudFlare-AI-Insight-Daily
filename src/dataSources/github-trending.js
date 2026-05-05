@@ -1,41 +1,141 @@
-// src/dataSources/projects.js
-import { fetchData, getISODate, removeMarkdownCodeBlock, formatDateToChineseWithTime, escapeHtml} from '../helpers.js';
+// src/dataSources/github-trending.js
+import { fetchData, getISODate, removeMarkdownCodeBlock, escapeHtml } from '../helpers.js';
 import { callChatAPI } from '../chatapi.js';
+
+function getDateDaysAgo(days) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - Math.max(1, Number.parseInt(days, 10) || 7));
+    return date.toISOString().slice(0, 10);
+}
+
+function parseSearchQueries(env, pushedAfter) {
+    const configured = String(env.GITHUB_PROJECT_SEARCH_QUERIES || '')
+        .split('|')
+        .map((query) => query.trim())
+        .filter(Boolean);
+
+    const baseQueries = configured.length > 0
+        ? configured
+        : [
+            'topic:artificial-intelligence stars:>50',
+            'topic:llm stars:>20',
+            'topic:ai-agent stars:>10',
+            'topic:mcp stars:>10',
+        ];
+
+    return baseQueries.map((query) => {
+        const withPushed = /\bpushed:/.test(query) ? query : `${query} pushed:>=${pushedAfter}`;
+        return withPushed;
+    });
+}
+
+async function fetchGithubSearchProjects(env) {
+    const limit = Math.max(1, Number.parseInt(env.GITHUB_PROJECT_SEARCH_LIMIT || '10', 10) || 10);
+    const pushedAfter = getDateDaysAgo(env.GITHUB_PROJECT_SEARCH_DAYS || '7');
+    const queries = parseSearchQueries(env, pushedAfter);
+    const headers = {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'AI-Insight-Daily-Worker',
+        'X-GitHub-Api-Version': '2022-11-28',
+    };
+
+    if (env.GITHUB_TOKEN) {
+        headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
+    }
+
+    const projects = [];
+    const seen = new Set();
+
+    for (const query of queries) {
+        if (projects.length >= limit) break;
+
+        const url = new URL('https://api.github.com/search/repositories');
+        url.searchParams.set('q', query);
+        url.searchParams.set('sort', 'stars');
+        url.searchParams.set('order', 'desc');
+        url.searchParams.set('per_page', String(Math.min(10, limit)));
+
+        console.log(`Fetching GitHub projects from official API: ${query}`);
+        const response = await fetch(url.toString(), { headers });
+        if (!response.ok) {
+            const body = await response.text().catch(() => '');
+            throw new Error(`GitHub Search API returned ${response.status}: ${body.slice(0, 200)}`);
+        }
+
+        const payload = await response.json();
+        for (const repo of payload.items || []) {
+            if (!repo?.html_url || seen.has(repo.html_url)) continue;
+            seen.add(repo.html_url);
+            projects.push({
+                name: repo.name,
+                owner: repo.owner?.login || '',
+                url: repo.html_url,
+                description: repo.description || '',
+                language: repo.language || '',
+                languageColor: '',
+                totalStars: repo.stargazers_count || 0,
+                forks: repo.forks_count || 0,
+                starsToday: repo.stargazers_count || 0,
+                builtBy: [],
+                pushedAt: repo.pushed_at,
+                createdAt: repo.created_at,
+            });
+            if (projects.length >= limit) break;
+        }
+    }
+
+    return projects;
+}
+
+async function fetchConfiguredProjects(env) {
+    const configuredUrl = String(env.PROJECTS_API_URL || '').trim();
+    if (!configuredUrl) return [];
+
+    console.log(`Fetching projects from configured URL: ${configuredUrl}`);
+    const projects = await fetchData(configuredUrl);
+    if (!Array.isArray(projects)) {
+        throw new Error('Configured projects data is not an array');
+    }
+    return projects;
+}
 
 const ProjectsDataSource = {
     fetch: async (env) => {
-        console.log(`Fetching projects from: ${env.PROJECTS_API_URL}`);
-        let projects;
+        let projects = [];
+
         try {
-            projects = await fetchData(env.PROJECTS_API_URL);
+            projects = await fetchConfiguredProjects(env);
         } catch (error) {
-            console.error("Error fetching projects data:", error.message);
-            return { error: "Failed to fetch projects data", details: error.message, items: [] };
+            console.warn(`Configured GitHub trending source failed, falling back to GitHub Search API: ${error.message}`);
         }
 
-        if (!Array.isArray(projects)) {
-            console.error("Projects data is not an array:", projects);
-            return { error: "Invalid projects data format", received: projects, items: [] };
+        if (!Array.isArray(projects) || projects.length === 0) {
+            try {
+                projects = await fetchGithubSearchProjects(env);
+            } catch (error) {
+                console.error('Error fetching projects from GitHub Search API:', error.message);
+                return { error: 'Failed to fetch projects data', details: error.message, items: [] };
+            }
         }
-         if (projects.length === 0) {
-            console.log("No projects fetched from API.");
+
+        if (!Array.isArray(projects) || projects.length === 0) {
+            console.log('No projects fetched.');
             return { items: [] };
         }
 
-        if (!env.OPEN_TRANSLATE === "true") {
-            console.warn("Skipping paper translations.");
-            return projects.map(p => ({ ...p, description_zh: p.description || "" }));
+        if (String(env.OPEN_TRANSLATE || '').toLowerCase() !== 'true') {
+            return projects.map((project) => ({ ...project, description_zh: project.description || '' }));
         }
 
         const descriptionsToTranslate = projects
-            .map(p => p.description || "")
-            .filter(desc => typeof desc === 'string');
+            .map((project) => project.description || '')
+            .filter((description) => typeof description === 'string');
 
-        const nonEmptyDescriptions = descriptionsToTranslate.filter(d => d.trim() !== "");
+        const nonEmptyDescriptions = descriptionsToTranslate.filter((description) => description.trim() !== '');
         if (nonEmptyDescriptions.length === 0) {
-            console.log("No non-empty project descriptions to translate.");
-            return projects.map(p => ({ ...p, description_zh: p.description || "" }));
+            return projects.map((project) => ({ ...project, description_zh: project.description || '' }));
         }
+
         const promptText = `Translate the following English project descriptions to Chinese.
 Provide the translations as a JSON array of strings, in the exact same order as the input.
 Each string in the output array must correspond to the string at the same index in the input array.
@@ -47,18 +147,13 @@ JSON Array of Chinese Translations:`;
 
         let translatedTexts = [];
         try {
-            console.log(`Requesting translation for ${descriptionsToTranslate.length} project descriptions.`);
             const chatResponse = await callChatAPI(env, promptText);
-            const parsedTranslations = JSON.parse(removeMarkdownCodeBlock(chatResponse)); // Assuming direct JSON array response
-
-            if (parsedTranslations && Array.isArray(parsedTranslations) && parsedTranslations.length === descriptionsToTranslate.length) {
-                translatedTexts = parsedTranslations;
-            } else {
-                console.warn(`Translation count mismatch or parsing error for project descriptions. Expected ${descriptionsToTranslate.length}, received ${parsedTranslations ? parsedTranslations.length : 'null'}. Falling back.`);
-                translatedTexts = descriptionsToTranslate.map(() => null);
-            }
+            const parsedTranslations = JSON.parse(removeMarkdownCodeBlock(chatResponse));
+            translatedTexts = Array.isArray(parsedTranslations) && parsedTranslations.length === descriptionsToTranslate.length
+                ? parsedTranslations
+                : descriptionsToTranslate.map(() => null);
         } catch (translationError) {
-            console.error("Failed to translate project descriptions in batch:", translationError.message);
+            console.warn('Failed to translate project descriptions in batch:', translationError.message);
             translatedTexts = descriptionsToTranslate.map(() => null);
         }
 
@@ -66,24 +161,25 @@ JSON Array of Chinese Translations:`;
             const translated = translatedTexts[index];
             return {
                 ...project,
-                description_zh: (typeof translated === 'string') ? translated : (project.description || "")
+                description_zh: typeof translated === 'string' ? translated : (project.description || ''),
             };
         });
     },
+
     transform: (projectsData, sourceType) => {
         const unifiedProjects = [];
         const now = getISODate();
         if (Array.isArray(projectsData)) {
             projectsData.forEach((project, index) => {
                 unifiedProjects.push({
-                    id: index + 1, // Use project.url as ID if available
+                    id: project.url || index + 1,
                     type: sourceType,
                     url: project.url,
                     title: project.name,
-                    description: project.description_zh || project.description || "",
-                    published_date: now, // Projects don't have a published date, use current date
+                    description: project.description_zh || project.description || '',
+                    published_date: project.pushedAt || project.createdAt || now,
                     authors: project.owner ? [project.owner] : [],
-                    source: "GitHub Trending",
+                    source: 'GitHub Search',
                     details: {
                         owner: project.owner,
                         name: project.name,
@@ -92,8 +188,8 @@ JSON Array of Chinese Translations:`;
                         totalStars: project.totalStars,
                         forks: project.forks,
                         starsToday: project.starsToday,
-                        builtBy: project.builtBy || []
-                    }
+                        builtBy: project.builtBy || [],
+                    },
                 });
             });
         }
@@ -102,12 +198,12 @@ JSON Array of Chinese Translations:`;
 
     generateHtml: (item) => {
         return `
-            <strong>${escapeHtml(item.title)}</strong> (所有者: ${escapeHtml(item.details.owner)})<br>
-            <small>星标: ${escapeHtml(item.details.totalStars)} (今日: ${escapeHtml(item.details.starsToday)}) | 语言: ${escapeHtml(item.details.language || 'N/A')}</small>
-            描述: ${escapeHtml(item.description) || 'N/A'}<br>
-            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">在 GitHub 上查看</a>
+            <strong>${escapeHtml(item.title)}</strong> (Owner: ${escapeHtml(item.details.owner)})<br>
+            <small>Stars: ${escapeHtml(item.details.totalStars)} | Language: ${escapeHtml(item.details.language || 'N/A')}</small>
+            Description: ${escapeHtml(item.description) || 'N/A'}<br>
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">View on GitHub</a>
         `;
-    }
+    },
 };
 
 export default ProjectsDataSource;

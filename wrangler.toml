@@ -42,7 +42,10 @@ TWITTER_FETCH_PAGES = "0"
 REDDIT_LIST_ID = "231760655294902272"
 REDDIT_FETCH_PAGES = "1"
 
-PROJECTS_API_URL = "https://git-trending.justlikemaki.vip/topone/?since=daily"
+PROJECTS_API_URL = ""
+GITHUB_PROJECT_SEARCH_DAYS = "7"
+GITHUB_PROJECT_SEARCH_LIMIT = "10"
+GITHUB_PROJECT_SEARCH_QUERIES = "topic:artificial-intelligence stars:>50|topic:llm stars:>20|topic:ai-agent stars:>10|topic:mcp stars:>10"
 
 MAX_ITEMS_PER_TYPE = "50"
 MAX_ITEMS_PAPER = "8"

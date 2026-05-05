@@ -36,7 +36,7 @@ const FoloMultiFeedsDataSource = {
         }
 
         const ids = rawIds
-            .split(/[,\\s]+/)
+            .split(/[,\s]+/)
             .map((s) => s.trim())
             .filter(Boolean);
         const uniqueIds = [...new Set(ids)];

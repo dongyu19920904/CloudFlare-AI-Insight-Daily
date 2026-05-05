@@ -3,6 +3,7 @@ import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
 import { resolveScheduledModeFromEvent } from '../scheduleRouting.js';
+import { resolveFoloCookie } from './foloCookieAdmin.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero.js";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree.js";
 import { getSystemPromptAiOpportunity } from "../prompt/aiOpportunityPrompt.js";
@@ -572,16 +573,9 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
     try {
         // 1. Fetch Data
         console.log(`[Scheduled] Fetching data...`);
-        // 瀹氭椂浠诲姟鏃犳硶浠庢祻瑙堝櫒 localStorage 鑾峰彇 Cookie锛岃繖閲屼紭鍏堜娇鐢ㄧ幆澧冨彉閲?FOLO_COOKIE锛?
-        // 濡傛灉鏈缃垯灏濊瘯浠?KV(FOLO_COOKIE_KV_KEY) 璇诲彇銆?
-        let foloCookie = env.FOLO_COOKIE;
-        if (!foloCookie && env.FOLO_COOKIE_KV_KEY) {
-            try {
-                foloCookie = await getFromKV(env.DATA_KV, env.FOLO_COOKIE_KV_KEY);
-                if (foloCookie) console.log(`[Scheduled] Loaded Folo cookie from KV (${env.FOLO_COOKIE_KV_KEY}).`);
-            } catch (err) {
-                console.warn(`[Scheduled] Failed to load Folo cookie from KV: ${err.message}`);
-            }
+        const { cookie: foloCookie, source: foloCookieSource } = await resolveFoloCookie(env);
+        if (foloCookie) {
+            console.log(`[Scheduled] Loaded Folo cookie from ${foloCookieSource}.`);
         }
 
         const allUnifiedData = await fetchAllData(env, foloCookie);
@@ -832,16 +826,9 @@ function buildBaseDebugInfo(dateStr, mode) {
 }
 
 async function loadFoloCookie(env) {
-    let foloCookie = env.FOLO_COOKIE;
-    if (!foloCookie && env.FOLO_COOKIE_KV_KEY) {
-        try {
-            foloCookie = await getFromKV(env.DATA_KV, env.FOLO_COOKIE_KV_KEY);
-            if (foloCookie) {
-                console.log(`[Scheduled] Loaded Folo cookie from KV (${env.FOLO_COOKIE_KV_KEY}).`);
-            }
-        } catch (error) {
-            console.warn(`[Scheduled] Failed to load Folo cookie from KV: ${error.message}`);
-        }
+    const { cookie: foloCookie, source } = await resolveFoloCookie(env);
+    if (foloCookie) {
+        console.log(`[Scheduled] Loaded Folo cookie from ${source}.`);
     }
 
     return foloCookie;
