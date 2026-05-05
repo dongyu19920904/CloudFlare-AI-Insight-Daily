@@ -8,10 +8,11 @@ import { handleMediaProxy } from './handlers/mediaProxy.js';
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
-import { handleFoloCookieAdmin } from './handlers/foloCookieAdmin.js';
-import { dataSources } from './dataFetchers.js';
+import { handleFoloCookieAdmin, resolveFoloCookie } from './handlers/foloCookieAdmin.js';
+import { fetchDataByCategory, dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { getFromKV, storeInKV } from './kv.js';
+import { getISODate, setFetchDate } from './helpers.js';
 import {
     handleScheduled,
     handleScheduledDaily,
@@ -26,6 +27,30 @@ function getSpecifiedDate(url) {
 
 function getScheduledStatusKey(mode, specifiedDate) {
     return `scheduled-status:${mode}:${specifiedDate || 'current'}`;
+}
+
+async function fetchAndStoreSourceCategory(env, category, dateStr) {
+    setFetchDate(dateStr);
+    const { cookie: foloCookie, source: foloCookieSource } = await resolveFoloCookie(env);
+    const items = await fetchDataByCategory(env, category, foloCookie);
+    const key = `${dateStr}-${category}`;
+    const existingItems = await getFromKV(env.DATA_KV, key);
+    const hasExistingItems = Array.isArray(existingItems) && existingItems.length > 0;
+    const shouldStore = items.length > 0 || !hasExistingItems;
+
+    if (shouldStore) {
+        await storeInKV(env.DATA_KV, key, items);
+    }
+
+    return {
+        key,
+        category,
+        date: dateStr,
+        itemCount: items.length,
+        stored: shouldStore,
+        previousItemCount: Array.isArray(existingItems) ? existingItems.length : 0,
+        foloCookieSource,
+    };
 }
 
 async function queueScheduledMode(ctx, env, mode, specifiedDate) {
@@ -173,6 +198,38 @@ export default {
                 });
             }
             return await handleFoloCookieAdmin(request, env);
+        } else if (path === '/testFetchCategory' && request.method === 'GET') {
+            const secretKey = url.searchParams.get('key');
+            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
+            if (secretKey !== expectedKey) {
+                return new Response(JSON.stringify({
+                    error: 'Unauthorized. Please provide correct secret key.'
+                }), {
+                    status: 401,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            }
+
+            const category = url.searchParams.get('category');
+            if (!category || !dataSources[category]) {
+                return new Response(JSON.stringify({
+                    success: false,
+                    error: `Invalid category. Available categories: ${Object.keys(dataSources).join(', ')}`
+                }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                });
+            }
+
+            const specifiedDate = getSpecifiedDate(url);
+            const result = await fetchAndStoreSourceCategory(env, category, specifiedDate || getISODate());
+            return new Response(JSON.stringify({
+                success: true,
+                ...result,
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            });
         } else if (path === '/testTriggerScheduledStatus' && request.method === 'GET') {
             const secretKey = url.searchParams.get('key');
             const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
