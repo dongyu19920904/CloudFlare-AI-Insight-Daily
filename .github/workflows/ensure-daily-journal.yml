@@ -124,18 +124,18 @@ PY
             curl -sS "$PREFETCH_URL" > "prefetch-${category}.json"
 
             python - "$category" <<'PY'
-import json
-import sys
+          import json
+          import sys
 
-category = sys.argv[1]
-with open(f"prefetch-{category}.json", "r", encoding="utf-8") as handle:
-    payload = json.load(handle)
+          category = sys.argv[1]
+          with open(f"prefetch-{category}.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
 
-print(json.dumps(payload, ensure_ascii=False, indent=2))
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
 
-if not payload.get("success"):
-    raise SystemExit(f"Prefetch failed for {category}")
-PY
+          if not payload.get("success"):
+              raise SystemExit(f"Prefetch failed for {category}")
+          PY
           done
 
           TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}"
