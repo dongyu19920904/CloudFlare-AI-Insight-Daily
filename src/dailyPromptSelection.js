@@ -444,18 +444,36 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
   }
 
+  const candidateCounts = orderedSourceTypes.reduce((acc, sourceType) => {
+    acc[sourceType] = (buckets.get(sourceType) || []).length;
+    return acc;
+  }, {});
+  const selectedCounts = orderedSourceTypes.reduce((acc, sourceType) => {
+    acc[sourceType] = selectedCandidates.filter((candidate) => candidate.sourceType === sourceType).length;
+    return acc;
+  }, {});
+  const totalCandidateCount = Object.values(candidateCounts).reduce((count, sourceCount) => count + sourceCount, 0);
+
   return {
     selectedContentItems: selectedCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,
     itemsWithMedia,
     itemsWithoutMedia,
-    totalCandidateCount: orderedSourceTypes.reduce(
-      (count, sourceType) => count + (buckets.get(sourceType) || []).length,
-      0
-    ),
-    selectedCounts: orderedSourceTypes.reduce((acc, sourceType) => {
-      acc[sourceType] = selectedCandidates.filter((candidate) => candidate.sourceType === sourceType).length;
-      return acc;
-    }, {}),
+    totalCandidateCount,
+    selectedCounts,
+    selectionDiagnostics: {
+      maxItems,
+      quotas,
+      hardCaps: {
+        ...hardCaps,
+        entity: entityHardCap,
+        projectLike: projectLikeHardCap,
+      },
+      candidateCounts,
+      selectedCounts,
+      itemsWithMedia,
+      itemsWithoutMedia,
+      selectedProjectLikeCount,
+    },
   };
 }

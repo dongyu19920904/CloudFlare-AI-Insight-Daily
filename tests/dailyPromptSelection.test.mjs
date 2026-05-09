@@ -182,3 +182,36 @@ test("buildDailyPromptSelection keeps one welfare item available for watch secti
   assert.match(promptText, /每日薅羊毛/);
   assert.match(promptText, /Placement Hint: This is a welfare\/freebie item/);
 });
+
+test("buildDailyPromptSelection returns diagnostics for status reporting", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: Array.from({ length: 3 }, (_, index) => buildNewsItem(index + 1)),
+      project: [buildProjectItem(1)],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 4,
+      DAILY_PROMPT_NEWS_ITEMS: 3,
+      DAILY_PROMPT_PROJECT_ITEMS: 1,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  assert.deepEqual(result.selectionDiagnostics.candidateCounts, {
+    project: 1,
+    news: 3,
+    socialMedia: 0,
+    paper: 0,
+  });
+  assert.deepEqual(result.selectionDiagnostics.selectedCounts, {
+    project: 1,
+    news: 3,
+    socialMedia: 0,
+    paper: 0,
+  });
+  assert.equal(result.selectionDiagnostics.maxItems, 4);
+  assert.equal(result.selectionDiagnostics.quotas.news, 3);
+});

@@ -1879,12 +1879,13 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts } = await loadScheduledContext(env, dateStr, debugInfo, {
+    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts, selectionDiagnostics } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
+    debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
 
     const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
