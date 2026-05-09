@@ -214,13 +214,34 @@ jobs:
           echo "Today's AI daily page or home pointer is still not updated after trigger."
           exit 1
 
+      - name: Validate current daily page content
+        id: validate_page
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+        run: |
+          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/${YEAR_MONTH}/${TARGET_DATE}.md"
+          STATUS_CODE=$(curl -sS -o publication-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "::error::Unable to fetch daily page content for validation (status=${STATUS_CODE})."
+            exit 1
+          fi
+
+          MODE=daily \
+          TARGET_DATE="${TARGET_DATE}" \
+          PAGE_RESPONSE_PATH=publication-page.json \
+          MINIMUM_TOP_ITEMS=3 \
+          node .github/scripts/validate-publication-content.mjs
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
       - name: Report Worker daily status
         if: always()
         shell: bash
         env:
           MODE: daily
           TARGET_DATE: ${{ steps.target.outputs.date }}
-          PAGE_HEALTH: ${{ steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && 'healthy' || 'needs-repair' }}
+          PAGE_HEALTH: ${{ steps.validate_page.outputs.ok == 'true' && 'healthy' || 'needs-repair' }}
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: |
           STATUS_HTTP_CODE="not_requested"
