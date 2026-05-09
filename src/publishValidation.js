@@ -127,18 +127,68 @@ function extractSection(markdown, headingPattern) {
 }
 
 function extractSectionUrls(markdown) {
-  return [...String(markdown || "").matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)]
+  const content = String(markdown || "");
+  return [...content.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)]
+    .filter((match) => match.index == null || content[match.index - 1] !== "!")
     .map((match) => canonicalizeUrl(match[1]))
     .filter(Boolean);
 }
 
 function extractSectionLinks(markdown) {
-  return [...String(markdown || "").matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+  const content = String(markdown || "");
+  return [...content.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+    .filter((match) => match.index == null || content[match.index - 1] !== "!")
     .map((match) => ({
       title: match[1],
       url: canonicalizeUrl(match[2]),
     }))
     .filter((item) => item.url);
+}
+
+function isNoiseSectionLink(link) {
+  if (!link?.url) return true;
+  try {
+    const parsed = new URL(link.url);
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    return hostname === "aivora.cn" || hostname === "news.aivora.cn";
+  } catch {
+    return false;
+  }
+}
+
+function extractPrimarySectionLinks(markdown) {
+  const content = String(markdown || "");
+  const primaryLinks = [];
+  const seen = new Set();
+
+  const addLink = (link) => {
+    if (!link || isNoiseSectionLink(link)) return;
+    const key = `${link.url}|${normalizeLinkTitle(link.title)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    primaryLinks.push(link);
+  };
+
+  for (const match of content.matchAll(/^###\s+(?:\d+\.\s+)?\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gm)) {
+    addLink({
+      title: match[1],
+      url: canonicalizeUrl(match[2]),
+    });
+  }
+
+  for (const line of content.split(/\n+/)) {
+    if (!/^\s*[-*]\s+/.test(line)) continue;
+    const firstLink = extractSectionLinks(line).find((link) => !isNoiseSectionLink(link));
+    addLink(firstLink);
+  }
+
+  if (primaryLinks.length === 0) {
+    for (const context of extractLinkContexts(content)) {
+      addLink(context.links.find((link) => !isNoiseSectionLink(link)));
+    }
+  }
+
+  return primaryLinks;
 }
 
 function extractNumberedTopItems(markdown) {
@@ -321,9 +371,9 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   }
 
   const duplicateUrls = collectDuplicateUrlsBySection({
-    top: extractSectionUrls(topSection),
-    watch: extractSectionUrls(watchSection),
-    fun: extractSectionUrls(funSection),
+    top: topItems.map((item) => item.url).filter(Boolean),
+    watch: extractPrimarySectionLinks(watchSection).map((link) => link.url),
+    fun: extractPrimarySectionLinks(funSection).map((link) => link.url),
   });
 
   if (duplicateUrls.length > 0) {
@@ -331,9 +381,9 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   }
 
   const duplicateTopics = collectDuplicateTopicsBySection({
-    top: extractSectionLinks(topSection),
-    watch: extractSectionLinks(watchSection),
-    fun: extractSectionLinks(funSection),
+    top: topItems.map((item) => ({ title: item.title, url: item.url })),
+    watch: extractPrimarySectionLinks(watchSection),
+    fun: extractPrimarySectionLinks(funSection),
   });
 
   if (duplicateTopics.length > 0) {
