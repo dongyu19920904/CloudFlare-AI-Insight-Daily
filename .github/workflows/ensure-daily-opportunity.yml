@@ -135,6 +135,7 @@ jobs:
         env:
           MODE: opportunity
           TARGET_DATE: ${{ steps.target.outputs.date }}
+          PAGE_HEALTH: ${{ steps.check.outputs.exists == 'true' && 'healthy' || 'needs-repair' }}
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: |
           STATUS_HTTP_CODE="not_requested"

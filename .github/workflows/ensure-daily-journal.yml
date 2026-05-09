@@ -220,6 +220,7 @@ jobs:
         env:
           MODE: daily
           TARGET_DATE: ${{ steps.target.outputs.date }}
+          PAGE_HEALTH: ${{ steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && 'healthy' || 'needs-repair' }}
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: |
           STATUS_HTTP_CODE="not_requested"

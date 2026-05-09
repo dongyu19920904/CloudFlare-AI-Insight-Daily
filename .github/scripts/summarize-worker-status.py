@@ -89,6 +89,8 @@ def get_status_timestamp(status):
 
 
 def build_freshness(status, state, target_date):
+    page_health = os.environ.get("PAGE_HEALTH", "").strip()
+
     if state == "not_recorded":
         return {
             "label": "not recorded for this mode/date",
@@ -126,8 +128,11 @@ def build_freshness(status, state, target_date):
         label = "not recorded for this mode/date"
     elif state == "running":
         if age_minutes is not None and age_minutes >= running_stale_minutes:
-            label = "possible stale running status"
-            warnings.append(f"still running after {format_age(age_minutes)}")
+            if page_health == "healthy":
+                label = "stale running status, page already healthy"
+            else:
+                label = "possible stale running status"
+                warnings.append(f"still running after {format_age(age_minutes)}")
         else:
             label = "running"
     elif state in {"success", "error"}:
@@ -210,6 +215,7 @@ print(f"{annotation} title=Worker status::{', '.join(notice_parts)}")
 rows = [
     ("Mode", mode),
     ("Date", target_date),
+    ("Page health", os.environ.get("PAGE_HEALTH", "")),
     ("Status HTTP", status_http_code),
     ("Status key", status_key),
     ("State", state),
