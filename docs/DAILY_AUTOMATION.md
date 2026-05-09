@@ -69,6 +69,7 @@ Use this order when checking whether the daily automation is healthy:
    - `promptSelectionDiagnostics`: quotas, hard caps, source candidate counts, and media counts.
    - `dailyValidationPassed` / `dailyValidationIssues`: whether publish validation passed.
    - `dailyPublished`: whether the daily page was committed to the frontend repo.
+   - `Freshness` / `Status age`: whether the Worker status looks current or possibly stale.
 
 ## Safe Manual Recovery
 
