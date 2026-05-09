@@ -663,8 +663,8 @@ function sanitizeDuplicateDailySections(markdown) {
 
     const seenStories = [...topLinks];
     const sectionPatterns = [
-        /^##\s*\*\*.*值得关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
-        /^##\s*\*\*.*AI趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+        /^##\s*\*\*.*(?:📌|🎯|值得关注|关注).*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+        /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|$)/im,
     ];
 
     let sanitized = content;
@@ -678,31 +678,37 @@ function sanitizeDuplicateDailySections(markdown) {
             const body = section.slice(heading.length).trim();
             if (!body) return section;
 
-            const chunks = body.split(/\n(?=(?:###\s+|- \*\*))/g).map((item) => item.trim()).filter(Boolean);
+            const chunks = body.split(/\n(?=(?:###\s+|- \*\*|\*\*\[))/g).map((item) => item.trim()).filter(Boolean);
             const keptChunks = [];
 
             for (const chunk of chunks) {
-                const linkMatch = chunk.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
-                if (!linkMatch) {
+                const links = [...chunk.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+                    .filter((match) => match.index == null || chunk[match.index - 1] !== '!')
+                    .map((match) => ({
+                        title: match[1],
+                        url: normalizeReplayUrl(match[2]),
+                    }));
+
+                if (links.length === 0) {
                     keptChunks.push(chunk);
                     continue;
                 }
 
-                const title = linkMatch[1];
-                const url = normalizeReplayUrl(linkMatch[2]);
-                const duplicated = seenStories.some((story) => {
-                    if (story.url && url && story.url === url) return true;
-                    return isRepeatedDailyStory(story.title, title);
-                });
+                const duplicated = links.some((link) =>
+                    seenStories.some((story) => {
+                        if (story.url && link.url && story.url === link.url) return true;
+                        return isRepeatedDailyStory(story.title, link.title);
+                    })
+                );
 
                 if (duplicated) continue;
 
-                seenStories.push({ title, url });
+                seenStories.push(...links);
                 keptChunks.push(chunk);
             }
 
             if (keptChunks.length === 0) {
-                return '';
+                return heading;
             }
 
             return `${heading}\n\n${keptChunks.join('\n\n')}`;
