@@ -177,6 +177,60 @@ test("validateDailyPublication rejects too many open-source projects in watch se
   assert.match(result.issues.join("\n"), /watch section must contain at most two/i);
 });
 
+test("validateDailyPublication keeps welfare items out of TOP and limits them in watch section", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天有一个 AI 产品更新，也有 LinuxDo 每日薅羊毛福利，福利可以提醒但不能挤进 TOP。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天有一个 AI 产品更新，也有 LinuxDo 每日薅羊毛福利，福利可以提醒但不能挤进 TOP。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+产品主线归产品，羊毛福利归提醒，日报层级不能乱。
+
+### **🔑 3 个关键词**
+#产品 #福利 #筛选
+
+## **🔥 重磅 TOP 2**
+
+### 1. [重要 AI 产品更新](https://example.com/product-news)
+这是一条正常产品新闻，适合进入 TOP。这里补足正文长度，让校验重点落在福利内容的位置上，而不是因为内容太短被拦截。
+
+### 2. [LinuxDo 每日薅羊毛：一个 AI 福利](https://linux.do/t/free-ai-credit)
+这个福利可以提醒读者，但不应该作为 TOP 新闻上榜，否则日报层级会变成福利列表。
+
+## **📌 值得关注**
+
+- **[其他]** [另一个限免福利](https://example.com/freebie) - 限免可以放一条，但不能连续堆。
+- **[其他]** [第二个优惠福利](https://example.com/coupon) - 再来一条福利就超量了。
+
+## **😄 AI趣闻**
+
+### [一个新的 AI 趣闻](https://example.com/fun-fresh)
+这条趣闻和福利无关，用来保证结构完整。
+
+## **❓ 相关问题**
+
+### 如何判断今天的 AI 工具值不值得试？
+
+先看它是不是解决真实工作流，再看体验门槛。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+    minimumTopItems: 2,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /welfare\/freebie items should stay in watch section/i);
+  assert.match(result.issues.join("\n"), /at most one welfare\/freebie item/i);
+});
+
 test("validateDailyPublication rejects meta commentary and missing FAQ section", () => {
   const result = validateDailyPublication({
     summaryText: "谷歌发了新模型，开源工具也不少。",

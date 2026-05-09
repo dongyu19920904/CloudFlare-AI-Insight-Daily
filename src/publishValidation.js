@@ -178,6 +178,11 @@ function isOpenSourceProjectContext(context, url = "") {
   return /开源(项目|库|工具|模型)|GitHub\s*(项目|仓库)|仓库|repo(?:sitory)?|open[-\s]?source\s+project|Star|stars/i.test(text);
 }
 
+function isWelfareContext(context, url = "") {
+  const text = `${context || ""} ${url || ""}`;
+  return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(text);
+}
+
 function collectDuplicateUrlsBySection(sectionMap) {
   const firstSeenSectionByUrl = new Map();
   const duplicates = [];
@@ -292,6 +297,10 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily TOP must contain at most one GitHub/open-source project item");
   }
 
+  if (topItems.some((item) => isWelfareContext(item.context, item.url))) {
+    issues.push("Daily welfare/freebie items should stay in watch section, not TOP");
+  }
+
   const watchSection = extractSection(pageMarkdown, /^##\s*\*\*.*关注.*\*\*/im);
   const funSection = extractSection(pageMarkdown, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
   const watchOpenSourceProjectCount = extractLinkContexts(watchSection).reduce(
@@ -301,6 +310,14 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   );
   if (watchOpenSourceProjectCount > 2) {
     issues.push("Daily watch section must contain at most two GitHub/open-source project items");
+  }
+
+  const watchWelfareCount = extractLinkContexts(watchSection).reduce(
+    (count, item) => count + item.links.filter((link) => isWelfareContext(item.chunk, link.url)).length,
+    0,
+  );
+  if (watchWelfareCount > 1) {
+    issues.push("Daily watch section must contain at most one welfare/freebie item");
   }
 
   const duplicateUrls = collectDuplicateUrlsBySection({

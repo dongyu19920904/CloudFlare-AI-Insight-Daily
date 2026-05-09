@@ -125,6 +125,7 @@ function scoreDailyPromptCandidate(candidate) {
   if (sourceType === "paper") score += 12;
 
   if (candidate?.itemHasMedia) score += 6;
+  if (candidate?.isWelfare) score += 10;
 
   const sourceText = `${candidate?.source || ""} ${candidate?.title || ""} ${candidate?.description || ""}`.toLowerCase();
   if (/github|open source|open-source|开源|project/i.test(sourceText)) score += 8;
@@ -136,6 +137,12 @@ function scoreDailyPromptCandidate(candidate) {
   }
 
   return score;
+}
+
+function isWelfareCandidateText(text) {
+  return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(
+    String(text || "")
+  );
 }
 
 function extractMatchTokens(item) {
@@ -202,6 +209,18 @@ function buildDailyPromptCandidate(item) {
     itemText += `\nMedia References: ${mediaPlaceholders.join(" ")}`;
   }
 
+  const welfareText = [
+    item.title,
+    item.description,
+    item.source,
+    item.url,
+    plainTextContent,
+  ].join(" ");
+  const isWelfare = isWelfareCandidateText(welfareText);
+  if (isWelfare) {
+    itemText += "\nPlacement Hint: This is a welfare/freebie item. Put at most one such item in 值得关注, not TOP.";
+  }
+
   return {
     sourceType: item.type,
     itemText,
@@ -212,6 +231,7 @@ function buildDailyPromptCandidate(item) {
     url: item.url,
     plainText: plainTextContent,
     placeholders: mediaPlaceholders,
+    isWelfare,
     searchText: [item.title, item.description, item.source, plainTextContent].filter(Boolean).join(" "),
     matchTokens: extractMatchTokens({
       title: item.title,
@@ -319,6 +339,23 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       if (added >= quota || selectedCandidates.length >= maxItems) break;
       if (tryAddCandidate(candidate)) added += 1;
     }
+  }
+
+  const welfareCandidate = orderedSourceTypes
+    .flatMap((sourceType) => buckets.get(sourceType) || [])
+    .filter((candidate) => candidate.isWelfare)
+    .sort((left, right) => right.score - left.score)[0];
+
+  if (welfareCandidate && !isDuplicateDailyPromptCandidate(welfareCandidate, selectedCandidates)) {
+    if (selectedCandidates.length >= maxItems) {
+      const replacementIndex = selectedCandidates.findIndex(
+        (candidate) => !candidate.isWelfare && candidate.sourceType !== "project"
+      );
+      if (replacementIndex >= 0) {
+        selectedCandidates.splice(replacementIndex, 1);
+      }
+    }
+    tryAddCandidate(welfareCandidate);
   }
 
   if (selectedCandidates.length < maxItems) {

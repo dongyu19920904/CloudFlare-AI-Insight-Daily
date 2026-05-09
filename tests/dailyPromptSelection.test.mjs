@@ -83,3 +83,29 @@ test("buildDailyPromptSelection keeps default project candidates from flooding t
 
   assert.equal(result.selectedCounts.project, 1);
 });
+
+test("buildDailyPromptSelection keeps one welfare item available for watch section", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      ...Array.from({ length: 30 }, (_, index) => buildNewsItem(index + 1)),
+      {
+        type: "news",
+        title: "LinuxDo 每日薅羊毛：一个值得领的 AI 福利",
+        description: "今天最值得看的优惠福利，适合放在值得关注里提醒读者。",
+        source: "每日薅羊毛",
+        url: "https://linux.do/t/free-ai-credit",
+        published_date: "2026-05-09",
+        details: {
+          content_html: "<p>一个限时 AI credit 福利，适合今天领取。</p>",
+        },
+      },
+    ],
+    project: [],
+    socialMedia: [],
+    paper: [],
+  });
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.match(promptText, /每日薅羊毛/);
+  assert.match(promptText, /Placement Hint: This is a welfare\/freebie item/);
+});
