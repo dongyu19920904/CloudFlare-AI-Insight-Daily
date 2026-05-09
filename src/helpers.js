@@ -42,10 +42,10 @@ export function escapeHtml(unsafe) {
     }
     const str = String(unsafe);
     const map = {
-        '&': '&',
-        '<': '<',
-        '>': '>',
-        '"': '"',
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
         "'": '&#039;'
     };
     return str.replace(/[&<>"']/g, (m) => map[m]);
