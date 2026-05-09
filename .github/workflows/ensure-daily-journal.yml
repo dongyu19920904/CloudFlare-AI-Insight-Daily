@@ -138,7 +138,7 @@ jobs:
           PY
           done
 
-          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}&async=1"
+          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}"
           echo "Triggering ${TRIGGER_URL}"
           curl -sS "$TRIGGER_URL" > trigger-response.json
 
@@ -153,67 +153,14 @@ jobs:
           if not payload.get("success"):
               raise SystemExit("Worker trigger failed")
 
-          if not payload.get("queued") or not payload.get("statusKey"):
-              raise SystemExit("Worker async trigger did not return a status key")
+          debug = payload.get("debug") or {}
+          if not debug.get("dailyGenerated"):
+              raise SystemExit("Daily content was not generated")
+
+          if not debug.get("dailyPublished"):
+              issues = " | ".join(debug.get("dailyValidationIssues") or [])
+              raise SystemExit(f"Daily content was not published: {issues}")
           PY
-
-          STATUS_KEY=$(python - <<'PY'
-          import json
-
-          with open("trigger-response.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
-
-          print(payload["statusKey"])
-          PY
-          )
-
-          for attempt in $(seq 1 90); do
-            STATUS_URL="${WORKER_BASE_URL}/testTriggerScheduledStatus?key=${TEST_TRIGGER_SECRET}&statusKey=${STATUS_KEY}"
-            curl -sS "$STATUS_URL" > trigger-status.json
-
-            set +e
-            python - "$attempt" <<'PY'
-          import json
-          import sys
-
-          attempt = sys.argv[1]
-          with open("trigger-status.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
-
-          print(f"Poll attempt {attempt}:")
-          print(json.dumps(payload, ensure_ascii=False, indent=2))
-
-          status = payload.get("status") or {}
-          state = status.get("state")
-
-          if state == "success":
-              debug = status.get("debug") or {}
-              if not debug.get("dailyGenerated"):
-                  raise SystemExit("Daily content was not generated")
-              if not debug.get("dailyPublished"):
-                  issues = " | ".join(debug.get("dailyValidationIssues") or [])
-                  raise SystemExit(f"Daily content was not published: {issues}")
-              raise SystemExit(0)
-
-          if state == "error":
-              raise SystemExit(f"Worker async task failed: {status.get('error')}")
-
-          raise SystemExit(2)
-          PY
-            code=$?
-            set -e
-            if [ "$code" = "0" ]; then
-              exit 0
-            fi
-            if [ "$code" != "2" ]; then
-              exit "$code"
-            fi
-
-            sleep 10
-          done
-
-          echo "Worker async daily generation did not finish in time."
-          exit 1
 
       - name: Verify today's page after trigger
         if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
