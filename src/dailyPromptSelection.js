@@ -243,10 +243,13 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 28);
   const quotas = {
-    news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 10),
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 8),
+    news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 14),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 2),
     socialMedia: parsePositiveInt(env.DAILY_PROMPT_SOCIAL_ITEMS, 6),
     paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 4),
+  };
+  const hardCaps = {
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 2),
   };
   const preferredSourceOrder = ["news", "project", "socialMedia", "paper"];
   const buckets = new Map();
@@ -290,6 +293,13 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   const tryAddCandidate = (candidate) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
+    const hardCap = hardCaps[candidate.sourceType];
+    if (
+      hardCap > 0 &&
+      selectedCandidates.filter((selected) => selected.sourceType === candidate.sourceType).length >= hardCap
+    ) {
+      return false;
+    }
     if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates)) return false;
     selectedCandidates.push(candidate);
     return true;

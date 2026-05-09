@@ -141,6 +141,43 @@ function extractSectionLinks(markdown) {
     .filter((item) => item.url);
 }
 
+function extractNumberedTopItems(markdown) {
+  const content = String(markdown || "");
+  const items = [];
+  const itemRegex = /^###\s+(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)([\s\S]*?)(?=^###\s+\d+\.|\n##\s+|$)/gm;
+
+  for (const match of content.matchAll(itemRegex)) {
+    items.push({
+      number: Number.parseInt(match[1], 10),
+      title: match[2],
+      url: canonicalizeUrl(match[3]),
+      body: match[4] || "",
+      context: `${match[2] || ""}\n${match[4] || ""}`,
+    });
+  }
+
+  return items;
+}
+
+function extractLinkContexts(markdown) {
+  return String(markdown || "")
+    .split(/\n{2,}/)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => /\[[^\]]+\]\(https?:\/\/[^\s)]+\)/.test(chunk))
+    .map((chunk) => ({
+      chunk,
+      links: extractSectionLinks(chunk),
+    }));
+}
+
+function isOpenSourceProjectContext(context, url = "") {
+  const text = `${context || ""} ${url || ""}`;
+  if (/github\.com\/(?!features\/|topics\/|marketplace\/|blog\/)[^/\s)#?]+\/[^/\s)#?]+/i.test(text)) return true;
+  if (/gitlab\.com\/[^/\s)#?]+\/[^/\s)#?]+/i.test(text)) return true;
+  if (/huggingface\.co\/[^/\s)#?]+\/[^/\s)#?]+/i.test(text)) return true;
+  return /开源(项目|库|工具|模型)|GitHub\s*(项目|仓库)|仓库|repo(?:sitory)?|open[-\s]?source\s+project|Star|stars/i.test(text);
+}
+
 function collectDuplicateUrlsBySection(sectionMap) {
   const firstSeenSectionByUrl = new Map();
   const duplicates = [];
@@ -212,17 +249,60 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const numberedTopItems = [
     ...topSection.matchAll(/^###\s+\d+\.\s+\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/gm),
   ];
+  const topItems = extractNumberedTopItems(topSection);
 
   if (numberedTopItems.length === 0) {
     issues.push("Daily top items must use numbered headings");
   }
 
+  topItems.forEach((item, index) => {
+    if (item.number !== index + 1) {
+      issues.push("Daily top item numbers must be unique and sequential");
+    }
+  });
+
   if (minimumTopItems > 0 && numberedTopItems.length < minimumTopItems) {
     issues.push(`Daily top items are insufficient: expected at least ${minimumTopItems}`);
   }
 
+  if (/已合并处理|同一来源|见第\s*\d+\s*条|此条与第\s*\d+\s*条/i.test(topSection)) {
+    issues.push("Daily top items must not contain merge-note placeholders");
+  }
+
+  const seenTopUrls = new Set();
+  for (const item of topItems) {
+    if (item.url && seenTopUrls.has(item.url)) {
+      issues.push("Daily TOP reuses the same source URL");
+      break;
+    }
+    if (item.url) seenTopUrls.add(item.url);
+  }
+
+  const duplicateTopTopic = topItems.some((item, index) =>
+    topItems.slice(0, index).some((existing) => areSimilarLinkTitles(existing.title, item.title)),
+  );
+  if (duplicateTopTopic) {
+    issues.push("Daily TOP reuses the same story");
+  }
+
+  const topOpenSourceProjectCount = topItems.filter((item) =>
+    isOpenSourceProjectContext(item.context, item.url),
+  ).length;
+  if (topOpenSourceProjectCount > 1) {
+    issues.push("Daily TOP must contain at most one GitHub/open-source project item");
+  }
+
   const watchSection = extractSection(pageMarkdown, /^##\s*\*\*.*关注.*\*\*/im);
   const funSection = extractSection(pageMarkdown, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
+  const watchOpenSourceProjectCount = extractLinkContexts(watchSection).reduce(
+    (count, item) =>
+      count + item.links.filter((link) => isOpenSourceProjectContext(item.chunk, link.url)).length,
+    0,
+  );
+  if (watchOpenSourceProjectCount > 2) {
+    issues.push("Daily watch section must contain at most two GitHub/open-source project items");
+  }
+
   const duplicateUrls = collectDuplicateUrlsBySection({
     top: extractSectionUrls(topSection),
     watch: extractSectionUrls(watchSection),

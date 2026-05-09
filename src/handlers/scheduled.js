@@ -105,6 +105,20 @@ function getPreviousDate(dateStr) {
     return `${previousYear}-${previousMonth}-${previousDay}`;
 }
 
+function getPreviousDates(dateStr, count = 1) {
+    const dates = [];
+    let cursor = dateStr;
+    const total = Math.max(1, Number.parseInt(String(count), 10) || 1);
+
+    for (let index = 0; index < total; index += 1) {
+        cursor = getPreviousDate(cursor);
+        if (!cursor) break;
+        dates.push(cursor);
+    }
+
+    return dates;
+}
+
 function normalizeReplayUrl(url) {
     if (!url) return '';
 
@@ -201,6 +215,48 @@ function extractPreviousTopItems(markdown) {
     return items;
 }
 
+function isInternalDailyUrl(url) {
+    if (!url) return false;
+
+    try {
+        const hostname = new URL(String(url)).hostname.toLowerCase().replace(/^www\./, '');
+        return hostname === 'aivora.cn' || hostname === 'news.aivora.cn';
+    } catch {
+        return false;
+    }
+}
+
+function extractPreviousDailyReplayItems(markdown) {
+    const content = String(markdown || '');
+    if (!content) return [];
+
+    const items = [];
+    const seen = new Set();
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+
+    for (const match of content.matchAll(linkRegex)) {
+        if (match.index > 0 && content[match.index - 1] === '!') continue;
+
+        const rawTitle = match[1]?.trim();
+        const url = match[2]?.trim();
+        if (!rawTitle || !url || isInternalDailyUrl(url)) continue;
+
+        const urlKey = normalizeReplayUrl(url);
+        if (!urlKey || seen.has(urlKey)) continue;
+        seen.add(urlKey);
+
+        const title = /^(链接|link|image)$/i.test(rawTitle) ? '' : rawTitle;
+        items.push({
+            title,
+            url,
+            urlKey,
+            titleKey: normalizeReplayTitle(title),
+        });
+    }
+
+    return items;
+}
+
 function isUsablePreviousDaily(markdown, topItems) {
     if (!markdown || !Array.isArray(topItems) || topItems.length < 3) return false;
 
@@ -219,24 +275,44 @@ function isUsablePreviousDaily(markdown, topItems) {
     return !failurePatterns.some((pattern) => pattern.test(markdown));
 }
 
-async function loadPreviousTopItems(env, dateStr) {
-    const previousDate = getPreviousDate(dateStr);
+async function loadPreviousTopItems(env, dateStr, lookbackDays = 1) {
+    const previousDates = getPreviousDates(dateStr, lookbackDays);
+    const previousDate = previousDates[0] || null;
     if (!previousDate) {
-        return { previousDate: null, items: [] };
+        return { previousDate: null, items: [], allItems: [] };
     }
 
-    try {
-        const previousMarkdown = await getGitHubFileContent(env, `daily/${previousDate}.md`);
-        const topItems = extractPreviousTopItems(previousMarkdown);
-        if (!isUsablePreviousDaily(previousMarkdown, topItems)) {
-            console.warn(`[Scheduled] Previous daily ${previousDate} missing usable TOP section, skipping replay filter.`);
-            return { previousDate, items: [] };
+    let firstPreviousTopItems = [];
+    const allReplayItems = [];
+
+    for (const candidateDate of previousDates) {
+        try {
+            const previousMarkdown = await getGitHubFileContent(env, `daily/${candidateDate}.md`);
+            const topItems = extractPreviousTopItems(previousMarkdown);
+            const allItems = extractPreviousDailyReplayItems(previousMarkdown);
+            if (!isUsablePreviousDaily(previousMarkdown, topItems)) {
+                console.warn(`[Scheduled] Previous daily ${candidateDate} missing usable TOP section, skipping replay filter for this date.`);
+                continue;
+            }
+            if (candidateDate === previousDate) {
+                firstPreviousTopItems = topItems;
+            }
+            allReplayItems.push(...allItems);
+        } catch (error) {
+            console.warn(`[Scheduled] Failed to load previous daily ${candidateDate}, skipping replay filter for this date: ${error.message}`);
         }
-        return { previousDate, items: topItems };
-    } catch (error) {
-        console.warn(`[Scheduled] Failed to load previous daily ${previousDate}, skipping replay filter: ${error.message}`);
-        return { previousDate, items: [] };
     }
+
+    const seenReplayUrls = new Set();
+    const dedupedReplayItems = [];
+    for (const item of allReplayItems) {
+        const key = item?.urlKey || normalizeReplayUrl(item?.url);
+        if (!key || seenReplayUrls.has(key)) continue;
+        seenReplayUrls.add(key);
+        dedupedReplayItems.push(item);
+    }
+
+    return { previousDate, items: firstPreviousTopItems, allItems: dedupedReplayItems };
 }
 
 function extractMarkdownSection(markdown, heading) {
@@ -314,6 +390,33 @@ function filterNewsAgainstPreviousTop(newsItems, previousTopItems) {
     }
 
     return { filteredNewsItems, filteredCount };
+}
+
+function filterItemsAgainstPreviousDaily(items, previousItems) {
+    if (!Array.isArray(items) || items.length === 0 || !Array.isArray(previousItems) || previousItems.length === 0) {
+        return { filteredItems: items || [], filteredCount: 0 };
+    }
+
+    const previousUrlKeys = new Set(previousItems.map((item) => item.urlKey).filter(Boolean));
+    const previousTitles = previousItems.map((item) => item.title).filter(Boolean);
+    const filteredItems = [];
+    let filteredCount = 0;
+
+    for (const item of items) {
+        const urlKey = normalizeReplayUrl(item?.url);
+        const title = item?.title || '';
+        const duplicateByUrl = urlKey && previousUrlKeys.has(urlKey);
+        const duplicateByTitle = !duplicateByUrl && title && previousTitles.some((previousTitle) => isSimilarReplayTitle(title, previousTitle));
+
+        if (duplicateByUrl || duplicateByTitle) {
+            filteredCount += 1;
+            continue;
+        }
+
+        filteredItems.push(item);
+    }
+
+    return { filteredItems, filteredCount };
 }
 
 async function generateContentWithTransportFallback(env, userPrompt, systemPrompt) {
@@ -453,6 +556,76 @@ function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
     return `${markdown}\n\n### **相关配图**\n\n${rendered}`;
 }
 
+function normalizeMediaUrl(url) {
+    if (!url) return '';
+    try {
+        const parsed = new URL(String(url).trim());
+        parsed.hash = '';
+        return parsed.href;
+    } catch {
+        return String(url).trim();
+    }
+}
+
+function extractMediaUrlsFromText(text) {
+    const content = String(text || '');
+    const urls = [];
+
+    for (const match of content.matchAll(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g)) {
+        urls.push(normalizeMediaUrl(match[1]));
+    }
+
+    for (const match of content.matchAll(/<(?:img|video)\b[^>]*\bsrc="(https?:\/\/[^"]+)"/gi)) {
+        urls.push(normalizeMediaUrl(match[1]));
+    }
+
+    return urls.filter(Boolean);
+}
+
+function buildAllowedMediaBySourceUrl(mediaCandidates) {
+    const allowedBySource = new Map();
+
+    for (const candidate of mediaCandidates || []) {
+        const sourceKey = normalizeReplayUrl(candidate?.url);
+        if (!sourceKey) continue;
+
+        const urls = (candidate.placeholders || []).flatMap((placeholder) =>
+            extractMediaUrlsFromText(placeholder),
+        );
+        if (urls.length === 0) continue;
+
+        const allowed = allowedBySource.get(sourceKey) || new Set();
+        urls.forEach((url) => allowed.add(url));
+        allowedBySource.set(sourceKey, allowed);
+    }
+
+    return allowedBySource;
+}
+
+function removeMismatchedTopItemImages(markdown, mediaCandidates) {
+    const allowedBySource = buildAllowedMediaBySourceUrl(mediaCandidates);
+    if (allowedBySource.size === 0 || !markdown) {
+        return { markdown, removedCount: 0 };
+    }
+
+    let removedCount = 0;
+    const cleanedMarkdown = String(markdown).replace(
+        /^###\s+\d+\.\s+\[[^\]]+\]\((https?:\/\/[^\s)]+)\)[\s\S]*?(?=^###\s+\d+\.|\n##\s+|$)/gm,
+        (itemBlock, sourceUrl) => {
+            const allowed = allowedBySource.get(normalizeReplayUrl(sourceUrl));
+            if (!allowed || allowed.size === 0) return itemBlock;
+
+            return itemBlock.replace(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g, (imageMarkdown, imageUrl) => {
+                if (allowed.has(normalizeMediaUrl(imageUrl))) return imageMarkdown;
+                removedCount += 1;
+                return '';
+            });
+        },
+    );
+
+    return { markdown: cleanedMarkdown, removedCount };
+}
+
 function normalizeDailyLinkTitle(title) {
     return String(title || '')
         .normalize('NFKC')
@@ -559,9 +732,13 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         mediaCandidates: 0,
         previousDayReplayDate: null,
         previousDayTopItems: 0,
+        previousDayReplayItems: 0,
+        previousReplayLookbackDays: 0,
         previousDayFilteredNews: 0,
+        previousDayFilteredCounts: {},
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
+        mismatchedTopImagesRemoved: 0,
         fallbackInserted: false,
         labelsVersion: 'headings-v2',
         opportunityGenerated: false,
@@ -799,9 +976,13 @@ function buildBaseDebugInfo(dateStr, mode) {
         mediaCandidates: 0,
         previousDayReplayDate: null,
         previousDayTopItems: 0,
+        previousDayReplayItems: 0,
+        previousReplayLookbackDays: 0,
         previousDayFilteredNews: 0,
+        previousDayFilteredCounts: {},
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
+        mismatchedTopImagesRemoved: 0,
         fallbackInserted: false,
         labelsVersion: 'headings-v2',
         dailyGenerated: false,
@@ -954,7 +1135,12 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         debugInfo.usedCachedDailySourceData = false;
     }
 
-    const { previousDate, items: previousTopItems } = await loadPreviousTopItems(env, dateStr);
+    const replayLookbackDays = Math.max(1, Number.parseInt(env.DAILY_REPLAY_LOOKBACK_DAYS || '3', 10) || 3);
+    const { previousDate, items: previousTopItems, allItems: previousDailyItems = [] } = await loadPreviousTopItems(
+        env,
+        dateStr,
+        replayLookbackDays
+    );
     const {
         previousDate: previousOpportunityDate,
         signals: previousOpportunityReplaySignals,
@@ -962,14 +1148,25 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
 
     debugInfo.previousDayReplayDate = previousDate;
     debugInfo.previousDayTopItems = previousTopItems.length;
+    debugInfo.previousDayReplayItems = previousDailyItems.length;
+    debugInfo.previousReplayLookbackDays = replayLookbackDays;
     debugInfo.previousOpportunityReplayDate = previousOpportunityDate;
     debugInfo.previousOpportunityReplayRules =
         previousOpportunityReplaySignals.matchedRuleIds?.length || 0;
 
-    if (Array.isArray(allUnifiedData.news) && allUnifiedData.news.length > 0 && previousTopItems.length > 0) {
-        const { filteredNewsItems, filteredCount } = filterNewsAgainstPreviousTop(allUnifiedData.news, previousTopItems);
-        allUnifiedData.news = filteredNewsItems;
-        debugInfo.previousDayFilteredNews = filteredCount;
+    const replayItems = previousDailyItems.length > 0 ? previousDailyItems : previousTopItems;
+    if (replayItems.length > 0) {
+        debugInfo.previousDayFilteredCounts = {};
+        for (const sourceType in allUnifiedData) {
+            if (!Object.hasOwnProperty.call(allUnifiedData, sourceType)) continue;
+
+            const { filteredItems, filteredCount } = filterItemsAgainstPreviousDaily(allUnifiedData[sourceType], replayItems);
+            allUnifiedData[sourceType] = filteredItems;
+            debugInfo.previousDayFilteredCounts[sourceType] = filteredCount;
+            if (sourceType === 'news') {
+                debugInfo.previousDayFilteredNews = filteredCount;
+            }
+        }
     }
 
     if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
@@ -1005,6 +1202,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     const outputBeforeFallback = outputOfCall2;
     outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
     debugInfo.fallbackInserted = outputBeforeFallback !== outputOfCall2;
+    const cleanedOutput = removeMismatchedTopItemImages(outputOfCall2, mediaCandidates);
+    outputOfCall2 = cleanedOutput.markdown;
+    debugInfo.mismatchedTopImagesRemoved += cleanedOutput.removedCount;
     debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
     outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
 
@@ -1046,6 +1246,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
         repairedOutputOfCall2 = convertPlaceholdersToMarkdownImages(repairedOutputOfCall2);
         repairedOutputOfCall2 = appendFallbackMediaSection(repairedOutputOfCall2, mediaCandidates);
+        const cleanedRepairedOutput = removeMismatchedTopItemImages(repairedOutputOfCall2, mediaCandidates);
+        repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
+        debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.removedCount;
         repairedOutputOfCall2 = replaceIncorrectDomainLinks(
             repairedOutputOfCall2,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'

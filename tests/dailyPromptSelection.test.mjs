@@ -71,3 +71,14 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   assert.match(result.selectedContentItems.join("\n"), /Project Name:/);
   assert.match(result.selectedContentItems.join("\n"), /Stars Today:/);
 });
+
+test("buildDailyPromptSelection keeps default project candidates from flooding the prompt", () => {
+  const result = buildDailyPromptSelection({
+    news: Array.from({ length: 4 }, (_, index) => buildNewsItem(index + 1)),
+    project: Array.from({ length: 10 }, (_, index) => buildProjectItem(index + 1)),
+    socialMedia: [],
+    paper: [],
+  });
+
+  assert.equal(result.selectedCounts.project, 2);
+});

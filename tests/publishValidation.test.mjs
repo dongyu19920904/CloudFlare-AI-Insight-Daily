@@ -70,6 +70,113 @@ test("validateDailyPublication accepts a structured daily page", () => {
   assert.deepEqual(result.issues, []);
 });
 
+test("validateDailyPublication rejects GitHub flooding and merge-note placeholders in TOP", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天模型、产品和开源项目都有更新，日报需要保留真正值得上榜的内容，并过滤重复占位条目。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天模型、产品和开源项目都有更新，日报需要保留真正值得上榜的内容，并过滤重复占位条目。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+今天真正值得看的是模型能力、产品入口和一个最强开源项目的组合变化。
+
+### **🔑 3 个关键词**
+#模型 #开源 #产品
+
+## **🔥 重磅 TOP 3**
+
+### 1. [OpenAI 发布实时语音模型](https://example.com/openai-voice)
+这条新闻说明实时语音、转录和同声传译正在进入产品化阶段，值得放在日报前列。这里补足正文长度，确保不是因为内容太短才触发校验失败，而是因为下面的结构问题。
+
+### 2. [GitHub 开源项目 Alpha 登上热榜](https://github.com/example/alpha)
+这个项目很热，但 TOP 里每天只应该保留最值得上榜的一个 GitHub 或开源项目。
+
+### 3. [GitHub 开源项目 Beta 登上热榜](https://github.com/example/beta)
+⚠️ 此条与第1条为同一来源，已合并处理，见第1条。这里模拟模型把重复判断写进正文的错误输出，发布前应该被拦截。
+
+## **📌 值得关注**
+
+- **[产品]** [一个产品更新](https://example.com/product) - 作为补充动态保留，不重复 TOP 的核心故事。
+
+## **😄 AI趣闻**
+
+### [一个新的 AI 趣闻](https://example.com/fun)
+这个趣闻和昨天不同，内容轻松但不重复。
+
+## **❓ 相关问题**
+
+### 如何体验这些 AI 工具？
+
+优先确认官方入口，再考虑更省心的账号或服务方式。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+    minimumTopItems: 3,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /at most one GitHub\/open-source project item/i);
+  assert.match(result.issues.join("\n"), /merge-note placeholders/i);
+});
+
+test("validateDailyPublication rejects too many open-source projects in watch section", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天日报主体保留一个核心事件，值得关注栏目可以补充动态，但开源项目不能连续刷屏。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天日报主体保留一个核心事件，值得关注栏目可以补充动态，但开源项目不能连续刷屏。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+产品更新和开源生态都值得看，但同一个栏目不能被项目刷屏。
+
+### **🔑 3 个关键词**
+#产品 #生态 #筛选
+
+## **🔥 重磅 TOP 1**
+
+### 1. [一个重要产品更新](https://example.com/product-news)
+这是一条足够完整的产品新闻，正文说明它为什么重要，并且不依赖 GitHub 项目来凑数。这里继续补足正文长度，让校验聚焦在值得关注栏目过多开源项目的问题上。
+
+## **📌 值得关注**
+
+- **[开源]** [项目 Alpha](https://github.com/example/alpha) - 新增能力很实用。
+- **[开源]** [项目 Beta](https://github.com/example/beta) - Star 增长较快。
+- **[开源]** [项目 Gamma](https://github.com/example/gamma) - 另一个 GitHub 项目，不应该继续堆在同一栏目。
+
+## **😄 AI趣闻**
+
+### [一个新的 AI 趣闻](https://example.com/fun-new)
+这条趣闻和开源项目无关，用来测试栏目结构完整。
+
+## **❓ 相关问题**
+
+### 如何选择今天提到的工具？
+
+先看是否真实解决你的工作流，再决定是否配置账号。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /watch section must contain at most two/i);
+});
+
 test("validateDailyPublication rejects meta commentary and missing FAQ section", () => {
   const result = validateDailyPublication({
     summaryText: "谷歌发了新模型，开源工具也不少。",
