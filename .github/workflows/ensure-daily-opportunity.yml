@@ -28,6 +28,9 @@ jobs:
       FRONTEND_REPO: dongyu19920904/Hextra-AI-Insight-Daily
 
     steps:
+      - name: Checkout backend repo
+        uses: actions/checkout@v4
+
       - name: Resolve target date
         id: target
         shell: bash
@@ -125,3 +128,26 @@ jobs:
 
           echo "Today's AI opportunity page is still missing after trigger."
           exit 1
+
+      - name: Report Worker opportunity status
+        if: always()
+        shell: bash
+        env:
+          MODE: opportunity
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+        run: |
+          STATUS_HTTP_CODE="not_requested"
+          if [ -z "$TEST_TRIGGER_SECRET" ]; then
+            echo "::warning::TEST_TRIGGER_SECRET is not configured; skipping Worker status report."
+          else
+            STATUS_HTTP_CODE=$(curl -sS -G "${WORKER_BASE_URL}/testTriggerScheduledStatus" \
+              -o worker-status.json \
+              -w "%{http_code}" \
+              --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+              --data-urlencode "mode=${MODE}" \
+              --data-urlencode "date=${TARGET_DATE}" || echo "curl_failed")
+          fi
+
+          echo "Worker status HTTP code: ${STATUS_HTTP_CODE}"
+          STATUS_HTTP_CODE="${STATUS_HTTP_CODE}" python .github/scripts/summarize-worker-status.py
