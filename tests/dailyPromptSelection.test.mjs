@@ -84,6 +84,30 @@ test("buildDailyPromptSelection keeps default project candidates from flooding t
   assert.equal(result.selectedCounts.project, 1);
 });
 
+test("buildDailyPromptSelection treats project-like news as part of the project cap", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      {
+        ...buildNewsItem(1),
+        title: "ColaMD 1.5 open-source project ships",
+        description: "Markdown renders slides with a GitHub repo at github.com/marswaveai/ColaMD.",
+        url: "https://example.com/colamd",
+        details: {
+          content_html: "<p>GitHub address: https://github.com/marswaveai/ColaMD</p>",
+        },
+      },
+      ...Array.from({ length: 4 }, (_, index) => buildNewsItem(index + 2)),
+    ],
+    project: [buildProjectItem(1)],
+    socialMedia: [],
+    paper: [],
+  });
+
+  const selectedText = result.selectedContentItems.join("\n");
+  assert.match(selectedText, /Project Name:/);
+  assert.doesNotMatch(selectedText, /ColaMD/i);
+});
+
 test("buildDailyPromptSelection keeps one major AI vendor from flooding the prompt", () => {
   const result = buildDailyPromptSelection(
     {

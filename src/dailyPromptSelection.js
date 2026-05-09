@@ -168,6 +168,23 @@ function getDailyPromptEntityKey(candidate) {
   return majorEntities.find(([, pattern]) => pattern.test(text))?.[0] || "";
 }
 
+function isProjectLikeDailyPromptCandidate(candidate) {
+  const text = [
+    candidate?.sourceType || "",
+    candidate?.title || "",
+    candidate?.description || "",
+    candidate?.source || "",
+    candidate?.url || "",
+    candidate?.plainText || "",
+  ].join(" ");
+
+  if (candidate?.sourceType === "project") return true;
+  if (/github\.com\/(?!features\/|topics\/|marketplace\/|blog\/)[^/\s)#?]+\/[^/\s)#?]+/i.test(text)) {
+    return true;
+  }
+  return /寮€婧?椤圭洰|GitHub\s*(椤圭洰|浠撳簱)|浠撳簱|repo(?:sitory)?|open[-\s]?source\s+project/i.test(text);
+}
+
 function extractMatchTokens(item) {
   const text = [
     item?.title || "",
@@ -295,7 +312,11 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const hardCaps = {
     project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 1),
   };
-  const preferredSourceOrder = ["news", "project", "socialMedia", "paper"];
+  const projectLikeHardCap = parsePositiveInt(
+    env.DAILY_PROMPT_PROJECT_LIKE_HARD_CAP,
+    hardCaps.project || 1
+  );
+  const preferredSourceOrder = ["project", "news", "socialMedia", "paper"];
   const buckets = new Map();
   const mediaCandidates = [];
   let itemsWithMedia = 0;
@@ -335,6 +356,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   ];
   const selectedCandidates = [];
   const selectedEntityCounts = new Map();
+  let selectedProjectLikeCount = 0;
 
   const updateSelectedEntityCount = (candidate, delta) => {
     const entityKey = getDailyPromptEntityKey(candidate);
@@ -345,6 +367,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const removeSelectedCandidateAt = (index) => {
     const [removedCandidate] = selectedCandidates.splice(index, 1);
     updateSelectedEntityCount(removedCandidate, -1);
+    if (isProjectLikeDailyPromptCandidate(removedCandidate)) {
+      selectedProjectLikeCount = Math.max(0, selectedProjectLikeCount - 1);
+    }
   };
 
   const tryAddCandidate = (candidate) => {
@@ -360,9 +385,14 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     if (entityHardCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= entityHardCap) {
       return false;
     }
+    const isProjectLike = isProjectLikeDailyPromptCandidate(candidate);
+    if (projectLikeHardCap > 0 && isProjectLike && selectedProjectLikeCount >= projectLikeHardCap) {
+      return false;
+    }
     if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates)) return false;
     selectedCandidates.push(candidate);
     updateSelectedEntityCount(candidate, 1);
+    if (isProjectLike) selectedProjectLikeCount += 1;
     return true;
   };
 

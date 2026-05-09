@@ -194,7 +194,7 @@ function extractPrimarySectionLinks(markdown) {
 function extractNumberedTopItems(markdown) {
   const content = String(markdown || "");
   const items = [];
-  const itemRegex = /^###\s+(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)([\s\S]*?)(?=^###\s+\d+\.|\n##\s+|$)/gm;
+  const itemRegex = /^###\s+(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)([\s\S]*?)(?=^###\s+\d+\.|\n##\s+|(?![\s\S]))/gm;
 
   for (const match of content.matchAll(itemRegex)) {
     items.push({
