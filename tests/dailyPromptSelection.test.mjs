@@ -84,6 +84,55 @@ test("buildDailyPromptSelection keeps default project candidates from flooding t
   assert.equal(result.selectedCounts.project, 1);
 });
 
+test("buildDailyPromptSelection keeps one major AI vendor from flooding the prompt", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "Anthropic explains Claude interpretability breakthrough",
+          description: "Claude can translate internal activations into natural language.",
+          url: "https://example.com/anthropic-1",
+        },
+        {
+          ...buildNewsItem(2),
+          title: "Claude refuses a shutdown blackmail scenario",
+          description: "Anthropic safety test reveals hidden model reasoning.",
+          url: "https://example.com/anthropic-2",
+        },
+        {
+          ...buildNewsItem(3),
+          title: "OpenAI releases realtime voice models",
+          description: "ChatGPT voice and realtime transcription get dedicated models.",
+          url: "https://example.com/openai-voice",
+        },
+        {
+          ...buildNewsItem(4),
+          title: "Google ships Gemini low latency model",
+          description: "Gemini Flash-Lite focuses on cheaper inference.",
+          url: "https://example.com/google-gemini",
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 4,
+      DAILY_PROMPT_NEWS_ITEMS: 4,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  const selectedAnthropicItems = result.selectedContentItems.filter((item) =>
+    /Anthropic|Claude/i.test(item)
+  );
+
+  assert.equal(selectedAnthropicItems.length, 1);
+});
+
 test("buildDailyPromptSelection keeps one welfare item available for watch section", () => {
   const result = buildDailyPromptSelection({
     news: [

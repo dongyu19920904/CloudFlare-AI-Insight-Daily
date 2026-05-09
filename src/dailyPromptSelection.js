@@ -145,6 +145,29 @@ function isWelfareCandidateText(text) {
   );
 }
 
+function getDailyPromptEntityKey(candidate) {
+  const text = [
+    candidate?.title || "",
+    candidate?.description || "",
+    candidate?.source || "",
+    candidate?.url || "",
+    candidate?.plainText || "",
+  ].join(" ").toLowerCase();
+
+  const majorEntities = [
+    ["anthropic", /\b(anthropic|claude)\b/i],
+    ["openai", /\b(openai|chatgpt|gpt[-\s]?\d|sora)\b/i],
+    ["google", /\b(google|gemini|deepmind)\b/i],
+    ["deepseek", /\bdeepseek\b/i],
+    ["microsoft", /\b(microsoft|copilot|azure ai)\b/i],
+    ["meta", /\b(meta ai|llama)\b/i],
+    ["xai", /\b(xai|grok)\b/i],
+    ["apple", /\b(apple|siri|airpods)\b/i],
+  ];
+
+  return majorEntities.find(([, pattern]) => pattern.test(text))?.[0] || "";
+}
+
 function extractMatchTokens(item) {
   const text = [
     item?.title || "",
@@ -262,6 +285,7 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 18);
+  const entityHardCap = parsePositiveInt(env.DAILY_PROMPT_ENTITY_HARD_CAP, 1);
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 12),
     project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 1),
@@ -310,6 +334,18 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     ...[...buckets.keys()].filter((sourceType) => !preferredSourceOrder.includes(sourceType)),
   ];
   const selectedCandidates = [];
+  const selectedEntityCounts = new Map();
+
+  const updateSelectedEntityCount = (candidate, delta) => {
+    const entityKey = getDailyPromptEntityKey(candidate);
+    if (!entityKey) return;
+    selectedEntityCounts.set(entityKey, Math.max(0, (selectedEntityCounts.get(entityKey) || 0) + delta));
+  };
+
+  const removeSelectedCandidateAt = (index) => {
+    const [removedCandidate] = selectedCandidates.splice(index, 1);
+    updateSelectedEntityCount(removedCandidate, -1);
+  };
 
   const tryAddCandidate = (candidate) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
@@ -320,8 +356,13 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     ) {
       return false;
     }
+    const entityKey = getDailyPromptEntityKey(candidate);
+    if (entityHardCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= entityHardCap) {
+      return false;
+    }
     if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates)) return false;
     selectedCandidates.push(candidate);
+    updateSelectedEntityCount(candidate, 1);
     return true;
   };
 
@@ -352,7 +393,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
         (candidate) => !candidate.isWelfare && candidate.sourceType !== "project"
       );
       if (replacementIndex >= 0) {
-        selectedCandidates.splice(replacementIndex, 1);
+        removeSelectedCandidateAt(replacementIndex);
       }
     }
     tryAddCandidate(welfareCandidate);
