@@ -241,15 +241,15 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 }
 
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
-  const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 28);
+  const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 24);
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 14),
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 2),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 1),
     socialMedia: parsePositiveInt(env.DAILY_PROMPT_SOCIAL_ITEMS, 6),
     paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 4),
   };
   const hardCaps = {
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 2),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 1),
   };
   const preferredSourceOrder = ["news", "project", "socialMedia", "paper"];
   const buckets = new Map();

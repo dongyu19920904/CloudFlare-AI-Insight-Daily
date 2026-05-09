@@ -167,7 +167,7 @@ jobs:
           PY
           )
 
-          for attempt in $(seq 1 36); do
+          for attempt in $(seq 1 90); do
             STATUS_URL="${WORKER_BASE_URL}/testTriggerScheduledStatus?key=${TEST_TRIGGER_SECRET}&statusKey=${STATUS_KEY}"
             curl -sS "$STATUS_URL" > trigger-status.json
 

@@ -59,6 +59,7 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
       DAILY_PROMPT_MAX_ITEMS: 6,
       DAILY_PROMPT_NEWS_ITEMS: 3,
       DAILY_PROMPT_PROJECT_ITEMS: 2,
+      DAILY_PROMPT_PROJECT_HARD_CAP: 2,
       DAILY_PROMPT_SOCIAL_ITEMS: 1,
       DAILY_PROMPT_PAPER_ITEMS: 0,
     }
@@ -80,5 +81,5 @@ test("buildDailyPromptSelection keeps default project candidates from flooding t
     paper: [],
   });
 
-  assert.equal(result.selectedCounts.project, 2);
+  assert.equal(result.selectedCounts.project, 1);
 });
