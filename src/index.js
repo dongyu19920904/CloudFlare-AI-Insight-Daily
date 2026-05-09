@@ -13,6 +13,8 @@ import { fetchDataByCategory, dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { getFromKV, storeInKV } from './kv.js';
 import { getISODate, setFetchDate } from './helpers.js';
+import { resolveScheduledModeFromEvent } from './scheduleRouting.js';
+import { getScheduledStatusKey, storeScheduledRunStatus } from './scheduledStatus.js';
 import {
     handleScheduled,
     handleScheduledDaily,
@@ -23,10 +25,6 @@ import {
 function getSpecifiedDate(url) {
     const dateParam = url.searchParams.get('date');
     return dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
-}
-
-function getScheduledStatusKey(mode, specifiedDate) {
-    return `scheduled-status:${mode}:${specifiedDate || 'current'}`;
 }
 
 function jsonResponse(body, status = 200) {
@@ -83,35 +81,41 @@ async function queueScheduledMode(ctx, env, mode, specifiedDate) {
     const statusKey = getScheduledStatusKey(mode, specifiedDate);
     const queuedAt = new Date().toISOString();
 
-    await storeInKV(env.DATA_KV, statusKey, {
+    await storeScheduledRunStatus(env.DATA_KV, mode, specifiedDate, {
         state: 'queued',
         mode,
         date: specifiedDate || 'current date',
         queuedAt,
-    }, 86400);
+    }, {
+        ttl: 86400,
+    });
 
     ctx.waitUntil((async () => {
-        await storeInKV(env.DATA_KV, statusKey, {
+        await storeScheduledRunStatus(env.DATA_KV, mode, specifiedDate, {
             state: 'running',
             mode,
             date: specifiedDate || 'current date',
             queuedAt,
             startedAt: new Date().toISOString(),
-        }, 86400);
+        }, {
+            ttl: 86400,
+        });
 
         try {
             const debug = await runScheduledMode(mode, env, specifiedDate);
-            await storeInKV(env.DATA_KV, statusKey, {
+            await storeScheduledRunStatus(env.DATA_KV, mode, specifiedDate, {
                 state: 'success',
                 mode,
                 date: specifiedDate || 'current date',
                 queuedAt,
                 finishedAt: new Date().toISOString(),
                 debug: debug || null,
-            }, 86400);
+            }, {
+                ttl: 86400,
+            });
         } catch (error) {
             console.error(`Async scheduled ${mode} trigger failed`, error);
-            await storeInKV(env.DATA_KV, statusKey, {
+            await storeScheduledRunStatus(env.DATA_KV, mode, specifiedDate, {
                 state: 'error',
                 mode,
                 date: specifiedDate || 'current date',
@@ -119,11 +123,75 @@ async function queueScheduledMode(ctx, env, mode, specifiedDate) {
                 finishedAt: new Date().toISOString(),
                 error: error?.message || String(error),
                 stack: error?.stack ? String(error.stack) : '',
-            }, 86400);
+            }, {
+                ttl: 86400,
+            });
         }
     })());
 
     return statusKey;
+}
+
+function getScheduledEventDate(event) {
+    const scheduledTime = Number(event?.scheduledTime);
+    const dateObj = Number.isFinite(scheduledTime) ? new Date(scheduledTime) : new Date();
+    return getISODate(dateObj);
+}
+
+async function tryStoreScheduledRunStatus(kvNamespace, mode, dateOrAlias, status, options = {}) {
+    try {
+        return await storeScheduledRunStatus(kvNamespace, mode, dateOrAlias, status, options);
+    } catch (error) {
+        console.warn(`Failed to store scheduled ${mode} status: ${error?.message || String(error)}`);
+        return [];
+    }
+}
+
+async function runScheduledEventWithStatus(event, env, ctx) {
+    const mode = resolveScheduledModeFromEvent(event, env);
+    const date = getScheduledEventDate(event);
+    const cron = String(event?.cron || '');
+    const scheduledTime = Number.isFinite(Number(event?.scheduledTime)) ? Number(event.scheduledTime) : null;
+    const startedAt = new Date().toISOString();
+    const baseStatus = {
+        mode,
+        date,
+        source: 'cron',
+        cron,
+        scheduledTime,
+        startedAt,
+    };
+
+    await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
+        ...baseStatus,
+        state: 'running',
+    }, {
+        includeCurrentAlias: true,
+    });
+
+    try {
+        const debug = await handleScheduled(event, env, ctx);
+        await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
+            ...baseStatus,
+            state: 'success',
+            finishedAt: new Date().toISOString(),
+            debug: debug || null,
+        }, {
+            includeCurrentAlias: true,
+        });
+        return debug;
+    } catch (error) {
+        await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
+            ...baseStatus,
+            state: 'error',
+            finishedAt: new Date().toISOString(),
+            error: error?.message || String(error),
+            stack: error?.stack ? String(error.stack) : '',
+        }, {
+            includeCurrentAlias: true,
+        });
+        throw error;
+    }
 }
 
 async function runScheduledMode(mode, env, specifiedDate) {
@@ -147,7 +215,7 @@ async function runScheduledMode(mode, env, specifiedDate) {
 
 export default {
     async scheduled(event, env, ctx) {
-        await handleScheduled(event, env, ctx);
+        await runScheduledEventWithStatus(event, env, ctx);
     },
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
