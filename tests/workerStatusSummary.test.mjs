@@ -21,6 +21,10 @@ test("summarize-worker-status flags stale running status without failing", () =>
         date: "2026-05-09",
         startedAt: "2026-05-09T01:00:00.000Z",
         debug: {
+          totalSourceItemCount: 24,
+          sourceItemCounts: { news: 18, project: 3, socialMedia: 2, paper: 1 },
+          sourceItemCountsAfterReplayFilter: { news: 15, project: 3, socialMedia: 2, paper: 1 },
+          previousDayFilteredCounts: { news: 3, project: 0, socialMedia: 0, paper: 0 },
           promptTotalCandidateCount: 18,
           promptSelectedCounts: { news: 12, project: 1 },
           promptSelectionDiagnostics: {
@@ -58,6 +62,9 @@ test("summarize-worker-status flags stale running status without failing", () =>
   assert.match(summary, /Freshness/);
   assert.match(summary, /possible stale running status/);
   assert.match(summary, /Status age \| 2 hours/);
+  assert.match(summary, /Source item count \| 24/);
+  assert.match(summary, /Source item counts \| \{"news":18,"project":3,"socialMedia":2,"paper":1\}/);
+  assert.match(summary, /Previous-day filtered counts \| \{"news":3,"project":0,"socialMedia":0,"paper":0\}/);
   assert.match(summary, /Prompt candidate count \| 18/);
 });
 

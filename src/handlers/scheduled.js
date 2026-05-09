@@ -977,6 +977,9 @@ function buildBaseDebugInfo(dateStr, mode) {
     return {
         mode,
         date: dateStr,
+        sourceItemCounts: {},
+        sourceItemCountsAfterReplayFilter: {},
+        totalSourceItemCount: 0,
         itemsWithMedia: 0,
         itemsWithoutMedia: 0,
         mediaCandidates: 0,
@@ -1010,6 +1013,17 @@ function buildBaseDebugInfo(dateStr, mode) {
         accountOpportunityCandidateCount: 0,
         accountOpportunityTopScore: 0,
     };
+}
+
+function countUnifiedDataItems(allUnifiedData) {
+    return Object.entries(allUnifiedData || {}).reduce((counts, [sourceType, items]) => {
+        counts[sourceType] = Array.isArray(items) ? items.length : 0;
+        return counts;
+    }, {});
+}
+
+function sumItemCounts(counts) {
+    return Object.values(counts || {}).reduce((total, count) => total + (Number(count) || 0), 0);
 }
 
 async function loadFoloCookie(env) {
@@ -1141,6 +1155,9 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         debugInfo.usedCachedDailySourceData = false;
     }
 
+    debugInfo.sourceItemCounts = countUnifiedDataItems(allUnifiedData);
+    debugInfo.totalSourceItemCount = sumItemCounts(debugInfo.sourceItemCounts);
+
     const replayLookbackDays = Math.max(1, Number.parseInt(env.DAILY_REPLAY_LOOKBACK_DAYS || '3', 10) || 3);
     const { previousDate, items: previousTopItems, allItems: previousDailyItems = [] } = await loadPreviousTopItems(
         env,
@@ -1174,6 +1191,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
             }
         }
     }
+    debugInfo.sourceItemCountsAfterReplayFilter = countUnifiedDataItems(allUnifiedData);
 
     if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
         const fetchPromises = [];
