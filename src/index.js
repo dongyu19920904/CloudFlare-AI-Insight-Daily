@@ -29,6 +29,32 @@ function getScheduledStatusKey(mode, specifiedDate) {
     return `scheduled-status:${mode}:${specifiedDate || 'current'}`;
 }
 
+function jsonResponse(body, status = 200) {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+}
+
+function validateTestTriggerSecret(url, env) {
+    const expectedKey = String(env.TEST_TRIGGER_SECRET || '').trim();
+    if (!expectedKey) {
+        console.error('CRITICAL: TEST_TRIGGER_SECRET is not configured; refusing test trigger access.');
+        return jsonResponse({
+            error: 'TEST_TRIGGER_SECRET is not configured. Configure the Worker secret before using test trigger endpoints.',
+        }, 503);
+    }
+
+    const secretKey = String(url.searchParams.get('key') || '').trim();
+    if (secretKey !== expectedKey) {
+        return jsonResponse({
+            error: 'Unauthorized. Please provide correct secret key.',
+        }, 401);
+    }
+
+    return null;
+}
+
 async function fetchAndStoreSourceCategory(env, category, dateStr) {
     setFetchDate(dateStr);
     const { cookie: foloCookie, source: foloCookieSource } = await resolveFoloCookie(env);
@@ -187,28 +213,12 @@ export default {
         } else if (path === '/generateRssContent' && request.method === 'GET') {
             return await handleGenerateRssContent(request, env);
         } else if (path === '/testFoloCookie' && (request.method === 'GET' || request.method === 'POST')) {
-            const secretKey = url.searchParams.get('key');
-            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
-            if (secretKey !== expectedKey) {
-                return new Response(JSON.stringify({
-                    error: 'Unauthorized. Please provide correct secret key.'
-                }), {
-                    status: 401,
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
-                });
-            }
+            const authError = validateTestTriggerSecret(url, env);
+            if (authError) return authError;
             return await handleFoloCookieAdmin(request, env);
         } else if (path === '/testFetchCategory' && request.method === 'GET') {
-            const secretKey = url.searchParams.get('key');
-            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
-            if (secretKey !== expectedKey) {
-                return new Response(JSON.stringify({
-                    error: 'Unauthorized. Please provide correct secret key.'
-                }), {
-                    status: 401,
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
-                });
-            }
+            const authError = validateTestTriggerSecret(url, env);
+            if (authError) return authError;
 
             const category = url.searchParams.get('category');
             if (!category || !dataSources[category]) {
@@ -231,16 +241,8 @@ export default {
                 headers: { 'Content-Type': 'application/json; charset=utf-8' }
             });
         } else if (path === '/testTriggerScheduledStatus' && request.method === 'GET') {
-            const secretKey = url.searchParams.get('key');
-            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
-            if (secretKey !== expectedKey) {
-                return new Response(JSON.stringify({
-                    error: 'Unauthorized. Please provide correct secret key.'
-                }), {
-                    status: 401,
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
-                });
-            }
+            const authError = validateTestTriggerSecret(url, env);
+            if (authError) return authError;
             const specifiedDate = getSpecifiedDate(url);
             const mode = url.searchParams.get('mode') || 'daily';
             const statusKey = url.searchParams.get('statusKey') || getScheduledStatusKey(mode, specifiedDate);
@@ -260,16 +262,8 @@ export default {
                 path === '/testTriggerScheduledAccountOpportunity') &&
             request.method === 'GET'
         ) {
-            const secretKey = url.searchParams.get('key');
-            const expectedKey = env.TEST_TRIGGER_SECRET || 'test-secret-key-change-me';
-            if (secretKey !== expectedKey) {
-                return new Response(JSON.stringify({
-                    error: 'Unauthorized. Please provide correct secret key.'
-                }), {
-                    status: 401,
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
-                });
-            }
+            const authError = validateTestTriggerSecret(url, env);
+            if (authError) return authError;
             const specifiedDate = getSpecifiedDate(url);
             const requestedMode = url.searchParams.get('mode');
             const runAsync = url.searchParams.get('async') === '1';

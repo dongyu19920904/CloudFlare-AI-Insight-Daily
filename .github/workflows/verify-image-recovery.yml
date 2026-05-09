@@ -11,11 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger worker
+        env:
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: |
           set -euo pipefail
           DATE='${{ github.event.inputs.date }}'
-          URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled?key=test-secret-key-change-me&date=${DATE}"
-          curl -fsSL "$URL" | tee trigger.json
+          if [ -z "${TEST_TRIGGER_SECRET:-}" ]; then
+            echo "::error::TEST_TRIGGER_SECRET is not configured in GitHub Actions. Refusing to call Worker trigger endpoints."
+            exit 1
+          fi
+          curl -fsSL -G "https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled" \
+            --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+            --data-urlencode "date=${DATE}" \
+            | tee trigger.json
       - name: Wait for markdown images
         run: |
           set -euo pipefail

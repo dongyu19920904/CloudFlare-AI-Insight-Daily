@@ -114,14 +114,17 @@ jobs:
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: |
           if [ -z "$TEST_TRIGGER_SECRET" ]; then
-            TEST_TRIGGER_SECRET="test-secret-key-change-me"
-            echo "TEST_TRIGGER_SECRET is not configured in GitHub Actions. Falling back to the Worker's default test secret."
+            echo "::error::TEST_TRIGGER_SECRET is not configured in GitHub Actions. Refusing to call Worker trigger endpoints."
+            exit 1
           fi
 
           for category in news project paper socialMedia; do
             echo "Prefetching ${category} for ${TARGET_DATE}..."
-            PREFETCH_URL="${WORKER_BASE_URL}/testFetchCategory?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}&category=${category}"
-            curl -sS "$PREFETCH_URL" > "prefetch-${category}.json"
+            curl -sS -G "${WORKER_BASE_URL}/testFetchCategory" \
+              --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+              --data-urlencode "date=${TARGET_DATE}" \
+              --data-urlencode "category=${category}" \
+              > "prefetch-${category}.json"
 
             python - "$category" <<'PY'
           import json
@@ -138,9 +141,11 @@ jobs:
           PY
           done
 
-          TRIGGER_URL="${WORKER_BASE_URL}/testTriggerScheduledDaily?key=${TEST_TRIGGER_SECRET}&date=${TARGET_DATE}"
-          echo "Triggering ${TRIGGER_URL}"
-          curl -sS "$TRIGGER_URL" > trigger-response.json
+          echo "Triggering daily generation for ${TARGET_DATE}"
+          curl -sS -G "${WORKER_BASE_URL}/testTriggerScheduledDaily" \
+            --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+            --data-urlencode "date=${TARGET_DATE}" \
+            > trigger-response.json
 
           python - <<'PY'
           import json

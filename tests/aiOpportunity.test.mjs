@@ -43,7 +43,7 @@ test("insertOpportunityLinkIntoDailyNavigation adds an AI商机 link under quick
 
   assert.match(
     output,
-    /- \[💰 今日 AI 商机]\(\/opportunity\/2026-03\/2026-03-22\/\) - 从日报里提炼更能落地的机会/
+    /- \[🎯 今日 AI 商机]\(\/opportunity\/2026-03\/2026-03-22\/\) - 从日报里提炼更能落地的机会/
   );
 });
 
