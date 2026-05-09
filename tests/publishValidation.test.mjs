@@ -52,6 +52,15 @@ test("validateDailyPublication accepts a structured daily page", () => {
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "这里是足够长的正文，这里是足够长的正文，这里是足够长的正文，这里是足够长的正文。",
     "",
+    "## **📌 值得关注**",
+    "",
+    "- **[产品]** [一个补充动态](https://example.com/watch-1) - 这条补充动态没有和 TOP 重复。",
+    "",
+    "## **😄 AI趣闻**",
+    "",
+    "### [一个新的 AI 趣闻](https://example.com/fun-1)",
+    "这个趣闻和前面的新闻不同，用来保证栏目结构完整。",
+    "",
     "## **❓ 相关问题**",
     "",
     "### 如何体验 Claude 的电脑操控功能？",
@@ -68,6 +77,53 @@ test("validateDailyPublication accepts a structured daily page", () => {
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
+});
+
+test("validateDailyPublication rejects missing watch and AI fun section headings", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天新闻足够多，日报必须保留完整栏目标题，否则重复内容会漏过校验。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天新闻足够多，日报必须保留完整栏目标题，否则重复内容会漏过校验。
+\`\`\`
+
+## ⚡ 快速导航
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+今天的重点是栏目结构必须完整。
+
+### **🔑 3 个关键词**
+#结构 #去重 #日报
+
+## **🔥 重磅 TOP 1**
+
+### 1. [一条重要新闻](https://example.com/news-1)
+这是一条足够长的重要新闻正文，用来保证校验聚焦在栏目标题缺失的问题上，而不是内容太短。这里继续补充正文，让它看起来像一条正常日报条目，并且不会触发其他结构问题。
+
+---
+
+**[产品]** [一个补充动态](https://example.com/watch-1) - 这里故意缺少值得关注二级标题。
+
+### [一个趣闻](https://example.com/fun-1)
+这里故意缺少 AI 趣闻二级标题。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的工具？
+
+先确认官方入口，再选择适合自己的服务方式。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号。`,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /watch section heading/i);
+  assert.match(result.issues.join("\n"), /AI fun section heading/i);
 });
 
 test("validateDailyPublication rejects GitHub flooding and merge-note placeholders in TOP", () => {

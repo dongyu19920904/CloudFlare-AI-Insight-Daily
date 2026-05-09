@@ -16,6 +16,9 @@ const DAILY_META_PATTERNS = [
   /我会按照.{0,12}筛选/,
 ];
 
+const DAILY_WATCH_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDCCC|\uD83C\uDFAF|值得关注|关注).*\*\*/im;
+const DAILY_FUN_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDE04|\uD83D\uDE06|AI\s*趣闻|趣闻).*\*\*/im;
+
 function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
@@ -351,8 +354,15 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily welfare/freebie items should stay in watch section, not TOP");
   }
 
-  const watchSection = extractSection(pageMarkdown, /^##\s*\*\*.*关注.*\*\*/im);
-  const funSection = extractSection(pageMarkdown, /^##\s*\*\*.*AI.*趣闻.*\*\*/im);
+  const watchSection = extractSection(pageMarkdown, DAILY_WATCH_HEADING_PATTERN);
+  const funSection = extractSection(pageMarkdown, DAILY_FUN_HEADING_PATTERN);
+  if (!watchSection) {
+    issues.push("Daily page must contain a watch section heading");
+  }
+  if (!funSection) {
+    issues.push("Daily page must contain an AI fun section heading");
+  }
+
   const watchOpenSourceProjectCount = extractLinkContexts(watchSection).reduce(
     (count, item) =>
       count + item.links.filter((link) => isOpenSourceProjectContext(item.chunk, link.url)).length,
