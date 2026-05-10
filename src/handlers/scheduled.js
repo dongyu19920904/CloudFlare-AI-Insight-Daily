@@ -44,6 +44,7 @@ import {
     validateAccountOpportunityPublication,
     validateOpportunityPublication,
 } from '../publishValidation.js';
+import { sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -624,98 +625,6 @@ function removeMismatchedTopItemImages(markdown, mediaCandidates) {
     );
 
     return { markdown: cleanedMarkdown, removedCount };
-}
-
-function normalizeDailyLinkTitle(title) {
-    return String(title || '')
-        .normalize('NFKC')
-        .toLowerCase()
-        .replace(/[`~!@#$%^&*()_+=[\]{};:'",.<>/?\\|，。！？、；：“”‘’（）【】《》·—…-]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function isRepeatedDailyStory(leftTitle, rightTitle) {
-    const left = normalizeDailyLinkTitle(leftTitle);
-    const right = normalizeDailyLinkTitle(rightTitle);
-
-    if (!left || !right) return false;
-    if (left === right) return true;
-
-    if (left.length >= 10 && right.length >= 10) {
-        return left.includes(right) || right.includes(left);
-    }
-
-    return false;
-}
-
-function sanitizeDuplicateDailySections(markdown) {
-    const content = String(markdown || '');
-    if (!content) return content;
-
-    const topMatch = content.match(/^##\s*\*\*.*TOP.*\*\*[\s\S]*?(?=\n##\s+|$)/im);
-    if (!topMatch) return content;
-
-    const topLinks = [...topMatch[0].matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)].map((match) => ({
-        title: match[1],
-        url: normalizeReplayUrl(match[2]),
-    }));
-
-    const seenStories = [...topLinks];
-    const sectionPatterns = [
-        /^##\s*\*\*.*(?:📌|🎯|值得关注|关注).*\*\*[\s\S]*?(?=\n##\s+|$)/im,
-        /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|$)/im,
-    ];
-
-    let sanitized = content;
-
-    for (const pattern of sectionPatterns) {
-        sanitized = sanitized.replace(pattern, (section) => {
-            const headingMatch = section.match(/^##[^\n]*/);
-            if (!headingMatch) return section;
-
-            const heading = headingMatch[0];
-            const body = section.slice(heading.length).trim();
-            if (!body) return section;
-
-            const chunks = body.split(/\n(?=(?:###\s+|- \*\*|\*\*\[))/g).map((item) => item.trim()).filter(Boolean);
-            const keptChunks = [];
-
-            for (const chunk of chunks) {
-                const links = [...chunk.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
-                    .filter((match) => match.index == null || chunk[match.index - 1] !== '!')
-                    .map((match) => ({
-                        title: match[1],
-                        url: normalizeReplayUrl(match[2]),
-                    }));
-
-                if (links.length === 0) {
-                    keptChunks.push(chunk);
-                    continue;
-                }
-
-                const duplicated = links.some((link) =>
-                    seenStories.some((story) => {
-                        if (story.url && link.url && story.url === link.url) return true;
-                        return isRepeatedDailyStory(story.title, link.title);
-                    })
-                );
-
-                if (duplicated) continue;
-
-                seenStories.push(...links);
-                keptChunks.push(chunk);
-            }
-
-            if (keptChunks.length === 0) {
-                return heading;
-            }
-
-            return `${heading}\n\n${keptChunks.join('\n\n')}`;
-        });
-    }
-
-    return sanitized.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function removeSecondaryDailySections(markdown) {

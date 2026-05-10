@@ -7,12 +7,12 @@ function buildNewsItem(index) {
   return {
     type: "news",
     title: `News ${index}`,
-    description: `News description ${index}`,
+    description: `AI model news description ${index}`,
     source: "AI Base",
     url: `https://example.com/news-${index}`,
     published_date: "2026-04-06",
     details: {
-      content_html: `<p>News ${index} content</p>`,
+      content_html: `<p>News ${index} content about AI tools and agents.</p>`,
     },
   };
 }
@@ -49,7 +49,7 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
           url: "https://example.com/social-1",
           published_date: "2026-04-06",
           details: {
-            content_html: "<p>Social summary</p>",
+            content_html: "<p>Social summary about AI agents.</p>",
           },
         },
       ],
@@ -181,6 +181,65 @@ test("buildDailyPromptSelection keeps one welfare item available for watch secti
   const promptText = result.selectedContentItems.join("\n");
   assert.match(promptText, /每日薅羊毛/);
   assert.match(promptText, /Placement Hint: This is a welfare\/freebie item/);
+});
+
+test("buildDailyPromptSelection filters unrelated tech and game news before prompting", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          type: "news",
+          title: "GrapheneOS fixes an Android VPN leak",
+          description: "A mobile security patch for VPN traffic leakage.",
+          source: "Security News",
+          url: "https://example.com/android-vpn-leak",
+          published_date: "2026-05-10",
+          details: {
+            content_html: "<p>Android VPN traffic could leak outside the tunnel.</p>",
+          },
+        },
+        {
+          type: "news",
+          title: "Nintendo raises Switch 2 prices",
+          description: "Game console pricing changes in Japan and the US.",
+          source: "Game News",
+          url: "https://example.com/nintendo-price",
+          published_date: "2026-05-10",
+          details: {
+            content_html: "<p>Supply chain costs pushed console prices higher.</p>",
+          },
+        },
+        {
+          type: "news",
+          title: "Mac mini becomes a local AI agent server",
+          description: "Developers are using Apple Silicon machines to run private AI agents.",
+          source: "Developer Post",
+          url: "https://example.com/mac-ai-agent",
+          published_date: "2026-05-10",
+          details: {
+            content_html: '<p>Local AI agent infrastructure is moving onto Mac mini.</p><img src="https://example.com/mac.jpg">',
+          },
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 3,
+      DAILY_PROMPT_NEWS_ITEMS: 3,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.match(promptText, /local AI agent server/i);
+  assert.match(promptText, /Placement Hint: This item has usable media/);
+  assert.doesNotMatch(promptText, /GrapheneOS/i);
+  assert.doesNotMatch(promptText, /Nintendo/i);
+  assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 2);
 });
 
 test("buildDailyPromptSelection returns diagnostics for status reporting", () => {

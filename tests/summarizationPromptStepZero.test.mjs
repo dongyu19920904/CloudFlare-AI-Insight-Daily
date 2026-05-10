@@ -60,7 +60,16 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
   assert.match(prompt, /同一条内容只能出现在一个栏目|同一链接只允许出现一次/);
   assert.match(prompt, /已用清单/);
   assert.match(prompt, /不要为了凑数复用 TOP 里的同一条新闻/);
+  assert.match(prompt, /图片优先但不能牺牲相关性/);
+  assert.match(prompt, /明显不属于 AI 行业的新闻/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
+});
+
+test("daily prompt keeps FAQ model names current", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-05-10");
+
+  assert.match(prompt, /GPT-5\.5|GPT-5 系列|GPT Pro/);
+  assert.match(prompt, /不要再把 GPT-4o 当成默认主推模型/);
 });
 
 test("summary prompt asks for a three-line progression instead of three parallel headlines", () => {

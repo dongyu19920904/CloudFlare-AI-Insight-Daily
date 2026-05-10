@@ -124,7 +124,7 @@ function scoreDailyPromptCandidate(candidate) {
   if (sourceType === "socialMedia") score += 16;
   if (sourceType === "paper") score += 12;
 
-  if (candidate?.itemHasMedia) score += 6;
+  if (candidate?.itemHasMedia) score += 14;
   if (candidate?.isWelfare) score += 10;
 
   const sourceText = `${candidate?.source || ""} ${candidate?.title || ""} ${candidate?.description || ""}`.toLowerCase();
@@ -137,6 +137,24 @@ function scoreDailyPromptCandidate(candidate) {
   }
 
   return score;
+}
+
+function isAiRelevantDailyPromptCandidate(candidate) {
+  if (candidate?.sourceType === "project" || candidate?.sourceType === "paper") {
+    return true;
+  }
+
+  const text = [
+    candidate?.title || "",
+    candidate?.description || "",
+    candidate?.plainText || "",
+    candidate?.url || "",
+  ].join(" ");
+
+  return (
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(text) ||
+    /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|推理|训练|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|寒武纪|Vibe Coding/i.test(text)
+  );
 }
 
 function isWelfareCandidateText(text) {
@@ -247,6 +265,7 @@ function buildDailyPromptCandidate(item) {
 
   if (mediaPlaceholders.length > 0) {
     itemText += `\nMedia References: ${mediaPlaceholders.join(" ")}`;
+    itemText += "\nPlacement Hint: This item has usable media. If it is relevant and similarly important, prefer it in TOP 1-5.";
   }
 
   const welfareText = [
@@ -321,12 +340,17 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const mediaCandidates = [];
   let itemsWithMedia = 0;
   let itemsWithoutMedia = 0;
+  let rejectedNonAiCount = 0;
 
   for (const [sourceType, items] of Object.entries(allUnifiedData || {})) {
     const bucket = [];
     for (const item of items || []) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
+      if (!isAiRelevantDailyPromptCandidate(candidate)) {
+        rejectedNonAiCount += 1;
+        continue;
+      }
       candidate.score = scoreDailyPromptCandidate(candidate);
 
       bucket.push(candidate);
@@ -473,6 +497,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       selectedCounts,
       itemsWithMedia,
       itemsWithoutMedia,
+      rejectedNonAiCount,
       selectedProjectLikeCount,
     },
   };
