@@ -213,6 +213,49 @@ async function runScheduledMode(mode, env, specifiedDate) {
     return handleScheduled(fakeEvent, env, fakeCtx, specifiedDate, 'all');
 }
 
+async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'manual') {
+    const date = specifiedDate || getISODate();
+    const statusDateOrAlias = specifiedDate || null;
+    const startedAt = new Date().toISOString();
+    const baseStatus = {
+        mode,
+        date,
+        source,
+        startedAt,
+    };
+
+    await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
+        ...baseStatus,
+        state: 'running',
+    }, {
+        ttl: 86400,
+    });
+
+    try {
+        const debug = await runScheduledMode(mode, env, specifiedDate);
+        await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
+            ...baseStatus,
+            state: 'success',
+            finishedAt: new Date().toISOString(),
+            debug: debug || null,
+        }, {
+            ttl: 86400,
+        });
+        return debug;
+    } catch (error) {
+        await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
+            ...baseStatus,
+            state: 'error',
+            finishedAt: new Date().toISOString(),
+            error: error?.message || String(error),
+            stack: error?.stack ? String(error.stack) : '',
+        }, {
+            ttl: 86400,
+        });
+        throw error;
+    }
+}
+
 export default {
     async scheduled(event, env, ctx) {
         await runScheduledEventWithStatus(event, env, ctx);
@@ -361,7 +404,7 @@ export default {
                         headers: { 'Content-Type': 'application/json; charset=utf-8' }
                     });
                 }
-                const debug = await runScheduledMode(mode, env, specifiedDate);
+                const debug = await runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger');
                 return new Response(JSON.stringify({
                     success: true,
                     message: `Scheduled ${mode} task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
@@ -449,7 +492,7 @@ export default {
                         headers: { 'Content-Type': 'application/json; charset=utf-8' }
                     });
                 } else {
-                    const debug = await runScheduledMode(mode, env, specifiedDate);
+                    const debug = await runScheduledModeWithStatus(mode, env, specifiedDate, 'manual-trigger');
                     response = new Response(JSON.stringify({
                         success: true,
                         message: `Scheduled ${mode} task triggered successfully${specifiedDate ? ` for date: ${specifiedDate}` : ''}`,
