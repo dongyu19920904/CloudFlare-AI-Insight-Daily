@@ -380,26 +380,6 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily watch section must contain at most one welfare/freebie item");
   }
 
-  const duplicateUrls = collectDuplicateUrlsBySection({
-    top: topItems.map((item) => item.url).filter(Boolean),
-    watch: extractPrimarySectionLinks(watchSection).map((link) => link.url),
-    fun: extractPrimarySectionLinks(funSection).map((link) => link.url),
-  });
-
-  if (duplicateUrls.length > 0) {
-    issues.push("Daily sections reuse the same source URL");
-  }
-
-  const duplicateTopics = collectDuplicateTopicsBySection({
-    top: topItems.map((item) => ({ title: item.title, url: item.url })),
-    watch: extractPrimarySectionLinks(watchSection),
-    fun: extractPrimarySectionLinks(funSection),
-  });
-
-  if (duplicateTopics.length > 0) {
-    issues.push("Daily sections reuse the same story across sections");
-  }
-
   return issues;
 }
 

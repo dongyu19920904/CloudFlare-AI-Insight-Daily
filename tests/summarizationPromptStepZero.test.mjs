@@ -58,6 +58,8 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
 
   assert.match(prompt, /### 1\./);
   assert.match(prompt, /同一条内容只能出现在一个栏目|同一链接只允许出现一次/);
+  assert.match(prompt, /已用清单/);
+  assert.match(prompt, /不要为了凑数复用 TOP 里的同一条新闻/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
 });
 
