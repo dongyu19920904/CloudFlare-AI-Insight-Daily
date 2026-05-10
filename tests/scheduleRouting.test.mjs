@@ -72,7 +72,7 @@ test("resolveScheduledModeFromEvent respects an explicit mode override", () => {
 test("resolveScheduledModeFromEvent maps the daily backup cron to daily-backup", () => {
   const mode = resolveScheduledModeFromEvent(
     {
-      cron: "12 1 * * *",
+      cron: "0,12,20,50 1 * * *",
       scheduledTime: Date.parse("2026-03-28T01:12:00.000Z"),
     },
     env

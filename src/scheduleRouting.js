@@ -26,6 +26,7 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
   if (Number.isFinite(utcMinute)) {
     const modeByMinute = [
       ["daily", extractCronMinute(env?.DAILY_CRON_SCHEDULE)],
+      ["daily-backup", extractCronMinute(env?.DAILY_BACKUP_CRON_SCHEDULE)],
       ["opportunity", extractCronMinute(env?.OPPORTUNITY_CRON_SCHEDULE)],
       [
         "account-opportunity",
