@@ -206,7 +206,7 @@ test("buildDailyPromptSelection filters unrelated tech and game news before prom
           url: "https://example.com/nintendo-price",
           published_date: "2026-05-10",
           details: {
-            content_html: "<p>Supply chain costs pushed console prices higher.</p>",
+            content_html: "<p>Supply chain costs pushed console prices higher. An unrelated sidebar mentions AI once.</p>",
           },
         },
         {
