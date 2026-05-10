@@ -41,6 +41,9 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
   }
 
   const cron = String(event?.cron || "").trim();
+  if (cron && cron === String(env?.DAILY_BACKUP_CRON_SCHEDULE || "").trim()) {
+    return "daily-backup";
+  }
   if (cron && cron === String(env?.BACKUP_CRON_SCHEDULE || "").trim()) {
     return "backup";
   }
