@@ -210,6 +210,18 @@ test("buildDailyPromptSelection filters unrelated tech and game news before prom
           },
         },
         {
+          type: "socialMedia",
+          title: "dotey on X",
+          description: "",
+          authors: "dotey",
+          source: "X",
+          url: "https://example.com/nintendo-social",
+          published_date: "2026-05-10",
+          details: {
+            content_html: "<p>任天堂全线涨价，Switch 2 日本涨20%，美国9月跟进。评论区顺手提了一次 AI。</p>",
+          },
+        },
+        {
           type: "news",
           title: "Mac mini becomes a local AI agent server",
           description: "Developers are using Apple Silicon machines to run private AI agents.",
@@ -239,7 +251,8 @@ test("buildDailyPromptSelection filters unrelated tech and game news before prom
   assert.match(promptText, /Placement Hint: This item has usable media/);
   assert.doesNotMatch(promptText, /GrapheneOS/i);
   assert.doesNotMatch(promptText, /Nintendo/i);
-  assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 2);
+  assert.doesNotMatch(promptText, /Switch 2/i);
+  assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 3);
 });
 
 test("buildDailyPromptSelection returns diagnostics for status reporting", () => {

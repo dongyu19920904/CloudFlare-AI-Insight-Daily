@@ -62,6 +62,8 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
   assert.match(prompt, /不要为了凑数复用 TOP 里的同一条新闻/);
   assert.match(prompt, /图片优先但不能牺牲相关性/);
   assert.match(prompt, /明显不属于 AI 行业的新闻/);
+  assert.match(prompt, /TOP 10 必须是 AI 直接主题/);
+  assert.match(prompt, /任天堂\/Switch 涨价/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
 });
 

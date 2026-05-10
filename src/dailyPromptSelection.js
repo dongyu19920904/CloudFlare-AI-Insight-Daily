@@ -152,6 +152,15 @@ function hasNonAiHeadlineNoise(text) {
   );
 }
 
+function hasNonAiTopicNoise(text) {
+  const normalized = String(text || "");
+  return (
+    /grapheneos|android\s+vpn|vpn\s+leak/i.test(normalized) ||
+    /(任天堂|nintendo|switch\s*\d?|游戏主机).{0,30}(涨价|价格|price|日本|美国|跟进)/i.test(normalized) ||
+    /(涨价|价格|price|日本|美国|跟进).{0,30}(任天堂|nintendo|switch\s*\d?|游戏主机)/i.test(normalized)
+  );
+}
+
 function isAiRelevantDailyPromptCandidate(candidate) {
   if (candidate?.sourceType === "project" || candidate?.sourceType === "paper") {
     return true;
@@ -163,6 +172,16 @@ function isAiRelevantDailyPromptCandidate(candidate) {
   ].join(" ");
 
   if (hasNonAiHeadlineNoise(titleAndDescription) && !hasAiRelevanceSignal(titleAndDescription)) {
+    return false;
+  }
+
+  const topicText = [
+    candidate?.title || "",
+    candidate?.description || "",
+    candidate?.plainText || "",
+  ].join(" ");
+
+  if (hasNonAiTopicNoise(topicText) && !hasAiRelevanceSignal(titleAndDescription)) {
     return false;
   }
 
