@@ -236,6 +236,24 @@ function isWelfareContext(context, url = "") {
   return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(text);
 }
 
+function hasDirectAiSignal(text) {
+  return (
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(String(text || "")) ||
+    /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|推理|训练|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|寒武纪|Vibe Coding/i.test(String(text || ""))
+  );
+}
+
+function isKnownNonAiTopTopic(item) {
+  const title = String(item?.title || "");
+  if (hasDirectAiSignal(title)) return false;
+
+  return (
+    /grapheneos|android\s+vpn|vpn\s+leak/i.test(title) ||
+    ((/任天堂|nintendo|switch\s*\d?|游戏主机/i.test(title)) &&
+      /涨价|价格|price|日本|美国|跟进/i.test(title))
+  );
+}
+
 function collectDuplicateUrlsBySection(sectionMap) {
   const firstSeenSectionByUrl = new Map();
   const duplicates = [];
@@ -354,6 +372,10 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily welfare/freebie items should stay in watch section, not TOP");
   }
 
+  if (topItems.some((item) => isKnownNonAiTopTopic(item))) {
+    issues.push("Daily TOP contains a known non-AI topic");
+  }
+
   const watchSection = extractSection(pageMarkdown, DAILY_WATCH_HEADING_PATTERN);
   const funSection = extractSection(pageMarkdown, DAILY_FUN_HEADING_PATTERN);
   if (!watchSection) {
@@ -378,6 +400,11 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   );
   if (watchWelfareCount > 1) {
     issues.push("Daily watch section must contain at most one welfare/freebie item");
+  }
+
+  const faqSection = extractSection(pageMarkdown, faqHeadingPattern);
+  if (/\bGPT-4o\b/i.test(faqSection) && !/\bGPT-4o\b/i.test(topSection)) {
+    issues.push("Daily FAQ uses outdated GPT-4o default model");
   }
 
   return issues;

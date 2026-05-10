@@ -482,6 +482,104 @@ test("validateDailyPublication allows repeated stories across secondary sections
   assert.deepEqual(result.issues, []);
 });
 
+test("validateDailyPublication rejects known non-AI topics in TOP", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天的日报必须只保留真正与 AI 行业相关的内容，泛科技涨价新闻不能混进 TOP。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天的日报必须只保留真正与 AI 行业相关的内容，泛科技涨价新闻不能混进 TOP。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+AI 行业判断必须围绕 AI 直接变化。
+
+### **🔑 3 个关键词**
+#模型 #Agent #筛选
+
+## **🔥 重磅 TOP 1**
+
+### 1. [任天堂全线涨价，Switch 2日本涨20%，美国9月跟进](https://example.com/nintendo-switch-price)
+这条新闻讲的是游戏主机价格变化，不是 AI 模型、AI 产品、AI 公司或 AI 应用本身。即使正文可以强行联想到供应链成本，它也不应该进入 AI 日报 TOP 栏目。
+
+## **📌 值得关注**
+
+- **[产品]** [OpenAI Codex 使用体验更新](https://example.com/codex) - 这才是 AI 开发者真正需要关注的变化。
+
+## **😄 AI趣闻**
+
+### [一个新的 AI 趣闻](https://example.com/fun)
+这条趣闻和 TOP 不重复，用来保证栏目结构完整。
+
+## **❓ 相关问题**
+
+### 如何体验 OpenAI Codex？
+
+Codex 当前适合开发者处理异步编程任务，完整体验通常需要付费订阅和稳定访问环境。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号，极速发货，售后无忧。`,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /known non-AI topic/i);
+});
+
+test("validateDailyPublication rejects GPT-4o as stale FAQ default", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天的主线是 GPT-5.5 和 Codex 工作流，FAQ 不应该继续默认推荐 GPT-4o。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天的主线是 GPT-5.5 和 Codex 工作流，FAQ 不应该继续默认推荐 GPT-4o。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+GPT-5.5 和 Codex 正在把开发流程推向异步协作。
+
+### **🔑 3 个关键词**
+#GPT55 #Codex #开发者
+
+## **🔥 重磅 TOP 1**
+
+### 1. [OpenAI Codex 异步编程工作流继续扩散](https://example.com/codex-workflow)
+越来越多开发者开始把小任务交给 Codex 并行处理，这不是演示概念，而是工作方式变化。它真正值得关注的地方在于，开发者从盯着模型输出，转向管理一组可并行推进的任务。
+
+## **📌 值得关注**
+
+- **[产品]** [GPT-5.5 使用体验讨论升温](https://example.com/gpt55) - 用户更关心稳定推理和长任务完成度。
+
+## **😄 AI趣闻**
+
+### [一个新的 AI 趣闻](https://example.com/fun-2)
+这条趣闻和 TOP 不重复，用来保证栏目结构完整。
+
+## **❓ 相关问题**
+
+### 如何体验 ChatGPT Plus？
+
+ChatGPT Plus 可以使用 GPT-4o 等模型，适合日常学习、办公和代码辅助。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取成品账号，极速发货，售后无忧。`,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /outdated GPT-4o/i);
+});
+
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {
   const result = validateOpportunityPublication({
     markdown: `# 今日AI商机
