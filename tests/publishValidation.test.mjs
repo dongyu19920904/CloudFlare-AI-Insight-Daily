@@ -126,6 +126,48 @@ test("validateDailyPublication rejects missing watch and AI fun section headings
   assert.match(result.issues.join("\n"), /AI fun section heading/i);
 });
 
+test("validateDailyPublication rejects empty secondary sections and FAQ", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天 AI 行业主线明确，日报不能只保留栏目标题，必须给读者可读的补充内容和 FAQ。",
+    pageMarkdown: `## **今日摘要**
+
+\`\`\`
+今天 AI 行业主线明确，日报不能只保留栏目标题，必须给读者可读的补充内容和 FAQ。
+\`\`\`
+
+## ⚡ 快速导航
+
+- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览
+
+## **今日AI资讯**
+
+### **👀 只有一句话**
+AI 工具正在从聊天窗口走向真实工作流。
+
+### **🔑 3 个关键词**
+#Agent #OpenAI #工作流
+
+## **🔥 重磅 TOP 1**
+
+### 1. [OpenAI 发布新的 Agent 工作流能力](https://example.com/openai-agent-workflow)
+这是一条足够完整的 AI 产品新闻，正文说明它为什么重要，并且不依赖空栏目凑结构。开发者真正关心的是，Agent 是否能从简单对话变成可持续执行任务的工作流；这条新闻正好提供了新的观察窗口。这里继续补足正文长度，让校验聚焦在空栏目问题上，而不是内容太短。
+
+## **📌 值得关注（5条）**
+
+## **😄 AI趣闻**
+
+## **❓ 相关问题**
+
+`,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /watch section must contain at least one source item/i);
+  assert.match(result.issues.join("\n"), /AI fun section must contain at least one source item/i);
+  assert.match(result.issues.join("\n"), /FAQ section must not be empty/i);
+});
+
 test("validateDailyPublication rejects GitHub flooding and merge-note placeholders in TOP", () => {
   const result = validateDailyPublication({
     summaryText: "今天模型、产品和开源项目都有更新，日报需要保留真正值得上榜的内容，并过滤重复占位条目。",

@@ -159,6 +159,14 @@ function isNoiseSectionLink(link) {
   }
 }
 
+function getSectionBody(section) {
+  return String(section || "").replace(/^##[^\n]*(?:\n|$)/, "").trim();
+}
+
+function countContentSourceLinks(section) {
+  return extractSectionLinks(section).filter((link) => !isNoiseSectionLink(link)).length;
+}
+
 function extractPrimarySectionLinks(markdown) {
   const content = String(markdown || "");
   const primaryLinks = [];
@@ -380,9 +388,13 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const funSection = extractSection(pageMarkdown, DAILY_FUN_HEADING_PATTERN);
   if (!watchSection) {
     issues.push("Daily page must contain a watch section heading");
+  } else if (countContentSourceLinks(watchSection) === 0) {
+    issues.push("Daily watch section must contain at least one source item");
   }
   if (!funSection) {
     issues.push("Daily page must contain an AI fun section heading");
+  } else if (countContentSourceLinks(funSection) === 0) {
+    issues.push("Daily AI fun section must contain at least one source item");
   }
 
   const watchOpenSourceProjectCount = extractLinkContexts(watchSection).reduce(
@@ -403,6 +415,15 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   }
 
   const faqSection = extractSection(pageMarkdown, faqHeadingPattern);
+  if (faqSection) {
+    const faqBody = getSectionBody(faqSection);
+    if (normalizeText(faqBody).length < 50) {
+      issues.push("Daily FAQ section must not be empty");
+    }
+    if (!/aivora\.cn/i.test(faqSection)) {
+      issues.push("Daily FAQ section must include an Aivora link");
+    }
+  }
   if (/\bGPT-4o\b/i.test(faqSection) && !/\bGPT-4o\b/i.test(topSection)) {
     issues.push("Daily FAQ uses outdated GPT-4o default model");
   }
