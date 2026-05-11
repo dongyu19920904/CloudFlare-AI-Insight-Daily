@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { ensureDailyFunSectionHasSourceItem } from "../src/dailyFunFallback.js";
+import { sanitizeDuplicateDailySections } from "../src/dailySectionSanitizer.js";
 import { validateDailyPublication } from "../src/publishValidation.js";
 
 const baseDailyMarkdown = `## **今日摘要**
@@ -77,4 +78,25 @@ test("ensureDailyFunSectionHasSourceItem leaves a non-empty AI fun section uncha
 
   assert.equal(result.inserted, false);
   assert.equal(result.markdown, markdown);
+});
+
+test("ensureDailyFunSectionHasSourceItem can fill after duplicate sanitization empties AI fun", () => {
+  const duplicatedFunMarkdown = baseDailyMarkdown.replace(
+    "## **😄 AI趣闻**",
+    "## **😄 AI趣闻**\n\n### [OpenAI 发布新的 Agent 工作流能力](https://example.com/openai-agent-workflow)\n这条和 TOP 重复，会先被去重器清掉。"
+  );
+  const sanitized = sanitizeDuplicateDailySections(duplicatedFunMarkdown);
+
+  const result = ensureDailyFunSectionHasSourceItem(sanitized, [
+    [
+      "News Title: 一个用户把 AI 助手接进旧工作台",
+      "Published: 2026-05-11",
+      "Url: https://example.com/fallback-fun-source",
+      "Content Summary: 这条适合补成 AI 趣闻观察。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.doesNotMatch(result.markdown, /这条和 TOP 重复/);
+  assert.match(result.markdown, /fallback-fun-source/);
 });

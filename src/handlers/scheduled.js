@@ -1152,6 +1152,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
+    const postSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(dailySummaryMarkdownContent, selectedContentItems);
+    dailySummaryMarkdownContent = postSanitizeFunFallback.markdown;
+    debugInfo.dailyFunFallbackInserted = Boolean(debugInfo.dailyFunFallbackInserted || postSanitizeFunFallback.inserted);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
@@ -1208,6 +1211,14 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
+        const repairedPostSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(
+            repairedDailySummaryMarkdownContent,
+            selectedContentItems
+        );
+        repairedDailySummaryMarkdownContent = repairedPostSanitizeFunFallback.markdown;
+        debugInfo.dailyFunFallbackInserted = Boolean(
+            debugInfo.dailyFunFallbackInserted || repairedPostSanitizeFunFallback.inserted
+        );
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
