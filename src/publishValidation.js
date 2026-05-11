@@ -415,6 +415,18 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily AI fun section must contain at least one source item");
   }
 
+  const primarySectionLinks = {
+    TOP: extractSectionLinks(topSection).filter((link) => !isNoiseSectionLink(link)),
+    watch: extractSectionLinks(watchSection).filter((link) => !isNoiseSectionLink(link)),
+    fun: extractSectionLinks(funSection).filter((link) => !isNoiseSectionLink(link)),
+  };
+  if (collectDuplicateUrlsBySection(primarySectionLinks).length > 0) {
+    issues.push("Daily primary sections reuse the same source URL");
+  }
+  if (collectDuplicateTopicsBySection(primarySectionLinks).length > 0) {
+    issues.push("Daily primary sections reuse the same story");
+  }
+
   const watchOpenSourceProjectCount = extractLinkContexts(watchSection).reduce(
     (count, item) =>
       count + item.links.filter((link) => isOpenSourceProjectContext(item.chunk, link.url)).length,

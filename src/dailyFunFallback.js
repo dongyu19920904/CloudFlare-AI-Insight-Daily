@@ -138,9 +138,7 @@ export function ensureDailyFunSectionHasSourceItem(markdown, selectedContentItem
       return hasDirectAiSignal(relevanceText) && !hasKnownNonAiFallbackNoise(relevanceText);
     });
 
-  const candidate =
-    candidates.find((item) => !usedUrlKeys.has(normalizeUrlKey(item.url))) ||
-    candidates[0];
+  const candidate = candidates.find((item) => !usedUrlKeys.has(normalizeUrlKey(item.url)));
 
   if (!candidate) return { markdown: content, inserted: false };
 

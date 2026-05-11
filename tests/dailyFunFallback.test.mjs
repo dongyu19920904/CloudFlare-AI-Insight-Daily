@@ -121,3 +121,22 @@ test("ensureDailyFunSectionHasSourceItem skips non-AI fallback candidates", () =
   assert.doesNotMatch(result.markdown, /workout-plan/);
   assert.match(result.markdown, /ai-agent-workbench/);
 });
+
+test("ensureDailyFunSectionHasSourceItem does not reuse an already used source URL", () => {
+  const markdown = baseDailyMarkdown.replace(
+    "## **📌 值得关注**",
+    "## **📌 值得关注**\n\n- **[产品]** [Clearly AI-friendly notes](https://example.com/clearly-ai-notes) - 这条已经在值得关注里使用。"
+  );
+
+  const result = ensureDailyFunSectionHasSourceItem(markdown, [
+    [
+      "News Title: Clearly AI-friendly notes",
+      "Published: 2026-05-11",
+      "Url: https://example.com/clearly-ai-notes",
+      "Content Summary: AI Agent friendly notes app.",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, false);
+  assert.equal(result.markdown, markdown);
+});
