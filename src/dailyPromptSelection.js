@@ -168,8 +168,15 @@ function hasAiRelevanceSignal(text) {
   );
 }
 
+function hasStrongAiRelevanceSignal(text) {
+  return (
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(text) ||
+    /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|寒武纪|Vibe Coding/i.test(text)
+  );
+}
+
 function hasNonAiHeadlineNoise(text) {
-  return /grapheneos|android\s+vpn|vpn\s+leak|任天堂|nintendo|switch\s*\d?|游戏主机|console\s+price/i.test(
+  return /grapheneos|android\s+vpn|vpn\s+leak|任天堂|nintendo|switch\s*\d?|游戏主机|console\s+price|锻炼|健身|周练计划|训练计划|身体还是要练|workout|fitness|exercise\s+plan|training\s+plan/i.test(
     String(text || "")
   );
 }
@@ -179,7 +186,9 @@ function hasNonAiTopicNoise(text) {
   return (
     /grapheneos|android\s+vpn|vpn\s+leak/i.test(normalized) ||
     /(任天堂|nintendo|switch\s*\d?|游戏主机).{0,30}(涨价|价格|price|日本|美国|跟进)/i.test(normalized) ||
-    /(涨价|价格|price|日本|美国|跟进).{0,30}(任天堂|nintendo|switch\s*\d?|游戏主机)/i.test(normalized)
+    /(涨价|价格|price|日本|美国|跟进).{0,30}(任天堂|nintendo|switch\s*\d?|游戏主机)/i.test(normalized) ||
+    /(锻炼|健身|周练计划|训练计划|workout|fitness|exercise\s+plan|training\s+plan).{0,40}(照做|新手|中级|高级|身体|肌肉|减脂|routine|weekly|beginner|intermediate|advanced)/i.test(normalized) ||
+    /(照做|新手|中级|高级|身体|肌肉|减脂|routine|weekly|beginner|intermediate|advanced).{0,40}(锻炼|健身|周练计划|训练计划|workout|fitness|exercise\s+plan|training\s+plan)/i.test(normalized)
   );
 }
 
@@ -193,7 +202,7 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     candidate?.description || "",
   ].join(" ");
 
-  if (hasNonAiHeadlineNoise(titleAndDescription) && !hasAiRelevanceSignal(titleAndDescription)) {
+  if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(titleAndDescription)) {
     return false;
   }
 
@@ -203,7 +212,7 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     candidate?.plainText || "",
   ].join(" ");
 
-  if (hasNonAiTopicNoise(topicText) && !hasAiRelevanceSignal(titleAndDescription)) {
+  if (hasNonAiTopicNoise(topicText) && !hasStrongAiRelevanceSignal(titleAndDescription)) {
     return false;
   }
 

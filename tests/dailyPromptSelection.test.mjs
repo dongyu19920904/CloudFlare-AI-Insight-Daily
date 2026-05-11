@@ -255,6 +255,53 @@ test("buildDailyPromptSelection filters unrelated tech and game news before prom
   assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 3);
 });
 
+test("buildDailyPromptSelection filters lifestyle filler even when body mentions AI incidentally", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          type: "news",
+          title: "告别盲目锻炼，这份周练计划直接照做",
+          description: "面向新手、中级和高级人群的健身训练计划。",
+          source: "Lifestyle",
+          url: "https://example.com/workout-plan",
+          published_date: "2026-05-10",
+          details: {
+            content_html: "<p>这是一份完整周练计划。文章评论里顺手提到 AI 从业者也久坐。</p>",
+          },
+        },
+        {
+          type: "news",
+          title: "OpenAI ships a new agent workflow",
+          description: "A concrete AI agent product update for developers.",
+          source: "AI Base",
+          url: "https://example.com/openai-agent-workflow",
+          published_date: "2026-05-10",
+          details: {
+            content_html: "<p>OpenAI agent workflow update for developer automation.</p>",
+          },
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 2,
+      DAILY_PROMPT_NEWS_ITEMS: 2,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.match(promptText, /OpenAI ships a new agent workflow/);
+  assert.doesNotMatch(promptText, /周练计划/);
+  assert.doesNotMatch(promptText, /workout-plan/);
+  assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 1);
+});
+
 test("buildDailyPromptSelection presents media-backed candidates near prompt front", () => {
   const lowStarProject = buildProjectItem(1);
   lowStarProject.title = "Agent CLI project update";

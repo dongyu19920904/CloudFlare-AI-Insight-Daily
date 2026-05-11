@@ -251,15 +251,33 @@ function hasDirectAiSignal(text) {
   );
 }
 
+function hasStrongAiSignal(text) {
+  return (
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(String(text || "")) ||
+    /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|寒武纪|Vibe Coding/i.test(String(text || ""))
+  );
+}
+
+function hasKnownNonAiDailyNoise(text) {
+  const normalized = String(text || "");
+  return (
+    /grapheneos|android\s+vpn|vpn\s+leak/i.test(normalized) ||
+    /(任天堂|nintendo|switch\s*\d?|游戏主机).{0,30}(涨价|价格|price|日本|美国|跟进)/i.test(normalized) ||
+    /(涨价|价格|price|日本|美国|跟进).{0,30}(任天堂|nintendo|switch\s*\d?|游戏主机)/i.test(normalized) ||
+    /(锻炼|健身|周练计划|训练计划|workout|fitness|exercise\s+plan|training\s+plan).{0,40}(照做|新手|中级|高级|身体|肌肉|减脂|routine|weekly|beginner|intermediate|advanced)/i.test(normalized) ||
+    /(照做|新手|中级|高级|身体|肌肉|减脂|routine|weekly|beginner|intermediate|advanced).{0,40}(锻炼|健身|周练计划|训练计划|workout|fitness|exercise\s+plan|training\s+plan)/i.test(normalized)
+  );
+}
+
+function isKnownNonAiLinkTopic(title) {
+  const linkTitle = String(title || "");
+  if (hasStrongAiSignal(linkTitle)) return false;
+  return hasKnownNonAiDailyNoise(linkTitle);
+}
+
 function isKnownNonAiTopTopic(item) {
   const title = String(item?.title || "");
-  if (hasDirectAiSignal(title)) return false;
-
-  return (
-    /grapheneos|android\s+vpn|vpn\s+leak/i.test(title) ||
-    ((/任天堂|nintendo|switch\s*\d?|游戏主机/i.test(title)) &&
-      /涨价|价格|price|日本|美国|跟进/i.test(title))
-  );
+  return isKnownNonAiLinkTopic(title);
 }
 
 function collectDuplicateUrlsBySection(sectionMap) {
@@ -412,6 +430,20 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   );
   if (watchWelfareCount > 1) {
     issues.push("Daily watch section must contain at most one welfare/freebie item");
+  }
+
+  const watchKnownNonAiTopic = extractLinkContexts(watchSection).some((item) =>
+    item.links.some((link) => isKnownNonAiLinkTopic(link.title)),
+  );
+  if (watchKnownNonAiTopic) {
+    issues.push("Daily watch section contains a known non-AI topic");
+  }
+
+  const funKnownNonAiTopic = extractLinkContexts(funSection).some((item) =>
+    item.links.some((link) => isKnownNonAiLinkTopic(link.title)),
+  );
+  if (funKnownNonAiTopic) {
+    issues.push("Daily AI fun section contains a known non-AI topic");
   }
 
   const faqSection = extractSection(pageMarkdown, faqHeadingPattern);
