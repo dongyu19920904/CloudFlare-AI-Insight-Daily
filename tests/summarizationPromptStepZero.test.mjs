@@ -20,6 +20,9 @@ test("AI趣闻 prompt asks for people-first, lightly humorous observation instea
   assert.match(prompt, /如果素材里有 `\[图片: \.\.\.\]`，\*\*必须\*\*放在该条末尾/);
   assert.match(prompt, /不要写成吐槽贴/);
   assert.match(prompt, /不要模仿任何特定演员/);
+  assert.match(prompt, /AI趣闻必须输出至少 1 条/);
+  assert.match(prompt, /不能只保留空标题/);
+  assert.doesNotMatch(prompt, /如果当天没有合适的趣闻，可以不写这一栏/);
 });
 
 test("daily prompt forbids meta commentary and requires a FAQ every day", () => {
