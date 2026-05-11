@@ -139,6 +139,28 @@ function scoreDailyPromptCandidate(candidate) {
   return score;
 }
 
+function scoreDailyPromptPresentation(candidate) {
+  let score = Number(candidate?.score || 0);
+
+  if (candidate?.itemHasMedia) score += 10;
+  if (candidate?.isWelfare) score -= 30;
+
+  return score;
+}
+
+function orderSelectedDailyPromptCandidates(selectedCandidates) {
+  return [...selectedCandidates].sort((left, right) => {
+    const scoreDelta = scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left);
+    if (scoreDelta !== 0) return scoreDelta;
+
+    if (left.itemHasMedia !== right.itemHasMedia) {
+      return left.itemHasMedia ? -1 : 1;
+    }
+
+    return 0;
+  });
+}
+
 function hasAiRelevanceSignal(text) {
   return (
     /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(text) ||
@@ -515,9 +537,11 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     return acc;
   }, {});
   const totalCandidateCount = Object.values(candidateCounts).reduce((count, sourceCount) => count + sourceCount, 0);
+  const orderedSelectedCandidates = orderSelectedDailyPromptCandidates(selectedCandidates);
+  const selectedMediaCount = orderedSelectedCandidates.filter((candidate) => candidate.itemHasMedia).length;
 
   return {
-    selectedContentItems: selectedCandidates.map((candidate) => candidate.itemText),
+    selectedContentItems: orderedSelectedCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,
     itemsWithMedia,
     itemsWithoutMedia,
@@ -535,6 +559,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       selectedCounts,
       itemsWithMedia,
       itemsWithoutMedia,
+      selectedMediaCount,
+      selectedMediaInFirstFive: orderedSelectedCandidates.slice(0, 5).filter((candidate) => candidate.itemHasMedia).length,
       rejectedNonAiCount,
       selectedProjectLikeCount,
     },

@@ -255,6 +255,50 @@ test("buildDailyPromptSelection filters unrelated tech and game news before prom
   assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 3);
 });
 
+test("buildDailyPromptSelection presents media-backed candidates near prompt front", () => {
+  const lowStarProject = buildProjectItem(1);
+  lowStarProject.title = "Agent CLI project update";
+  lowStarProject.description = "AI agent command line project update";
+  lowStarProject.details = {
+    ...lowStarProject.details,
+    starsToday: 1,
+    content_html: "<p>AI agent command line project update.</p>",
+  };
+
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "OpenAI launches visual agent dashboard",
+          description: "AI agent release with an official screenshot.",
+          url: "https://example.com/media-news",
+          details: {
+            content_html:
+              '<p>OpenAI launches a visual agent dashboard.</p><img src="https://example.com/dashboard.jpg" alt="dashboard">',
+          },
+        },
+      ],
+      project: [lowStarProject],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 2,
+      DAILY_PROMPT_NEWS_ITEMS: 1,
+      DAILY_PROMPT_PROJECT_ITEMS: 1,
+      DAILY_PROMPT_PROJECT_HARD_CAP: 1,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  assert.match(result.selectedContentItems[0], /News Title: OpenAI launches visual agent dashboard/);
+  assert.match(result.selectedContentItems[0], /Media References:/);
+  assert.equal(result.selectionDiagnostics.selectedMediaCount, 1);
+  assert.equal(result.selectionDiagnostics.selectedMediaInFirstFive, 1);
+});
+
 test("buildDailyPromptSelection returns diagnostics for status reporting", () => {
   const result = buildDailyPromptSelection(
     {
