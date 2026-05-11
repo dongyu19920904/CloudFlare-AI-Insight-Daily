@@ -45,6 +45,7 @@ import {
     validateOpportunityPublication,
 } from '../publishValidation.js';
 import { sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
+import { ensureDailyFunSectionHasSourceItem } from '../dailyFunFallback.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -1141,6 +1142,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     debugInfo.mismatchedTopImagesRemoved += cleanedOutput.removedCount;
     debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
     outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
+    const funFallback = ensureDailyFunSectionHasSourceItem(outputOfCall2, selectedContentItems);
+    outputOfCall2 = funFallback.markdown;
+    debugInfo.dailyFunFallbackInserted = Boolean(funFallback.inserted);
 
     console.log(`[Scheduled][Daily] Generating summary...`);
     let outputOfCall3 = await generateContentWithTransportFallback(env, outputOfCall2, getSystemPromptSummarizationStepThree());
@@ -1187,6 +1191,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedOutputOfCall2,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
+        const repairedFunFallback = ensureDailyFunSectionHasSourceItem(repairedOutputOfCall2, selectedContentItems);
+        repairedOutputOfCall2 = repairedFunFallback.markdown;
+        debugInfo.dailyFunFallbackInserted = Boolean(debugInfo.dailyFunFallbackInserted || repairedFunFallback.inserted);
 
         let repairedOutputOfCall3 = await generateContentWithTransportFallback(
             env,
