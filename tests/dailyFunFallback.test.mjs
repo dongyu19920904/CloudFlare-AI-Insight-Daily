@@ -100,3 +100,24 @@ test("ensureDailyFunSectionHasSourceItem can fill after duplicate sanitization e
   assert.doesNotMatch(result.markdown, /这条和 TOP 重复/);
   assert.match(result.markdown, /fallback-fun-source/);
 });
+
+test("ensureDailyFunSectionHasSourceItem skips non-AI fallback candidates", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: 告别盲目锻炼 这份周练计划直接照做",
+      "Published: 2026-05-11",
+      "Url: https://example.com/workout-plan",
+      "Content Summary: 跟 AI 圈关系不大，但可以提醒读者身体还是要练。",
+    ].join("\n"),
+    [
+      "News Title: 开发者把 AI Agent 接进旧工作台",
+      "Published: 2026-05-11",
+      "Url: https://example.com/ai-agent-workbench",
+      "Content Summary: 这条 AI 工具变化适合写成一个轻观察。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.doesNotMatch(result.markdown, /workout-plan/);
+  assert.match(result.markdown, /ai-agent-workbench/);
+});

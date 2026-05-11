@@ -35,6 +35,19 @@ function isNoiseUrl(url) {
   }
 }
 
+function hasDirectAiSignal(text) {
+  return (
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(String(text || "")) ||
+    /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|推理|训练|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|具身智能|机器人|Vibe Coding/i.test(String(text || ""))
+  );
+}
+
+function hasKnownNonAiFallbackNoise(text) {
+  return /跟\s*AI\s*圈关系不大|AI\s*圈关系不大|锻炼|周练计划|健身|身体还是要练|任天堂|nintendo|switch\s*\d?|grapheneos|android\s+vpn|vpn\s+leak/i.test(
+    String(text || "")
+  );
+}
+
 function extractMarkdownUrls(markdown) {
   return [...String(markdown || "").matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)]
     .map((match) => canonicalizeUrl(match[1]))
@@ -92,7 +105,7 @@ function parsePromptSourceItem(itemText) {
   const cleanTitle = sanitizeMarkdownLinkTitle(title);
   if (!cleanTitle) return null;
 
-  return { title: cleanTitle, url };
+  return { title: cleanTitle, url, sourceText: text };
 }
 
 function buildFallbackFunItem(candidate) {
@@ -119,7 +132,11 @@ export function ensureDailyFunSectionHasSourceItem(markdown, selectedContentItem
 
   const candidates = (selectedContentItems || [])
     .map((itemText) => parsePromptSourceItem(itemText))
-    .filter(Boolean);
+    .filter((item) => {
+      if (!item) return false;
+      const relevanceText = `${item.title}\n${item.url}\n${item.sourceText}`;
+      return hasDirectAiSignal(relevanceText) && !hasKnownNonAiFallbackNoise(relevanceText);
+    });
 
   const candidate =
     candidates.find((item) => !usedUrlKeys.has(normalizeUrlKey(item.url))) ||
