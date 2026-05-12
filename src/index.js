@@ -15,6 +15,7 @@ import { getFromKV, storeInKV } from './kv.js';
 import { getISODate, setFetchDate } from './helpers.js';
 import { resolveScheduledModeFromEvent } from './scheduleRouting.js';
 import { getScheduledStatusKey, storeScheduledRunStatus } from './scheduledStatus.js';
+import { repairDailyHomePointer } from './dailyHomeRepair.js';
 import {
     handleScheduled,
     handleScheduledDaily,
@@ -362,6 +363,20 @@ export default {
                 success: true,
                 statusKey,
                 status: status || null,
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            });
+        } else if (path === '/testRepairDailyHome' && request.method === 'GET') {
+            const authError = validateTestTriggerSecret(url, env);
+            if (authError) return authError;
+            const specifiedDate = getSpecifiedDate(url) || getISODate();
+            const result = await repairDailyHomePointer(env, specifiedDate);
+            return new Response(JSON.stringify({
+                success: true,
+                message: `Daily home pointer repaired for date: ${specifiedDate}`,
+                ...result,
+                timestamp: new Date().toISOString(),
             }), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json; charset=utf-8' }

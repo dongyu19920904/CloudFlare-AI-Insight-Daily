@@ -109,8 +109,45 @@ jobs:
           echo "Force rerun requested, but today's page and home pointer are already current."
           echo "Skipping heavy regeneration to avoid unnecessary Worker subrequest pressure."
 
+      - name: Repair daily home pointer from existing page
+        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current != 'true' && github.event.inputs.rebuild != 'true'
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+        run: |
+          if [ -z "$TEST_TRIGGER_SECRET" ]; then
+            echo "::error::TEST_TRIGGER_SECRET is not configured in GitHub Actions. Refusing to repair the home pointer."
+            exit 1
+          fi
+
+          REPAIR_HTTP_CODE=$(curl -sS -G "${WORKER_BASE_URL}/testRepairDailyHome" \
+            -o repair-response.json \
+            -w "%{http_code}" \
+            --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+            --data-urlencode "date=${TARGET_DATE}")
+
+          echo "Worker repair HTTP code: ${REPAIR_HTTP_CODE}"
+          if [ "$REPAIR_HTTP_CODE" != "200" ]; then
+            cat repair-response.json || true
+            echo "::error::Worker home repair returned HTTP ${REPAIR_HTTP_CODE}."
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+
+          with open("repair-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+          if not payload.get("success"):
+              raise SystemExit("Worker home repair failed")
+          PY
+
       - name: Trigger today's AI daily generation
-        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
+        if: steps.check.outputs.exists != 'true' || github.event.inputs.rebuild == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -244,7 +281,7 @@ jobs:
           echo "::error::Timed out waiting for Worker status after trigger connection failure."
           exit 1
 
-      - name: Verify today's page after trigger
+      - name: Verify today's page and home pointer
         if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
         shell: bash
         env:
