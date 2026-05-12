@@ -152,5 +152,6 @@ test("ensureDailyFunSectionHasSourceItem can use an unused selected source when 
   ]);
 
   assert.equal(result.inserted, true);
+  assert.match(result.markdown, /AI小观察/);
   assert.match(result.markdown, /lighter-markdown-editor/);
 });

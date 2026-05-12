@@ -109,8 +109,12 @@ function parsePromptSourceItem(itemText) {
 }
 
 function buildFallbackFunItem(candidate) {
+  const title = hasDirectAiSignal(candidate.title)
+    ? candidate.title
+    : sanitizeMarkdownLinkTitle(`AI小观察：${candidate.title}`);
+
   return [
-    `### [${candidate.title}](${candidate.url})`,
+    `### [${title}](${candidate.url})`,
     "",
     "这条小观察适合放在 AI趣闻里：它未必是今天最大的发布，却把 AI 变化落到了普通人的使用习惯里。真正有意思的不是热闹本身，而是新工具扩散时，常常先表现为一个小动作、一种省事方式，或者一次工作流里的偷懒成功。",
   ].join("\n");
@@ -140,6 +144,7 @@ export function ensureDailyFunSectionHasSourceItem(markdown, selectedContentItem
 
   const unusedCandidates = candidates.filter((item) => !usedUrlKeys.has(normalizeUrlKey(item.url)));
   const candidate =
+    unusedCandidates.find((item) => hasDirectAiSignal(item.title)) ||
     unusedCandidates.find((item) => hasDirectAiSignal(`${item.title}\n${item.url}\n${item.sourceText}`)) ||
     unusedCandidates[0];
 
