@@ -201,17 +201,20 @@ diagnostics = debug.get("promptSelectionDiagnostics") if isinstance(debug.get("p
 state = status.get("state") or ("not_recorded" if isinstance(status_payload, dict) else "unavailable")
 status_key = status_payload.get("statusKey") if isinstance(status_payload, dict) else ""
 freshness = build_freshness(status, state, target_date)
+page_is_healthy = page_health == "healthy"
 
 notice_parts = [
     f"mode={mode}",
     f"date={target_date or 'unknown'}",
     f"state={state}",
 ]
-if published is not None:
+if page_health:
+    notice_parts.append(f"page={page_health}")
+if published is not None and not page_is_healthy:
     notice_parts.append(f"published={published}")
-if generated is not None:
+if generated is not None and not page_is_healthy:
     notice_parts.append(f"generated={generated}")
-if debug.get("promptTotalCandidateCount") is not None:
+if debug.get("promptTotalCandidateCount") is not None and not page_is_healthy:
     notice_parts.append(f"candidates={debug.get('promptTotalCandidateCount')}")
 if freshness.get("label"):
     notice_parts.append(f"freshness={freshness.get('label')}")
