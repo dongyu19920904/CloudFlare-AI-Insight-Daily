@@ -90,6 +90,7 @@ def get_status_timestamp(status):
 
 def build_freshness(status, state, target_date):
     page_health = os.environ.get("PAGE_HEALTH", "").strip()
+    page_is_healthy = page_health == "healthy"
 
     if state == "not_recorded":
         return {
@@ -117,7 +118,7 @@ def build_freshness(status, state, target_date):
 
     warnings = []
     status_date = str(status.get("date") or "").strip()
-    if target_date and status_date and status_date not in {target_date, "current date"}:
+    if target_date and status_date and status_date not in {target_date, "current date"} and not page_is_healthy:
         warnings.append(f"status date {status_date} does not match target {target_date}")
 
     running_stale_minutes = int(os.environ.get("RUNNING_STALE_MINUTES", "90"))
@@ -128,7 +129,7 @@ def build_freshness(status, state, target_date):
         label = "not recorded for this mode/date"
     elif state == "running":
         if age_minutes is not None and age_minutes >= running_stale_minutes:
-            if page_health == "healthy":
+            if page_is_healthy:
                 label = "stale running status, page already healthy"
             else:
                 label = "possible stale running status"
@@ -137,8 +138,13 @@ def build_freshness(status, state, target_date):
             label = "running"
     elif state in {"success", "error"}:
         if age_minutes is not None and age_minutes >= finished_stale_minutes:
-            label = f"old {state} status"
-            warnings.append(f"{state} status is {format_age(age_minutes)} old")
+            if page_is_healthy:
+                label = f"old {state} status, page already healthy"
+            else:
+                label = f"old {state} status"
+                warnings.append(f"{state} status is {format_age(age_minutes)} old")
+        elif state == "error" and page_is_healthy:
+            label = "error status, page already healthy"
         else:
             label = state
     elif state:
@@ -155,6 +161,7 @@ def build_freshness(status, state, target_date):
 
 mode = os.environ.get("MODE", "")
 target_date = os.environ.get("TARGET_DATE", "")
+page_health = os.environ.get("PAGE_HEALTH", "").strip()
 status_http_code = os.environ.get("STATUS_HTTP_CODE", "")
 status_payload = load_json(os.environ.get("STATUS_RESPONSE_PATH", "worker-status.json"))
 trigger_payload = load_json(os.environ.get("TRIGGER_RESPONSE_PATH", "trigger-response.json"))
@@ -209,13 +216,14 @@ if debug.get("promptTotalCandidateCount") is not None:
 if freshness.get("label"):
     notice_parts.append(f"freshness={freshness.get('label')}")
 
-annotation = "::warning" if freshness.get("warning") or state == "error" else "::notice"
+state_warning = state == "error" and page_health != "healthy"
+annotation = "::warning" if freshness.get("warning") or state_warning else "::notice"
 print(f"{annotation} title=Worker status::{', '.join(notice_parts)}")
 
 rows = [
     ("Mode", mode),
     ("Date", target_date),
-    ("Page health", os.environ.get("PAGE_HEALTH", "")),
+    ("Page health", page_health),
     ("Status HTTP", status_http_code),
     ("Status key", status_key),
     ("State", state),
