@@ -135,10 +135,13 @@ export function ensureDailyFunSectionHasSourceItem(markdown, selectedContentItem
     .filter((item) => {
       if (!item) return false;
       const relevanceText = `${item.title}\n${item.url}\n${item.sourceText}`;
-      return hasDirectAiSignal(relevanceText) && !hasKnownNonAiFallbackNoise(relevanceText);
+      return !hasKnownNonAiFallbackNoise(relevanceText);
     });
 
-  const candidate = candidates.find((item) => !usedUrlKeys.has(normalizeUrlKey(item.url)));
+  const unusedCandidates = candidates.filter((item) => !usedUrlKeys.has(normalizeUrlKey(item.url)));
+  const candidate =
+    unusedCandidates.find((item) => hasDirectAiSignal(`${item.title}\n${item.url}\n${item.sourceText}`)) ||
+    unusedCandidates[0];
 
   if (!candidate) return { markdown: content, inserted: false };
 

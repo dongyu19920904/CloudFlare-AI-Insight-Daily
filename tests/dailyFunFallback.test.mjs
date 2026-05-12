@@ -140,3 +140,17 @@ test("ensureDailyFunSectionHasSourceItem does not reuse an already used source U
   assert.equal(result.inserted, false);
   assert.equal(result.markdown, markdown);
 });
+
+test("ensureDailyFunSectionHasSourceItem can use an unused selected source when strong AI wording is unavailable", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: A lighter Markdown editor for daily notes",
+      "Published: 2026-05-11",
+      "Url: https://example.com/lighter-markdown-editor",
+      "Content Summary: A simple writing tool with fast launch and fewer plugin decisions.",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /lighter-markdown-editor/);
+});
