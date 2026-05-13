@@ -35,8 +35,15 @@ function isRepeatedSectionStory(leftTitle, rightTitle) {
   return false;
 }
 
+export function stripDailyHeadingCountSuffix(markdown) {
+  return String(markdown || "").replace(
+    /^(#{1,6}\s+(?:\*\*)?.*?)(?:\s*[\uFF08(]\s*\d+(?:\s*[-~\u2013\u2014]\s*\d+)?\s*\u6761\s*[\uFF09)]\s*)(\*\*)?(\s*)$/gm,
+    (_, heading, boldClose = "", trailing = "") => `${heading.trimEnd()}${boldClose}${trailing}`
+  );
+}
+
 export function sanitizeDuplicateDailySections(markdown) {
-  const content = String(markdown || "");
+  const content = stripDailyHeadingCountSuffix(markdown);
   if (!content) return content;
 
   const topMatch = content.match(/^##\s*\*\*.*TOP.*\*\*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im);

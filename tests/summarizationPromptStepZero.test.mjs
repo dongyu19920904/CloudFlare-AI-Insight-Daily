@@ -68,6 +68,9 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
   assert.match(prompt, /TOP 10 必须是 AI 直接主题/);
   assert.match(prompt, /任天堂\/Switch 涨价/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
+  assert.match(prompt, /## \*\*📌 值得关注\*\*/);
+  assert.match(prompt, /不要在标题里写/);
+  assert.doesNotMatch(prompt, /值得关注（\d/);
 });
 
 test("daily prompt keeps FAQ model names current", () => {

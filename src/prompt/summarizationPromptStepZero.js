@@ -219,7 +219,7 @@ export function getSystemPromptSummarizationStepOne(reportDate = null) {
       - 先讲“变化/结果”，再讲“功能/背景”，让读者更快知道重点
 3.  **图片**：如果素材里有 \`[图片: ...]\`，**必须**放在该条末尾。**优先使用图片URL来自 source.hubtoday.app 的稳定素材**，谨慎使用 pbs.twimg.com 等可能失效的Twitter图片。**只允许使用输入素材中提供的图片 URL，严禁去网上找图。**
 
-## **📌 值得关注（5-10条）**
+## **📌 值得关注**
 
 **筛选标准**：
 - 评分在 **60-79分** 的新闻进入这个部分
@@ -235,6 +235,7 @@ export function getSystemPromptSummarizationStepOne(reportDate = null) {
 - 如果某条已经进入「值得关注」，就不要再把它写进「AI趣闻」；反过来也一样
 
 **格式要求**：
+- 标题固定写成 \`## **📌 值得关注**\`，不要在标题里写“（2条）”“（5-10条）”这类数量
 - 按类别分组：[产品]、[商业]、[研究]、[开源]、[其他]
 - 每条 1 句话（20-35字）+ Markdown 链接
 - 写得像朋友圈文案一样轻快，有态度

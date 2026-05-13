@@ -1,7 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { sanitizeDuplicateDailySections } from "../src/dailySectionSanitizer.js";
+import { sanitizeDuplicateDailySections, stripDailyHeadingCountSuffix } from "../src/dailySectionSanitizer.js";
+
+test("stripDailyHeadingCountSuffix removes stale item counts from daily headings", () => {
+  const markdown = [
+    "## **\uD83D\uDD25 TOP 1**",
+    "",
+    "### 1. [OpenAI model](https://example.com/openai-model)",
+    "A useful AI update.",
+    "",
+    "## **\uD83D\uDCCC \u503C\u5F97\u5173\u6CE8\uFF082\u6761\uFF09**",
+    "",
+    "- **[\u7814\u7A76]** [Causal AI](https://example.com/causal-ai) - One item only.",
+    "",
+    "## **\uD83D\uDE04 AI\u8DA3\u95FB(1\u6761)**",
+    "",
+    "### [AI fun](https://example.com/ai-fun)",
+    "A small AI story.",
+  ].join("\n");
+
+  const stripped = stripDailyHeadingCountSuffix(markdown);
+  const sanitized = sanitizeDuplicateDailySections(markdown);
+
+  assert.match(stripped, /^## \*\*\uD83D\uDCCC \u503C\u5F97\u5173\u6CE8\*\*$/m);
+  assert.match(stripped, /^## \*\*\uD83D\uDE04 AI\u8DA3\u95FB\*\*$/m);
+  assert.match(sanitized, /^## \*\*\uD83D\uDCCC \u503C\u5F97\u5173\u6CE8\*\*$/m);
+  assert.doesNotMatch(sanitized, /\uFF082\u6761\uFF09/);
+  assert.doesNotMatch(sanitized, /\(1\u6761\)/);
+});
 
 test("sanitizeDuplicateDailySections removes watch and fun items already used in TOP", () => {
   const markdown = `## **今日AI资讯**
