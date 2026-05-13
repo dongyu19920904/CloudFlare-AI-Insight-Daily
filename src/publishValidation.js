@@ -553,9 +553,13 @@ export function validateAccountOpportunityPublication({
       "## 今天别碰",
       "## 今日动作",
       "发生了什么",
+      "证据来源",
+      "可信度",
+      "是否今天能挂闲鱼",
       "今天先挂什么",
       "今天先测什么",
       "售后风险",
+      "今天最小动作",
     ],
     forbiddenPhrases: bannedPublicPhrases,
   });

@@ -1326,7 +1326,8 @@ function buildAccountOpportunityRepairPrompt(basePromptInput, invalidMarkdown, v
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
         "- 必须包含完整结构：# 今日AI账号商机 / ## 先看信号 / ## 今日主推 / ## 平替机会 / ## 闲鱼新品 / ## 今天别碰 / ## 今日动作",
         "- 今日主推必须先用 2-3 句短段落讲清今天发生了什么、买家为什么会动、你今天最适合先挂什么",
-        "- 今日主推必须包含：发生了什么、今天先挂什么、今天先测什么、售后风险",
+        "- 今日主推必须包含：发生了什么、证据来源、可信度、是否今天能挂闲鱼、今天先挂什么、今天先测什么、售后风险、今天最小动作",
+        "- 可信度只能写高/中/低；是否今天能挂闲鱼只能写是/否/观察；售后风险只能写低/中/高",
         "- 整篇像账号卖家给自己做盘货判断，不像公开科普，也不要写成长篇分析",
         "- 必须从账号、镜像、平替、组合包、迁移包里做判断，不要只写原账号新闻",
         "- 可以写先试挂、先观察、先低成本验证，但不能拒答",
@@ -1540,7 +1541,7 @@ async function generateAccountOpportunityMarkdown(
         accountOpportunityMarkdownContent = repairedMarkdownContent;
     }
 
-    accountOpportunityMarkdownContent = `## ⚡ 快速导航\n\n- [📡 先看信号](#先看信号) - 今天先盯哪些账号与入口变化\n- [🎯 今日主推](#今日主推) - 今天最值得先挂的方向\n- [🪄 平替机会](#平替机会) - 可接住流量的替代入口\n- [🛒 闲鱼新品](#闲鱼新品) - 适合上新测试的标题和组合\n- [🚫 今天别碰](#今天别碰) - 售后重、不稳或不值得追\n- [✅ 今日动作](#今日动作) - 今天先发什么、先录什么、先卖什么\n\n${accountOpportunityMarkdownContent}`;
+    accountOpportunityMarkdownContent = `## ⚡ 快速导航\n\n- [📡 先看信号](#先看信号) - 今天先盯哪些账号与入口变化\n- [🎯 今日主推](#今日主推) - 今天最值得先挂的方向\n- [🪄 平替机会](#平替机会) - 可接住流量的替代入口\n- [🛒 闲鱼新品](#闲鱼新品) - 适合上新测试的标题和组合\n- [🚫 今天别碰](#今天别碰) - 售后重、不稳或不值得追\n- [✅ 今日动作](#今日动作) - 今天先上新、改标题、写教程和避坑\n\n${accountOpportunityMarkdownContent}`;
 
     debugInfo.accountOpportunityGenerated = true;
 

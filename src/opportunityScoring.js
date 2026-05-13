@@ -33,6 +33,10 @@ const COMMUNITY_HEAT_SIGNAL_PATTERN =
   /github|star|stars|安装量|热议|刷屏|开发者|repo|issue|pull request|commit/i;
 const NOISY_DEMAND_PATTERN =
   /token|求|快不行|有没有风险|假如|如果|转发了|转发 @|instagram|ins\b|哈哈|bro|meme|吐槽/i;
+const HIGH_AFTER_SALES_RISK_PATTERN =
+  /封号|被封|风控|冻结|ban|suspend|suspended|镜像|mirror|third-party|第三方入口|payment|card|region|country|迁移|账号转移|api key/i;
+const LOW_AFTER_SALES_RISK_PATTERN =
+  /模板|template|教程|guide|清单|标题|文案|说明|playbook|workflow|prompt|资料包|避坑/i;
 
 function isNoisyItem(item) {
   return NOISY_DEMAND_PATTERN.test(item?.searchText || "");
@@ -447,6 +451,62 @@ function summarizeScoreBreakdown(scores) {
   ].join(" / ");
 }
 
+function summarizeEvidenceSources(items) {
+  const visibleItems = (items || []).slice(0, 2);
+  if (visibleItems.length === 0) return "暂无强证据，只能观察";
+
+  return visibleItems
+    .map((item) => {
+      const title = item.title || item.source || "未命名素材";
+      const source = item.source || item.type || "未知来源";
+      return item.url ? `${title}（${source}，${item.url}）` : `${title}（${source}）`;
+    })
+    .join("；");
+}
+
+function inferConfidence(score, supportingItems) {
+  const sourceDiversity = new Set((supportingItems || []).map((item) => item.type)).size;
+  if (score >= 75 && sourceDiversity >= 2) return "高";
+  if (score >= 55 || sourceDiversity >= 2) return "中";
+  return "低";
+}
+
+function inferAfterSalesRisk(candidateLike, supportingItems) {
+  const text = [
+    candidateLike?.label || "",
+    candidateLike?.productAngle || "",
+    candidateLike?.recommendation || "",
+    ...(supportingItems || []).map((item) => item.searchText || ""),
+  ].join(" ");
+
+  if (HIGH_AFTER_SALES_RISK_PATTERN.test(text)) return "高";
+  if (LOW_AFTER_SALES_RISK_PATTERN.test(text)) return "低";
+  return candidateLike?.preferredLane === "service" ? "中" : "低";
+}
+
+function inferXianyuToday(score, afterSalesRisk, preferredLaneId, supportingItems) {
+  const hasConcreteEvidence = (supportingItems || []).some(
+    (item) => hasConcreteSignal(item) || hasBuyerOutcomeSignal(item)
+  );
+
+  if (afterSalesRisk === "高") return score >= 78 && hasConcreteEvidence ? "观察" : "否";
+  if (score >= 62 && hasConcreteEvidence) return "是";
+  if (preferredLaneId === "bundle" && score >= 50) return "观察";
+  return "观察";
+}
+
+function buildTodaySmallestAction(preferredLaneId, candidateLike) {
+  if (preferredLaneId === "account") {
+    return `先挂一版低价体验/平替入口标题，写清楚售后边界：${candidateLike.productAngle}`;
+  }
+
+  if (preferredLaneId === "bundle") {
+    return `先改两版闲鱼标题，配一页上手教程或资料包：${candidateLike.productAngle}`;
+  }
+
+  return `先发一版轻服务说明，限定只做试跑、筛选或代配置：${candidateLike.productAngle}`;
+}
+
 function normalizeReplaySignalText(text) {
   return String(text || "").toLowerCase();
 }
@@ -574,10 +634,32 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null) {
   const scoreText = replayPenalty.penalty
     ? `${summarizeScoreBreakdown(scores)} / ${replayPenalty.reason} -${replayPenalty.penalty}`
     : summarizeScoreBreakdown(scores);
+  const label = getResolvedCandidateLabel(group.rule, laneDecision.preferredLaneId);
+  const recommendation = getLaneSpecificRecommendation(
+    laneDecision.preferredLaneId,
+    group.rule
+  );
+  const productAngle = useRuleSpecificHints
+    ? group.rule.productAngle || laneHints.productAngle
+    : laneHints.productAngle;
+  const candidateLike = {
+    label,
+    preferredLane: laneDecision.preferredLaneId,
+    productAngle,
+    recommendation,
+  };
+  const afterSalesRisk = inferAfterSalesRisk(candidateLike, supportingItems);
+  const confidence = inferConfidence(score, supportingItems);
+  const xianyuToday = inferXianyuToday(
+    score,
+    afterSalesRisk,
+    laneDecision.preferredLaneId,
+    supportingItems
+  );
 
   return {
     id: group.rule.id,
-    label: getResolvedCandidateLabel(group.rule, laneDecision.preferredLaneId),
+    label,
     score,
     baseScore,
     replayPenalty: replayPenalty.penalty,
@@ -590,13 +672,13 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null) {
     secondaryLaneName: secondaryLane?.name || laneDecision.secondaryLaneId,
     sellFormats: preferredLane?.sellFormats || [],
     matchedTerms: [...group.matchedTerms],
-    recommendation: getLaneSpecificRecommendation(
-      laneDecision.preferredLaneId,
-      group.rule
-    ),
-    productAngle: useRuleSpecificHints
-      ? group.rule.productAngle || laneHints.productAngle
-      : laneHints.productAngle,
+    recommendation,
+    evidenceSources: summarizeEvidenceSources(supportingItems),
+    confidence,
+    xianyuToday,
+    afterSalesRisk,
+    todaySmallestAction: buildTodaySmallestAction(laneDecision.preferredLaneId, candidateLike),
+    productAngle,
     buyerHint: useRuleSpecificHints
       ? group.rule.buyerHint || laneHints.buyerHint
       : laneHints.buyerHint,
@@ -698,6 +780,11 @@ export function formatOpportunityCandidatesForPrompt(
 
       return [
         `### ${index + 1}. ${candidate.label}`,
+        `- 证据来源: ${candidate.evidenceSources}`,
+        `- 可信度: ${candidate.confidence}`,
+        `- 是否今天能挂闲鱼: ${candidate.xianyuToday}`,
+        `- 售后风险: ${candidate.afterSalesRisk}`,
+        `- 今天最小动作: ${candidate.todaySmallestAction}`,
         `- 综合分: ${candidate.score}/100`,
         `- 优先卖法: ${candidate.preferredLaneName}`,
         `- 备选卖法: ${candidate.secondaryLaneName}`,
