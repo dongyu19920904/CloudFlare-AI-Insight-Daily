@@ -84,14 +84,18 @@ try {
   const markdown = readGitHubContentResponse(responsePath);
   const result = validateByMode(mode, markdown);
   const issues = result.issues || [];
+  const warnings = result.warnings || [];
   const annotation = result.ok ? "::notice" : "::error";
 
   console.log(
-    `${annotation} title=Publication content validation::mode=${mode}, date=${targetDate || "unknown"}, ok=${result.ok}, issues=${issues.length}`
+    `${annotation} title=Publication content validation::mode=${mode}, date=${targetDate || "unknown"}, ok=${result.ok}, issues=${issues.length}, warnings=${warnings.length}`
   );
 
   for (const issue of issues) {
     console.log(`::error title=Publication content issue::${String(issue)}`);
+  }
+  for (const warning of warnings) {
+    console.log(`::warning title=Publication content warning::${String(warning)}`);
   }
 
   appendSummary([
@@ -103,6 +107,7 @@ try {
     `| Date | ${markdownValue(targetDate)} |`,
     `| OK | ${markdownValue(result.ok)} |`,
     `| Issues | ${markdownValue(issues.join(" | "))} |`,
+    `| Warnings | ${markdownValue(warnings.join(" | "))} |`,
   ].join("\n"));
 
   if (!result.ok) {

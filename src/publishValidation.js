@@ -244,6 +244,11 @@ function isWelfareContext(context, url = "") {
   return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(text);
 }
 
+function isPaperLikeContext(context, url = "") {
+  const text = `${context || ""} ${url || ""}`;
+  return /arxiv\.org|huggingface\.co\/papers|论文|研究|paper|abstract|benchmark|dataset/i.test(text);
+}
+
 function hasDirectAiSignal(text) {
   return (
     /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(String(text || "")) ||
@@ -458,6 +463,13 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily AI fun section contains a known non-AI topic");
   }
 
+  const funPaperLikeTopic = extractLinkContexts(funSection).some((item) =>
+    item.links.some((link) => isPaperLikeContext(item.chunk, link.url)),
+  );
+  if (funPaperLikeTopic) {
+    issues.push("Daily AI fun section uses a paper/arXiv source");
+  }
+
   const faqSection = extractSection(pageMarkdown, faqHeadingPattern);
   if (faqSection) {
     const faqBody = getSectionBody(faqSection);
@@ -478,7 +490,8 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 function isSoftDailyPublicationIssue(issue) {
   return (
     issue === "Daily TOP reuses the same source URL" ||
-    issue === "Daily TOP must contain at most one GitHub/open-source project item"
+    issue === "Daily TOP must contain at most one GitHub/open-source project item" ||
+    issue === "Daily AI fun section uses a paper/arXiv source"
   );
 }
 

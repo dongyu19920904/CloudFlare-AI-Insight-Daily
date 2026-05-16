@@ -27,9 +27,12 @@ test("summarize-worker-status flags stale running status without failing", () =>
           previousDayFilteredCounts: { news: 3, project: 0, socialMedia: 0, paper: 0 },
           promptTotalCandidateCount: 18,
           promptSelectedCounts: { news: 12, project: 1 },
+          dailyFunFallbackInserted: false,
+          dailyFunCandidateItems: 6,
           promptSelectionDiagnostics: {
             candidateCounts: { news: 15, project: 3 },
             selectedCounts: { news: 12, project: 1 },
+            dailyFunCandidateCount: 6,
           },
         },
       },
@@ -66,6 +69,9 @@ test("summarize-worker-status flags stale running status without failing", () =>
   assert.match(summary, /Source item counts \| \{"news":18,"project":3,"socialMedia":2,"paper":1\}/);
   assert.match(summary, /Previous-day filtered counts \| \{"news":3,"project":0,"socialMedia":0,"paper":0\}/);
   assert.match(summary, /Prompt candidate count \| 18/);
+  assert.match(summary, /AI fun fallback inserted \| False/);
+  assert.match(summary, /AI fun candidate items \| 6/);
+  assert.match(summary, /AI fun candidate count \| 6/);
 });
 
 test("summarize-worker-status treats stale running status as notice when page is healthy", () => {

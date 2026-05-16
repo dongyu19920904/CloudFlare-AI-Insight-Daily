@@ -87,6 +87,7 @@ test("validate-publication-content accepts a healthy daily page response", () =>
 
   assert.match(output, /::notice title=Publication content validation::/);
   assert.match(output, /ok=true/);
+  assert.match(output, /warnings=0/);
 });
 
 test("validate-publication-content fails a malformed daily page response", () => {
