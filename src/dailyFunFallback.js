@@ -89,10 +89,29 @@ function sanitizeMarkdownLinkTitle(title) {
     .slice(0, 80);
 }
 
+function sanitizeFallbackSummary(summary) {
+  return String(summary || "")
+    .replace(/这条(?:小观察|内容|动态|新闻)?[^。！？.!?]{0,24}适合[^。！？.!?]*(?:AI\s*)?趣闻[^。！？.!?]*[。！？.!?]?/gi, "")
+    .replace(/(?:适合|可以|用来|值得)[^。！？.!?]{0,24}(?:写成|补成|放在)[^。！？.!?]*(?:AI\s*)?趣闻[^。！？.!?]*[。！？.!?]?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
 function parsePromptSourceItem(itemText) {
   const text = String(itemText || "");
   const url = canonicalizeUrl((text.match(/^(?:Url|URL):\s*(https?:\/\/[^\s]+)/im) || [])[1]);
   if (!url || isNoiseUrl(url)) return null;
+
+  const sourceType = text.match(/^Papers Title:/im)
+    ? "paper"
+    : text.match(/^Project Name:/im)
+      ? "project"
+      : text.match(/^socialMedia Post/im)
+        ? "socialMedia"
+        : text.match(/^News Title:/im)
+          ? "news"
+          : "unknown";
 
   const title =
     (text.match(/^News Title:\s*(.+)$/im) || [])[1] ||
@@ -105,18 +124,56 @@ function parsePromptSourceItem(itemText) {
   const cleanTitle = sanitizeMarkdownLinkTitle(title);
   if (!cleanTitle) return null;
 
-  return { title: cleanTitle, url, sourceText: text };
+  const summary =
+    (text.match(/^(?:Content Summary|Abstract\/Content Summary|Description|Content):\s*(.+)$/im) || [])[1] ||
+    "";
+
+  return {
+    title: cleanTitle,
+    url,
+    sourceText: text,
+    sourceType,
+    summary: sanitizeFallbackSummary(summary),
+  };
+}
+
+function scoreFallbackFunCandidate(candidate) {
+  const text = `${candidate.title}\n${candidate.summary}\n${candidate.url}\n${candidate.sourceText}`;
+  let score = 0;
+
+  if (candidate.sourceType === "socialMedia") score += 36;
+  if (candidate.sourceType === "news") score += 32;
+  if (candidate.sourceType === "project") score += 18;
+  if (candidate.sourceType === "paper") score -= 24;
+  if (hasDirectAiSignal(candidate.title)) score += 12;
+  if (hasDirectAiSignal(text)) score += 8;
+  if (/用户|开发者|网友|团队|作者|朋友|同事|打工人|产品经理|设计师|创始人|发布|上线|演示|体验|浏览器|微信|飞书|Kimi|Codex|Cursor|Claude|ChatGPT|Agent/i.test(text)) {
+    score += 20;
+  }
+  if (/图片|截图|视频|动图|Media References|x\.com|twitter\.com|okjike\.com|jike|即刻/i.test(text)) {
+    score += 10;
+  }
+  if (/Abstract\/Content Summary|zero-shot|framework|benchmark|dataset|causal|stereo|segmentation|arxiv\.org/i.test(text)) {
+    score -= 12;
+  }
+
+  return score;
 }
 
 function buildFallbackFunItem(candidate) {
   const title = hasDirectAiSignal(candidate.title)
     ? candidate.title
     : sanitizeMarkdownLinkTitle(`AI小观察：${candidate.title}`);
+  const summaryPrefix = candidate.summary ? `${candidate.summary} ` : "";
+  const observation =
+    candidate.sourceType === "paper"
+      ? "它听起来离普通用户很远，但背后对应的是 AI 看世界、理解空间或执行任务时少一点犯迷糊。AI 的进步有时不热闹，就藏在这种底层小补丁里。"
+      : "有意思的不是它声量多大，而是 AI 又往具体动作里钻了一点：少切一个窗口、少写一段重复流程，或者少等一次人工处理。工具真正变成日用品时，通常就是先从这种小省事开始的。";
 
   return [
     `### [${title}](${candidate.url})`,
     "",
-    "这条小观察适合放在 AI趣闻里：它未必是今天最大的发布，却把 AI 变化落到了普通人的使用习惯里。真正有意思的不是热闹本身，而是新工具扩散时，常常先表现为一个小动作、一种省事方式，或者一次工作流里的偷懒成功。",
+    `${summaryPrefix}${observation}`,
   ].join("\n");
 }
 
@@ -143,10 +200,9 @@ export function ensureDailyFunSectionHasSourceItem(markdown, selectedContentItem
     });
 
   const unusedCandidates = candidates.filter((item) => !usedUrlKeys.has(normalizeUrlKey(item.url)));
-  const candidate =
-    unusedCandidates.find((item) => hasDirectAiSignal(item.title)) ||
-    unusedCandidates.find((item) => hasDirectAiSignal(`${item.title}\n${item.url}\n${item.sourceText}`)) ||
-    unusedCandidates[0];
+  const candidate = [...unusedCandidates].sort(
+    (left, right) => scoreFallbackFunCandidate(right) - scoreFallbackFunCandidate(left)
+  )[0];
 
   if (!candidate) return { markdown: content, inserted: false };
 

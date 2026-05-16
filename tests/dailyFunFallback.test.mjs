@@ -57,6 +57,8 @@ test("ensureDailyFunSectionHasSourceItem fills an empty AI fun section from sele
   assert.equal(result.inserted, true);
   assert.match(result.markdown, /AI趣闻/);
   assert.match(result.markdown, /fun-agent-workbench/);
+  assert.doesNotMatch(result.markdown, /适合放在\s*AI趣闻/);
+  assert.doesNotMatch(result.markdown, /适合补成\s*AI\s*趣闻/);
 
   const validation = validateDailyPublication({
     summaryText: "今天 AI 工具继续进入真实工作流，日报需要保持栏目完整，不能只留下空标题。",
@@ -154,4 +156,26 @@ test("ensureDailyFunSectionHasSourceItem can use an unused selected source when 
   assert.equal(result.inserted, true);
   assert.match(result.markdown, /AI小观察/);
   assert.match(result.markdown, /lighter-markdown-editor/);
+});
+
+test("ensureDailyFunSectionHasSourceItem prefers human-facing news over paper fallback", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "Papers Title: H-OmniStereo: Zero-Shot Omnidirectional Stereo Matching with Heading-Align",
+      "Published: 2026-05-16",
+      "Url: https://arxiv.org/abs/2605.14963",
+      "Abstract/Content Summary: A technical paper about omnidirectional stereo matching.",
+    ].join("\n"),
+    [
+      "News Title: 用户用 Kimi WebBridge 自动填完一张复杂表单",
+      "Published: 2026-05-16",
+      "Url: https://example.com/kimi-webbridge-form",
+      "Content Summary: 一个用户把浏览器里的重复点击交给 AI 处理，原本十几步的流程变成一句话。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /kimi-webbridge-form/);
+  assert.doesNotMatch(result.markdown, /2605\.14963/);
+  assert.doesNotMatch(result.markdown, /这条小观察适合放在/);
 });
