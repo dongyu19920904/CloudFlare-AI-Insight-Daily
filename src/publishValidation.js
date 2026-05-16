@@ -475,12 +475,19 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   return issues;
 }
 
+function isSoftDailyPublicationIssue(issue) {
+  return (
+    issue === "Daily TOP reuses the same source URL" ||
+    issue === "Daily TOP must contain at most one GitHub/open-source project item"
+  );
+}
+
 export function validateDailyPublication({
   summaryText,
   pageMarkdown,
   minimumTopItems = 0,
 }) {
-  const issues = [
+  const collectedIssues = [
     ...collectMarkdownIssues(summaryText, {
       label: "日报摘要",
       minChars: 30,
@@ -499,9 +506,13 @@ export function validateDailyPublication({
     ...collectDailyStructureIssues(pageMarkdown, { minimumTopItems }),
   ];
 
+  const issues = collectedIssues.filter((issue) => !isSoftDailyPublicationIssue(issue));
+  const warnings = collectedIssues.filter(isSoftDailyPublicationIssue);
+
   return {
     ok: issues.length === 0,
     issues,
+    warnings,
   };
 }
 

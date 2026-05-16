@@ -196,6 +196,9 @@ validation_fields = {
 published = debug.get(published_fields.get(mode, ""))
 generated = debug.get(generated_fields.get(mode, ""))
 validation_issues = debug.get(validation_fields.get(mode, "")) or []
+validation_warnings = debug.get("dailyValidationWarnings") if mode == "daily" else None
+if isinstance(validation_warnings, list) and len(validation_warnings) == 0:
+    validation_warnings = None
 diagnostics = debug.get("promptSelectionDiagnostics") if isinstance(debug.get("promptSelectionDiagnostics"), dict) else {}
 
 state = status.get("state") or ("not_recorded" if isinstance(status_payload, dict) else "unavailable")
@@ -240,6 +243,7 @@ rows = [
     ("Published", published),
     ("Error", status.get("error")),
     ("Validation issues", validation_issues),
+    ("Validation warnings", validation_warnings),
     ("Source item count", debug.get("totalSourceItemCount")),
     ("Source item counts", debug.get("sourceItemCounts")),
     ("Source item counts after replay filter", debug.get("sourceItemCountsAfterReplayFilter")),

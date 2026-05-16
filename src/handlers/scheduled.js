@@ -1852,6 +1852,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     });
     debugInfo.dailyValidationPassed = validation.ok;
     debugInfo.dailyValidationIssues = validation.issues;
+    debugInfo.dailyValidationWarnings = validation.warnings || [];
     if (!validation.ok) {
         console.warn(`[Scheduled][Daily] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
         return debugInfo;

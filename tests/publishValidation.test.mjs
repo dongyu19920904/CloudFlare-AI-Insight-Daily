@@ -77,6 +77,7 @@ test("validateDailyPublication accepts a structured daily page", () => {
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
+  assert.deepEqual(result.warnings, []);
 });
 
 test("validateDailyPublication rejects missing watch and AI fun section headings", () => {
@@ -197,7 +198,7 @@ test("validateDailyPublication rejects GitHub flooding and merge-note placeholde
 ### 2. [GitHub 开源项目 Alpha 登上热榜](https://github.com/example/alpha)
 这个项目很热，但 TOP 里每天只应该保留最值得上榜的一个 GitHub 或开源项目。
 
-### 3. [GitHub 开源项目 Beta 登上热榜](https://github.com/example/beta)
+### 3. [GitHub 开源项目 Beta 登上热榜](https://github.com/example/alpha)
 ⚠️ 此条与第1条为同一来源，已合并处理，见第1条。这里模拟模型把重复判断写进正文的错误输出，发布前应该被拦截。
 
 ## **📌 值得关注**
@@ -220,7 +221,8 @@ test("validateDailyPublication rejects GitHub flooding and merge-note placeholde
   });
 
   assert.equal(result.ok, false);
-  assert.match(result.issues.join("\n"), /at most one GitHub\/open-source project item/i);
+  assert.match(result.warnings.join("\n"), /at most one GitHub\/open-source project item/i);
+  assert.match(result.warnings.join("\n"), /same source URL/i);
   assert.match(result.issues.join("\n"), /merge-note placeholders/i);
 });
 
