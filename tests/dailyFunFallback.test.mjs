@@ -179,3 +179,22 @@ test("ensureDailyFunSectionHasSourceItem prefers human-facing news over paper fa
   assert.doesNotMatch(result.markdown, /2605\.14963/);
   assert.doesNotMatch(result.markdown, /这条小观察适合放在/);
 });
+
+test("ensureDailyFunSectionHasSourceItem turns unavoidable paper fallback into readable observation", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "Papers Title: RxEval: A Prescription-Level Benchmark for Evaluating LLM Medication Recommendation Safety",
+      "Published: 2026-05-16",
+      "Url: https://arxiv.org/abs/2605.14543",
+      "Abstract/Content Summary: arXiv:2605.14543v1 Announce Type: cross Abstract: Inpatient medication recommendation requires clinicians to repeatedly compare medications.",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /2605\.14543/);
+  assert.match(result.markdown, /医疗 AI/);
+  assert.doesNotMatch(result.markdown, /arXiv:2605/);
+  assert.doesNotMatch(result.markdown, /Announce Type/);
+  assert.doesNotMatch(result.markdown, /Inpatient medication recommendation requires/);
+  assert.doesNotMatch(result.markdown, /这条小观察适合放在/);
+});

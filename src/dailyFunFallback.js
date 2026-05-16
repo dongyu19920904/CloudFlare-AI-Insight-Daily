@@ -82,15 +82,21 @@ function funSectionHasSourceItem(markdown) {
 }
 
 function sanitizeMarkdownLinkTitle(title) {
-  return String(title || "")
+  const normalized = String(title || "")
     .replace(/[\[\]\n\r]/g, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
+    .trim();
+
+  if (normalized.length <= 96) return normalized;
+
+  const truncated = normalized.slice(0, 95).replace(/\s+\S*$/, "").trim();
+  return `${truncated || normalized.slice(0, 95).trim()}…`;
 }
 
 function sanitizeFallbackSummary(summary) {
   return String(summary || "")
+    .replace(/^arxiv:\S+\s+Announce Type:\s+\S+\s+Abstract:\s*/i, "")
+    .replace(/^Abstract:\s*/i, "")
     .replace(/这条(?:小观察|内容|动态|新闻)?[^。！？.!?]{0,24}适合[^。！？.!?]*(?:AI\s*)?趣闻[^。！？.!?]*[。！？.!?]?/gi, "")
     .replace(/(?:适合|可以|用来|值得)[^。！？.!?]{0,24}(?:写成|补成|放在)[^。！？.!?]*(?:AI\s*)?趣闻[^。！？.!?]*[。！？.!?]?/gi, "")
     .replace(/\s+/g, " ")
@@ -160,14 +166,32 @@ function scoreFallbackFunCandidate(candidate) {
   return score;
 }
 
+function buildPaperFallbackObservation(candidate) {
+  const text = `${candidate.title}\n${candidate.summary}\n${candidate.sourceText}`;
+
+  if (/medication|prescription|clinician|drug|medical|hospital|用药|处方|医生|医疗/i.test(text)) {
+    return "题目看着很学术，场景其实挺现实：AI 如果要进医院帮忙看用药，不能只会给一个“差不多”的建议。它得在一张处方、一个剂量上少犯错。冷门 benchmark 背后，是给医疗 AI 上紧箍咒。";
+  }
+
+  if (/stereo|omnidirectional|scene|segmentation|vision|image|视觉|场景|图像|物体/i.test(text)) {
+    return "这类论文不适合当热闹新闻看，更像是在给 AI 补一副眼镜。普通用户看到的是模型“看懂图片”，底层其实是一堆空间关系、视角和物体边界的小修小补。AI 变聪明，有时就是这么一点点抠出来的。";
+  }
+
+  if (/robot|robotic|VLA|embodied|具身|机器人|控制/i.test(text)) {
+    return "它不像产品发布那样热闹，但很像给机器人补一个小习惯：少卡顿一点，少走偏一步，少在动态场景里犯迷糊。具身智能真正落地前，靠的往往就是这些不太上镜的修修补补。";
+  }
+
+  return "这类研究看起来离普通人很远，但它在解决一个朴素问题：让 AI 少一点含糊，多一点可验证。今天不一定马上变成新功能，可等某个工具突然更稳、更少犯错时，背后常常就是这种不起眼的小砖头。";
+}
+
 function buildFallbackFunItem(candidate) {
   const title = hasDirectAiSignal(candidate.title)
     ? candidate.title
     : sanitizeMarkdownLinkTitle(`AI小观察：${candidate.title}`);
-  const summaryPrefix = candidate.summary ? `${candidate.summary} ` : "";
+  const summaryPrefix = candidate.summary && candidate.sourceType !== "paper" ? `${candidate.summary} ` : "";
   const observation =
     candidate.sourceType === "paper"
-      ? "它听起来离普通用户很远，但背后对应的是 AI 看世界、理解空间或执行任务时少一点犯迷糊。AI 的进步有时不热闹，就藏在这种底层小补丁里。"
+      ? buildPaperFallbackObservation(candidate)
       : "有意思的不是它声量多大，而是 AI 又往具体动作里钻了一点：少切一个窗口、少写一段重复流程，或者少等一次人工处理。工具真正变成日用品时，通常就是先从这种小省事开始的。";
 
   return [
