@@ -148,6 +148,37 @@ function scoreDailyPromptPresentation(candidate) {
   return score;
 }
 
+function scoreDailyFunCandidate(candidate) {
+  const sourceType = candidate?.sourceType || "";
+  const text = [
+    candidate?.title || "",
+    candidate?.description || "",
+    candidate?.source || "",
+    candidate?.url || "",
+    candidate?.plainText || "",
+  ].join(" ");
+  let score = 0;
+
+  if (sourceType === "socialMedia") score += 60;
+  if (sourceType === "news") score += 42;
+  if (sourceType === "project") score += 10;
+  if (sourceType === "paper") score -= 80;
+  if (candidate?.itemHasMedia) score += 18;
+
+  if (/用户|开发者|网友|作者|朋友|同事|打工人|产品经理|设计师|创始人|有人|自己|我|我们|体验|演示|截图|视频|下单|填表|自动|浏览器|微信|飞书|Kimi|Codex|Cursor|Claude|ChatGPT|Agent/i.test(text)) {
+    score += 35;
+  }
+  if (/x\.com|twitter\.com|okjike\.com|jike|即刻|tweet|post|原帖|评论|转发/i.test(text)) {
+    score += 25;
+  }
+  if (/论文|研究|benchmark|dataset|framework|zero-shot|arxiv\.org|abstract|causal|stereo|segmentation/i.test(text)) {
+    score -= 40;
+  }
+  if (candidate?.isWelfare) score -= 20;
+
+  return score;
+}
+
 function orderSelectedDailyPromptCandidates(selectedCandidates) {
   return [...selectedCandidates].sort((left, right) => {
     const scoreDelta = scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left);
@@ -159,6 +190,21 @@ function orderSelectedDailyPromptCandidates(selectedCandidates) {
 
     return 0;
   });
+}
+
+function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
+  if (limit <= 0) return [];
+
+  return orderedSourceTypes
+    .flatMap((sourceType) => buckets.get(sourceType) || [])
+    .map((candidate) => ({
+      candidate,
+      funScore: scoreDailyFunCandidate(candidate),
+    }))
+    .filter(({ candidate, funScore }) => candidate.sourceType !== "paper" && funScore >= 55)
+    .sort((left, right) => right.funScore - left.funScore)
+    .slice(0, limit)
+    .map(({ candidate }) => candidate);
 }
 
 function hasAiRelevanceSignal(text) {
@@ -548,9 +594,12 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const totalCandidateCount = Object.values(candidateCounts).reduce((count, sourceCount) => count + sourceCount, 0);
   const orderedSelectedCandidates = orderSelectedDailyPromptCandidates(selectedCandidates);
   const selectedMediaCount = orderedSelectedCandidates.filter((candidate) => candidate.itemHasMedia).length;
+  const dailyFunCandidateLimit = parsePositiveInt(env.DAILY_FUN_FALLBACK_CANDIDATES, 12);
+  const dailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
 
   return {
     selectedContentItems: orderedSelectedCandidates.map((candidate) => candidate.itemText),
+    dailyFunContentItems: dailyFunCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,
     itemsWithMedia,
     itemsWithoutMedia,
@@ -570,6 +619,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       itemsWithoutMedia,
       selectedMediaCount,
       selectedMediaInFirstFive: orderedSelectedCandidates.slice(0, 5).filter((candidate) => candidate.itemHasMedia).length,
+      dailyFunCandidateCount: dailyFunCandidates.length,
       rejectedNonAiCount,
       selectedProjectLikeCount,
     },

@@ -346,6 +346,62 @@ test("buildDailyPromptSelection presents media-backed candidates near prompt fro
   assert.equal(result.selectionDiagnostics.selectedMediaInFirstFive, 1);
 });
 
+test("buildDailyPromptSelection keeps a human-facing fun candidate pool outside main ranking", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "OpenAI updates enterprise admin controls",
+          description: "Important but dry AI product governance update.",
+          url: "https://example.com/admin-controls",
+        },
+        {
+          type: "news",
+          title: "用户让 Kimi WebBridge 自动填完一张复杂表单",
+          description: "一个用户把浏览器里的重复点击交给 AI 处理，原本十几步的流程变成一句话。",
+          source: "即刻",
+          url: "https://m.okjike.com/originalPosts/kimi-form",
+          published_date: "2026-05-16",
+          details: {
+            content_html:
+              '<p>用户体验 Kimi WebBridge 自动填表，截图里能看到浏览器被 AI 接管。</p><img src="https://example.com/kimi.jpg">',
+          },
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [
+        {
+          type: "paper",
+          title: "A benchmark paper about AI medication recommendation",
+          description: "Benchmark paper",
+          source: "arXiv",
+          url: "https://arxiv.org/abs/2605.14543",
+          published_date: "2026-05-16",
+          details: {
+            content_html: "<p>Abstract about AI medication recommendation benchmark.</p>",
+          },
+        },
+      ],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 1,
+      DAILY_PROMPT_NEWS_ITEMS: 1,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+      DAILY_FUN_FALLBACK_CANDIDATES: 3,
+    }
+  );
+
+  assert.equal(result.selectedContentItems.length, 1);
+  assert.match(result.dailyFunContentItems.join("\n"), /Kimi WebBridge/);
+  assert.doesNotMatch(result.dailyFunContentItems.join("\n"), /benchmark paper/i);
+  assert.equal(result.selectionDiagnostics.dailyFunCandidateCount, result.dailyFunContentItems.length);
+  assert.ok(result.selectionDiagnostics.dailyFunCandidateCount >= 1);
+});
+
 test("buildDailyPromptSelection returns diagnostics for status reporting", () => {
   const result = buildDailyPromptSelection(
     {

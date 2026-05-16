@@ -1125,6 +1125,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     if (selectedContentItems.length === 0) {
         throw new Error('No content items found for daily generation.');
     }
+    const dailyFunSourceItems = [
+        ...(Array.isArray(options.dailyFunContentItems) ? options.dailyFunContentItems : []),
+        ...selectedContentItems,
+    ];
 
     console.log(`[Scheduled][Daily] Generating content...`);
     const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);
@@ -1142,7 +1146,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     debugInfo.mismatchedTopImagesRemoved += cleanedOutput.removedCount;
     debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
     outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
-    const funFallback = ensureDailyFunSectionHasSourceItem(outputOfCall2, selectedContentItems);
+    const funFallback = ensureDailyFunSectionHasSourceItem(outputOfCall2, dailyFunSourceItems);
     outputOfCall2 = funFallback.markdown;
     debugInfo.dailyFunFallbackInserted = Boolean(funFallback.inserted);
 
@@ -1152,7 +1156,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
-    const postSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(dailySummaryMarkdownContent, selectedContentItems);
+    const postSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(dailySummaryMarkdownContent, dailyFunSourceItems);
     dailySummaryMarkdownContent = postSanitizeFunFallback.markdown;
     debugInfo.dailyFunFallbackInserted = Boolean(debugInfo.dailyFunFallbackInserted || postSanitizeFunFallback.inserted);
     let validation = validateDailyPublication({
@@ -1194,7 +1198,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedOutputOfCall2,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
-        const repairedFunFallback = ensureDailyFunSectionHasSourceItem(repairedOutputOfCall2, selectedContentItems);
+        const repairedFunFallback = ensureDailyFunSectionHasSourceItem(repairedOutputOfCall2, dailyFunSourceItems);
         repairedOutputOfCall2 = repairedFunFallback.markdown;
         debugInfo.dailyFunFallbackInserted = Boolean(debugInfo.dailyFunFallbackInserted || repairedFunFallback.inserted);
 
@@ -1213,7 +1217,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
         const repairedPostSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(
             repairedDailySummaryMarkdownContent,
-            selectedContentItems
+            dailyFunSourceItems
         );
         repairedDailySummaryMarkdownContent = repairedPostSanitizeFunFallback.markdown;
         debugInfo.dailyFunFallbackInserted = Boolean(
@@ -1826,10 +1830,18 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { selectedContentItems, mediaCandidates, totalCandidateCount, selectedCounts, selectionDiagnostics } = await loadScheduledContext(env, dateStr, debugInfo, {
+    const {
+        selectedContentItems,
+        dailyFunContentItems,
+        mediaCandidates,
+        totalCandidateCount,
+        selectedCounts,
+        selectionDiagnostics,
+    } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
+    debugInfo.dailyFunCandidateItems = Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
     debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
@@ -1842,6 +1854,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         debugInfo,
         {
             minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+            dailyFunContentItems,
         }
     );
 
