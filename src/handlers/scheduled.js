@@ -1274,7 +1274,11 @@ function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPer
     return visibleCandidates.map((candidate) => {
         const supportingText = (candidate.supportingItems || [])
             .slice(0, maxItemsPerCandidate)
-            .map((item, index) => `${index + 1}. ${item.title || item.source} - ${item.description || item.plainText || '无'}`)
+            .map((item, index) => {
+                const title = item.title || item.source || '未命名素材';
+                const linkedTitle = item.url ? `[${title}](${item.url})` : title;
+                return `${index + 1}. ${linkedTitle} - ${item.description || item.plainText || '无'}`;
+            })
             .join('\n');
 
         return [
@@ -1301,6 +1305,9 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
         "请严格遵守以下规则：",
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
         "- 必须包含完整结构：# 今日AI商机 / ## 先说结论 / ## 今日主推 / ## 本周可试 / ## 今天别碰 / ## 地图感 / ## 今日动作",
+        "- 今日主推、本周可试、今天别碰、地图感下面的 `###` 标题必须写成 `[标题](原始来源URL)`，不要写成纯文本标题",
+        "- 如果一个判断来自多个信息源，标题只挂最关键的主来源；正文里补一行 `参考来源： [来源1](URL) / [来源2](URL)`",
+        "- 来源 URL 必须来自下面原始候选素材里的新闻 / 项目 / 社交信号，不要链接到 news.aivora.cn 站内页面",
         "- 今日主推必须先用 2-3 句短段落讲场景、痛点和结果，再包含：适合谁、这钱从哪来、最简单卖法、今天先做哪一步、今天就能发的文案、配图建议",
         "- 本周可试必须先用 1-2 句短段落讲为什么值得盯，再包含：适合谁、先怎么试、为什么先别冲太猛、配图建议",
         "- 整篇要像日报在讲赚钱机会，不要像系统填表，也不要写成长篇分析",
@@ -1329,6 +1336,10 @@ function buildAccountOpportunityRepairPrompt(basePromptInput, invalidMarkdown, v
         "请严格遵守以下规则：",
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
         "- 必须包含完整结构：# 今日AI账号商机 / ## 先看信号 / ## 今日主推 / ## 平替机会 / ## 闲鱼新品 / ## 今天别碰 / ## 今日动作",
+        "- 今日主推下面的 `###` 标题必须写成 `[标题](原始来源URL)`，不要写成纯文本标题",
+        "- `证据来源` 字段必须至少包含 1 个 Markdown 来源链接；多个来源时列 1-3 个",
+        "- 平替机会、闲鱼新品、今天别碰里如果提到具体工具、账号、镜像、套餐或风控信号，也要尽量把关键词写成来源链接",
+        "- 来源 URL 必须来自下面原始候选素材里的新闻 / 项目 / 社交信号，不要链接到 news.aivora.cn 站内页面",
         "- 今日主推必须先用 2-3 句短段落讲清今天发生了什么、买家为什么会动、你今天最适合先挂什么",
         "- 今日主推必须包含：发生了什么、证据来源、可信度、是否今天能挂闲鱼、今天先挂什么、今天先测什么、售后风险、今天最小动作",
         "- 可信度只能写高/中/低；是否今天能挂闲鱼只能写是/否/观察；售后风险只能写低/中/高",

@@ -167,6 +167,32 @@ function countContentSourceLinks(section) {
   return extractSectionLinks(section).filter((link) => !isNoiseSectionLink(link)).length;
 }
 
+function hasLinkedLevel3Heading(section) {
+  return /^###\s+(?:\d+\.\s+)?\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(
+    String(section || "")
+  );
+}
+
+function collectMissingLinkedHeadingIssues(markdown, sectionSpecs = [], label = "内容") {
+  const issues = [];
+
+  for (const spec of sectionSpecs) {
+    const section = extractSection(markdown, spec.pattern);
+    if (!section) continue;
+    if (!hasLinkedLevel3Heading(section)) {
+      issues.push(`${label}${spec.name}标题必须使用原始信息源链接`);
+    }
+  }
+
+  return issues;
+}
+
+function sourceEvidenceLineHasMarkdownLink(markdown) {
+  return /^-\s*证据来源[:：].*\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(
+    String(markdown || "")
+  );
+}
+
 function extractPrimarySectionLinks(markdown) {
   const content = String(markdown || "");
   const primaryLinks = [];
@@ -555,6 +581,19 @@ export function validateOpportunityPublication({
     forbiddenPhrases: bannedPublicPhrases,
   });
 
+  issues.push(
+    ...collectMissingLinkedHeadingIssues(
+      markdown,
+      [
+        { name: "今日主推", pattern: /^##\s+今日主推(?:\s|$).*$/im },
+        { name: "本周可试", pattern: /^##\s+本周可试(?:\s|$).*$/im },
+        { name: "今天别碰", pattern: /^##\s+今天别碰(?:\s|$).*$/im },
+        { name: "地图感", pattern: /^##\s+地图感(?:\s|$).*$/im },
+      ],
+      "商机页面"
+    )
+  );
+
   return {
     ok: issues.length === 0,
     issues,
@@ -587,6 +626,18 @@ export function validateAccountOpportunityPublication({
     ],
     forbiddenPhrases: bannedPublicPhrases,
   });
+
+  issues.push(
+    ...collectMissingLinkedHeadingIssues(
+      markdown,
+      [{ name: "今日主推", pattern: /^##\s+今日主推(?:\s|$).*$/im }],
+      "账号商机页面"
+    )
+  );
+
+  if (!sourceEvidenceLineHasMarkdownLink(markdown)) {
+    issues.push("账号商机页面证据来源必须使用原始信息源链接");
+  }
 
   return {
     ok: issues.length === 0,

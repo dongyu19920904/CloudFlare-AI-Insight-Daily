@@ -19,4 +19,9 @@ test("getSystemPromptAiAccountOpportunity asks for varied sellable modes beyond 
   assert.match(prompt, /迁移包|组合体验|镜像筛选服务|标题实验/);
   assert.match(prompt, /至少覆盖两种不同卖法模式/);
   assert.match(prompt, /今晚就能先试挂|先改标题|先发一版商品/);
+  assert.match(prompt, /来源链接规则/);
+  assert.match(prompt, /### \[标题\]\(主来源URL\)/);
+  assert.match(prompt, /证据来源：\[来源标题\]\(来源URL\)/);
+  assert.match(prompt, /标题只挂最关键的主来源/);
+  assert.match(prompt, /输入素材里的原始 URL/);
 });

@@ -52,6 +52,11 @@ test("getSystemPromptAiOpportunity asks for a hooky and memorable card-style mar
   assert.match(prompt, /先说结论要像一条会被转发的导语/);
   assert.match(prompt, /第一句要像朋友圈发圈时的开场/);
   assert.match(prompt, /让小白看完后有“我也能试一下”的冲动/);
+  assert.match(prompt, /来源链接规则/);
+  assert.match(prompt, /### \[标题\]\(主来源URL\)/);
+  assert.match(prompt, /参考来源/);
+  assert.match(prompt, /标题只挂最关键的主来源/);
+  assert.match(prompt, /输入素材里的原始 URL/);
   assert.doesNotMatch(prompt, /为什么今天能卖：/);
   assert.doesNotMatch(prompt, /参考卖法：/);
 });
