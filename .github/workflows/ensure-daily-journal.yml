@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: "11 1 * * *"
     - cron: "19 1 * * *"
+    - cron: "31 1 * * *"
+    - cron: "47 1 * * *"
   workflow_dispatch:
     inputs:
       date:

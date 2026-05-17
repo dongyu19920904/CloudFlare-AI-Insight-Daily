@@ -1,11 +1,24 @@
 export function extractCronMinute(schedule) {
   const firstField = String(schedule || "").trim().split(/\s+/)[0] || "";
-  if (!/^\d+$/.test(firstField)) {
+  const firstMinute = firstField.split(",")[0] || "";
+  if (!/^\d+$/.test(firstMinute)) {
     return null;
   }
 
-  const minute = Number.parseInt(firstField, 10);
+  const minute = Number.parseInt(firstMinute, 10);
   return Number.isFinite(minute) ? minute : null;
+}
+
+function cronIncludesMinute(schedule, targetMinute) {
+  const firstField = String(schedule || "").trim().split(/\s+/)[0] || "";
+  if (!Number.isFinite(targetMinute)) {
+    return false;
+  }
+
+  return firstField
+    .split(",")
+    .map((minute) => Number.parseInt(minute, 10))
+    .some((minute) => Number.isFinite(minute) && minute === targetMinute);
 }
 
 function extractScheduledUtcMinute(scheduledTime) {
@@ -27,6 +40,7 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
     const modeByMinute = [
       ["daily", extractCronMinute(env?.DAILY_CRON_SCHEDULE)],
       ["daily-backup", extractCronMinute(env?.DAILY_BACKUP_CRON_SCHEDULE)],
+      ["daily", env?.DAILY_RESCUE_CRON_SCHEDULE],
       ["opportunity", extractCronMinute(env?.OPPORTUNITY_CRON_SCHEDULE)],
       [
         "account-opportunity",
@@ -35,7 +49,11 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
     ];
 
     for (const [candidateMode, candidateMinute] of modeByMinute) {
-      if (Number.isFinite(candidateMinute) && utcMinute === candidateMinute) {
+      if (
+        typeof candidateMinute === "string"
+          ? cronIncludesMinute(candidateMinute, utcMinute)
+          : Number.isFinite(candidateMinute) && utcMinute === candidateMinute
+      ) {
         return candidateMode;
       }
     }
@@ -44,6 +62,9 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
   const cron = String(event?.cron || "").trim();
   if (cron && cron === String(env?.DAILY_BACKUP_CRON_SCHEDULE || "").trim()) {
     return "daily-backup";
+  }
+  if (cron && cron === String(env?.DAILY_RESCUE_CRON_SCHEDULE || "").trim()) {
+    return "daily";
   }
   if (cron && cron === String(env?.BACKUP_CRON_SCHEDULE || "").trim()) {
     return "backup";
