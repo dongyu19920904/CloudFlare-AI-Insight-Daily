@@ -9,7 +9,6 @@ import {
 const env = {
   DAILY_CRON_SCHEDULE: "0 1 * * *",
   DAILY_BACKUP_CRON_SCHEDULE: "12 1 * * *",
-  DAILY_RESCUE_CRON_SCHEDULE: "30,45 1 * * *",
   OPPORTUNITY_CRON_SCHEDULE: "20 1 * * *",
   ACCOUNT_OPPORTUNITY_CRON_SCHEDULE: "50 1 * * *",
   BACKUP_CRON_SCHEDULE: "10 2 * * *",
@@ -19,7 +18,6 @@ test("extractCronMinute reads the first minute field from a standard cron expres
   assert.equal(extractCronMinute("0 1 * * *"), 0);
   assert.equal(extractCronMinute("20 1 * * *"), 20);
   assert.equal(extractCronMinute("50 1 * * *"), 50);
-  assert.equal(extractCronMinute("30,45 1 * * *"), 30);
 });
 
 test("resolveScheduledModeFromEvent maps the shared cron's 01:00 UTC run to daily", () => {
@@ -81,30 +79,6 @@ test("resolveScheduledModeFromEvent maps the daily backup cron to daily-backup",
   );
 
   assert.equal(mode, "daily-backup");
-});
-
-test("resolveScheduledModeFromEvent maps late daily rescue cron minutes to daily", () => {
-  assert.equal(
-    resolveScheduledModeFromEvent(
-      {
-        cron: "30,45 1 * * *",
-        scheduledTime: Date.parse("2026-05-17T01:30:00.000Z"),
-      },
-      env
-    ),
-    "daily"
-  );
-
-  assert.equal(
-    resolveScheduledModeFromEvent(
-      {
-        cron: "30,45 1 * * *",
-        scheduledTime: Date.parse("2026-05-17T01:45:00.000Z"),
-      },
-      env
-    ),
-    "daily"
-  );
 });
 
 test("resolveScheduledModeFromEvent maps the backup cron to backup", () => {

@@ -10,6 +10,11 @@ test("AI趣闻 prompt asks for people-first, lightly humorous observation instea
   assert.match(prompt, /先写人，再写新闻/);
   assert.match(prompt, /第一人称自嘲/);
   assert.match(prompt, /小场景或小尴尬起手/);
+  assert.match(prompt, /马三立式“冷面包袱”的结构/);
+  assert.match(prompt, /学结构，不学口音、不照搬台词/);
+  assert.match(prompt, /至少写出 2 个真实细节/);
+  assert.match(prompt, /不要只复述标题或原文摘要/);
+  assert.match(prompt, /不要用“有意思的是”“这说明了”这种评论腔/);
   assert.match(prompt, /轻轻收口/);
   assert.match(prompt, /把读者逗松一点/);
   assert.match(prompt, /生活感/);
@@ -19,7 +24,7 @@ test("AI趣闻 prompt asks for people-first, lightly humorous observation instea
   assert.match(prompt, /不要把网友评论当正文主体/);
   assert.match(prompt, /如果素材里有 `\[图片: \.\.\.\]`，\*\*必须\*\*放在该条末尾/);
   assert.match(prompt, /不要写成吐槽贴/);
-  assert.match(prompt, /不要模仿任何特定演员/);
+  assert.match(prompt, /不要照搬任何特定演员的口音/);
   assert.match(prompt, /AI趣闻必须输出至少 1 条/);
   assert.match(prompt, /不能只保留空标题/);
   assert.doesNotMatch(prompt, /如果当天没有合适的趣闻，可以不写这一栏/);

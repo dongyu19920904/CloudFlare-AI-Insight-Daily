@@ -184,20 +184,45 @@ function buildPaperFallbackObservation(candidate) {
   return "这类研究看起来离普通人很远，但它在解决一个朴素问题：让 AI 少一点含糊，多一点可验证。今天不一定马上变成新功能，可等某个工具突然更稳、更少犯错时，背后常常就是这种不起眼的小砖头。";
 }
 
+function buildHumanFacingFallbackObservation(candidate) {
+  const text = `${candidate.title}\n${candidate.summary}\n${candidate.sourceText}`;
+
+  if (/读书|地理|地图|空间|作者|读者/i.test(text)) {
+    return "以前读书碰到地名，认真一点的人翻地图，不认真一点的人直接装懂。现在倒好，读者随手让 AI 画一张地图，作者那边还在铺陈山川河流，这边导航已经开上了。妙处不在炫技，而是读书这件慢事，忽然多了个爱抢答的小伙计。";
+  }
+
+  if (/填表|表单|浏览器|点击|WebBridge|自动|流程/i.test(text)) {
+    return "以前填复杂表单，手指头点到最后，心里只剩一个念头：这活儿怎么还没完。现在用户把浏览器里的重复点击交给 AI，一句话把十几步压成一步。它没有敲锣打鼓地改变世界，就是把人从那堆小按钮里捞出来，顺手还显得挺懂事。";
+  }
+
+  if (/Roast|毒舌|吐槽|评论员|自嘲|主页|推文/i.test(text)) {
+    return "人类终于发明了一种新型自我认识：把自己的主页交给 AI，让它一本正经地损你。朋友说重了伤感情，模型说重了叫能力强。看完这种玩法，第一反应不是害怕 AI 变聪明，而是庆幸自己今天还没把账号递过去。";
+  }
+
+  if (/Mac|开发环境|安装|配置|npm|GitHub CLI|git\b/i.test(text)) {
+    return "新电脑到手，最磨人的不是开箱，是装环境：这个缺依赖，那个要配置，半天过去桌面挺新，人已经旧了。现在有人让 Codex 一路代办，像请了个不喝水的装机师傅。它不负责仪式感，只负责把那些零碎活儿一件件收拾明白。";
+  }
+
+  if (/购物|淘宝|京东|AI\s*购|试穿|穿搭|下单/i.test(text)) {
+    return "AI 购物助手现在很像热心亲戚：推荐得挺积极，真到合不合身、喜不喜欢，还得你自己拿主意。它能把信息拢到一块，省得人翻半天页面；但衣服穿上像不像买家秀，这一步暂时还得交给镜子。技术很忙，审美先别下岗。";
+  }
+
+  return "这事好玩的地方，是 AI 没站在发布会大屏上讲大道理，而是钻进一个很小的动作里：少点几下、少等一会儿、少重复一遍。如今工具越聪明，越像办公室里那个爱搭把手的人，活不一定干得惊天动地，胜在你一回头，零碎事儿已经少了一截。";
+}
+
 function buildFallbackFunItem(candidate) {
   const title = hasDirectAiSignal(candidate.title)
     ? candidate.title
     : sanitizeMarkdownLinkTitle(`AI小观察：${candidate.title}`);
-  const summaryPrefix = candidate.summary && candidate.sourceType !== "paper" ? `${candidate.summary} ` : "";
   const observation =
     candidate.sourceType === "paper"
       ? buildPaperFallbackObservation(candidate)
-      : "有意思的不是它声量多大，而是 AI 又往具体动作里钻了一点：少切一个窗口、少写一段重复流程，或者少等一次人工处理。工具真正变成日用品时，通常就是先从这种小省事开始的。";
+      : buildHumanFacingFallbackObservation(candidate);
 
   return [
     `### [${title}](${candidate.url})`,
     "",
-    `${summaryPrefix}${observation}`,
+    observation,
   ].join("\n");
 }
 

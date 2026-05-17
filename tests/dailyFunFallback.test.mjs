@@ -59,6 +59,7 @@ test("ensureDailyFunSectionHasSourceItem fills an empty AI fun section from sele
   assert.match(result.markdown, /fun-agent-workbench/);
   assert.doesNotMatch(result.markdown, /适合放在\s*AI趣闻/);
   assert.doesNotMatch(result.markdown, /适合补成\s*AI\s*趣闻/);
+  assert.doesNotMatch(result.markdown, /有意思的不是它声量多大/);
 
   const validation = validateDailyPublication({
     summaryText: "今天 AI 工具继续进入真实工作流，日报需要保持栏目完整，不能只留下空标题。",
@@ -176,8 +177,28 @@ test("ensureDailyFunSectionHasSourceItem prefers human-facing news over paper fa
 
   assert.equal(result.inserted, true);
   assert.match(result.markdown, /kimi-webbridge-form/);
+  assert.match(result.markdown, /手指头点到最后/);
+  assert.match(result.markdown, /小按钮里捞出来/);
   assert.doesNotMatch(result.markdown, /2605\.14963/);
   assert.doesNotMatch(result.markdown, /这条小观察适合放在/);
+});
+
+test("ensureDailyFunSectionHasSourceItem turns map-reading source into a lively real observation", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: 用户读书时让 AI 生成地理空间地图",
+      "Published: 2026-05-17",
+      "Url: https://example.com/ai-reading-map",
+      "Content Summary: 最近在读书过程中，如果涉及地理空间相关内容，会随手让 AI 生成一张地图，配合作者文本理解。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /ai-reading-map/);
+  assert.match(result.markdown, /作者那边还在铺陈山川河流/);
+  assert.match(result.markdown, /爱抢答的小伙计/);
+  assert.doesNotMatch(result.markdown, /最近在读书过程中，如果涉及/);
+  assert.doesNotMatch(result.markdown, /有意思的不是它声量多大/);
 });
 
 test("ensureDailyFunSectionHasSourceItem turns unavoidable paper fallback into readable observation", () => {
