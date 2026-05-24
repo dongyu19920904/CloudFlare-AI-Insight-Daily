@@ -48,6 +48,12 @@ function hasKnownNonAiFallbackNoise(text) {
   );
 }
 
+function isLowValueAiRant(text) {
+  return /降智|变笨|离谱|不行了|只能\s*Claude|Gemini\s*水平|关闭续费|取消续费|耗半小时|Pro\s*20x/i.test(
+    String(text || "")
+  );
+}
+
 function extractMarkdownUrls(markdown) {
   return [...String(markdown || "").matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)]
     .map((match) => canonicalizeUrl(match[1]))
@@ -162,6 +168,9 @@ function scoreFallbackFunCandidate(candidate) {
   if (/Abstract\/Content Summary|zero-shot|framework|benchmark|dataset|causal|stereo|segmentation|arxiv\.org/i.test(text)) {
     score -= 12;
   }
+  if (isLowValueAiRant(text)) {
+    score -= 60;
+  }
 
   return score;
 }
@@ -187,6 +196,10 @@ function buildPaperFallbackObservation(candidate) {
 function buildHumanFacingFallbackObservation(candidate) {
   const text = `${candidate.title}\n${candidate.summary}\n${candidate.sourceText}`;
 
+  if (isLowValueAiRant(text)) {
+    return "这条吐槽的点很具体：一个 example.com 折腾半小时，两个 Pro 20x 账号用半个月就想关续费，最后结论是写代码还得回 Claude。它不适合硬凹成段子，更像一张用户耐心条的截图：AI 工具再贵，干活卡住时，大家还是会用脚投票。";
+  }
+
   if (/读书|地理|地图|空间|作者|读者/i.test(text)) {
     return "以前读书碰到地名，认真一点的人翻地图，不认真一点的人直接装懂。现在倒好，读者随手让 AI 画一张地图，作者那边还在铺陈山川河流，这边导航已经开上了。妙处不在炫技，而是读书这件慢事，忽然多了个爱抢答的小伙计。";
   }
@@ -207,7 +220,8 @@ function buildHumanFacingFallbackObservation(candidate) {
     return "AI 购物助手现在很像热心亲戚：推荐得挺积极，真到合不合身、喜不喜欢，还得你自己拿主意。它能把信息拢到一块，省得人翻半天页面；但衣服穿上像不像买家秀，这一步暂时还得交给镜子。技术很忙，审美先别下岗。";
   }
 
-  return "这事好玩的地方，是 AI 没站在发布会大屏上讲大道理，而是钻进一个很小的动作里：少点几下、少等一会儿、少重复一遍。如今工具越聪明，越像办公室里那个爱搭把手的人，活不一定干得惊天动地，胜在你一回头，零碎事儿已经少了一截。";
+  const sourceDetail = candidate.summary || candidate.title;
+  return `这条小消息不能靠硬编段子撑起来，得从原文里的具体细节往外写：${sourceDetail}。它适合当今天的轻量观察，是因为 AI 新闻不只有发布会和参数表，也有用户真正点开、试用、卡住、放弃或觉得省事的那一瞬间。`;
 }
 
 function buildFallbackFunItem(candidate) {

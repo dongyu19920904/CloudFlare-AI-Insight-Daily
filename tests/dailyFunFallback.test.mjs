@@ -219,3 +219,43 @@ test("ensureDailyFunSectionHasSourceItem turns unavoidable paper fallback into r
   assert.doesNotMatch(result.markdown, /Inpatient medication recommendation requires/);
   assert.doesNotMatch(result.markdown, /这条小观察适合放在/);
 });
+
+test("ensureDailyFunSectionHasSourceItem keeps AI rant fallback grounded in the source", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: 感觉 GPT 5.5 最近降智实在离谱",
+      "Published: 2026-05-24",
+      "Url: https://www.v2ex.com/t/1214839",
+      "Content Summary: 一个 example.com 能耗半小时，开了两个 Pro 20x 账号，结果半个月就不行了，关闭续费了。真写代码还是只能 Claude。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /1214839/);
+  assert.match(result.markdown, /example\.com/);
+  assert.match(result.markdown, /Pro 20x/);
+  assert.match(result.markdown, /Claude/);
+  assert.doesNotMatch(result.markdown, /少点几下/);
+  assert.doesNotMatch(result.markdown, /爱搭把手/);
+});
+
+test("ensureDailyFunSectionHasSourceItem prefers concrete fun sources over low-value AI rants", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: 感觉 GPT 5.5 最近降智实在离谱",
+      "Published: 2026-05-24",
+      "Url: https://www.v2ex.com/t/1214839",
+      "Content Summary: 一个 example.com 能耗半小时，开了两个 Pro 20x 账号，关闭续费了。真写代码还是只能 Claude。",
+    ].join("\n"),
+    [
+      "News Title: M5 Stack 新设备有麦克风和扬声器，适合接入 AI 语音实验",
+      "Published: 2026-05-24",
+      "Url: https://example.com/m5-stack-ai-voice",
+      "Content Summary: 一个开发者收到 M5 Stack 新设备，提到麦克风和扬声器让 AI 语音玩法多了很多。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /m5-stack-ai-voice/);
+  assert.doesNotMatch(result.markdown, /1214839/);
+});

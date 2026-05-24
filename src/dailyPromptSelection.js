@@ -174,6 +174,9 @@ function scoreDailyFunCandidate(candidate) {
   if (/论文|研究|benchmark|dataset|framework|zero-shot|arxiv\.org|abstract|causal|stereo|segmentation/i.test(text)) {
     score -= 40;
   }
+  if (/降智|变笨|离谱|不行了|只能\s*Claude|Gemini\s*水平|关闭续费|取消续费|耗半小时|Pro\s*20x/i.test(text)) {
+    score -= 60;
+  }
   if (candidate?.isWelfare) score -= 20;
 
   return score;
