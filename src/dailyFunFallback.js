@@ -110,6 +110,91 @@ function sanitizeFallbackSummary(summary) {
     .slice(0, 120);
 }
 
+function detectFallbackToolName(text) {
+  const normalized = String(text || "");
+  const toolPatterns = [
+    ["GPT-image-2", /gpt-?image-?2/i],
+    ["Codex", /codex/i],
+    ["Cursor", /cursor/i],
+    ["Claude", /claude/i],
+    ["ChatGPT", /chatgpt/i],
+    ["Kimi", /kimi/i],
+    ["飞书", /飞书|feishu|lark/i],
+    ["Youmind", /youmind/i],
+    ["MCP", /\bmcp\b/i],
+  ];
+
+  for (const [label, pattern] of toolPatterns) {
+    if (pattern.test(normalized)) return label;
+  }
+
+  return "AI";
+}
+
+function detectFallbackPlatform(text) {
+  const normalized = String(text || "");
+  if (/x\.com|twitter\.com|tweet|推文/i.test(normalized)) return "X 上";
+  if (/github\.com|GitHub/i.test(normalized)) return "GitHub 上";
+  if (/linux\.do/i.test(normalized)) return "论坛里";
+  if (/okjike\.com|jike|即刻/i.test(normalized)) return "即刻上";
+  return "今天";
+}
+
+function buildFallbackFunTitle(candidate) {
+  const text = `${candidate.title}\n${candidate.summary}\n${candidate.url}\n${candidate.sourceText}`;
+
+  if (/2d|2D|游戏|卡牌|回合制|射击|塔防|视频模型|game|shooter/i.test(text)) {
+    return "2D 游戏也开始找 AI 做动作了";
+  }
+
+  if (/ffmpeg|音频|mp4|转格式|format/i.test(text)) {
+    return "Codex 连转格式这种小活也接了";
+  }
+
+  if (/codex/i.test(text) && /steer|queue|shift\+enter|turn|排队|等待/i.test(text)) {
+    return "等 Codex 干活也有等号学问";
+  }
+
+  if (/飞书|markdown|文档|agent/i.test(text) && /下载|导出|download|doc/i.test(text)) {
+    return "飞书把文档递给 Agent 吃";
+  }
+
+  if (/gpt-?image|youmind|提示词|ai\s*味|图片|生成图/i.test(text)) {
+    return "AI 图片开始学会少用力了";
+  }
+
+  if (/微信|wx-cli|截图|驾驶舱|dashboard/i.test(text) && /codex|ai/i.test(text)) {
+    return "Codex 开始照着截图搭后台了";
+  }
+
+  if (/填表|表单|浏览器|点击|webbridge/i.test(text)) {
+    return "AI 终于来救复杂表单了";
+  }
+
+  if (/读书|地理|地图|空间/i.test(text)) {
+    return "读书查地图这事也被 AI 接走了";
+  }
+
+  if (/roast|毒舌|吐槽|主页|推文/i.test(text)) {
+    return "AI 当起了主页毒舌亲友";
+  }
+
+  if (/Mac|开发环境|安装|配置|npm|GitHub CLI|git\b/i.test(text)) {
+    return "新电脑装环境交给 Codex 了";
+  }
+
+  if (/购物|淘宝|京东|AI\s*购|试穿|穿搭|下单/i.test(text)) {
+    return "AI 购物助手先当热心亲戚";
+  }
+
+  if (candidate.sourceType === "paper") {
+    return "AI 又在冷门角落补课了";
+  }
+
+  const tool = detectFallbackToolName(text);
+  return tool === "AI" ? "AI 又来收拾一件小杂活" : `${tool} 又接了一件小杂活`;
+}
+
 function parsePromptSourceItem(itemText) {
   const text = String(itemText || "");
   const url = canonicalizeUrl((text.match(/^(?:Url|URL):\s*(https?:\/\/[^\s]+)/im) || [])[1]);
@@ -204,8 +289,28 @@ function buildHumanFacingFallbackObservation(candidate) {
     return "以前读书碰到地名，认真一点的人翻地图，不认真一点的人直接装懂。现在倒好，读者随手让 AI 画一张地图，作者那边还在铺陈山川河流，这边导航已经开上了。妙处不在炫技，而是读书这件慢事，忽然多了个爱抢答的小伙计。";
   }
 
+  if (/2d|2D|游戏|卡牌|回合制|射击|塔防|视频模型|game|shooter/i.test(text)) {
+    return "以前做 2D 游戏，角色动一下，程序员和美术都得跟着动。今天这条说，视频模型已经能接过动作生成，卡牌、回合制、射击、对话、塔防都能试，门槛反而挪到玩法和数值。AI 像刚进组的动画实习生，帧能补，关卡好不好玩还得人类熬夜。";
+  }
+
   if (/填表|表单|浏览器|点击|WebBridge|自动|流程/i.test(text)) {
     return "以前填复杂表单，手指头点到最后，心里只剩一个念头：这活儿怎么还没完。现在用户把浏览器里的重复点击交给 AI，一句话把十几步压成一步。它没有敲锣打鼓地改变世界，就是把人从那堆小按钮里捞出来，顺手还显得挺懂事。";
+  }
+
+  if (/ffmpeg|音频|mp4|转格式|format/i.test(text)) {
+    return "以前转个音频发 X，最难的不是格式，是想起 ffmpeg 那串参数。今天有人直接让 Codex 把音频转成 MP4，省掉查命令、试参数、看报错的三连。AI 像工位上新来的杂活同事，能把文件端上来，但发出去前还得你自己听一遍。";
+  }
+
+  if (/codex/i.test(text) && /steer|queue|shift\+enter|turn|排队|等待/i.test(text)) {
+    return "等 Codex 跑任务最像等外卖：人没闲着，心也没踏实。宝玉这条把 Steer、Queue 和右上角 Turn 面板讲清楚，尤其 Queue 还像个不太听话的按钮。以前人等编译，现在人等 AI；区别是编译报错不解释，AI 偶尔还会认真排队排错地方。";
+  }
+
+  if (/飞书|markdown|文档|agent/i.test(text) && /下载|导出|download|doc/i.test(text)) {
+    return "文档导出 Markdown 这事，看着不像大新闻，实际很适合 Agent 吃饭。飞书把内容变成 AI 更容易读的格式，少了复制、清洗、重排那几步。以前是人给文档排版，现在像把饭切成小块喂给 AI，吃得快不快另说，至少不用它先啃盘子。";
+  }
+
+  if (/gpt-?image|youmind|提示词|ai\s*味|图片|生成图/i.test(text)) {
+    return "做 PPT 最怕图片一眼 AI 味：光很梦幻，人很塑料，客户一看就想改需求。今天有人用 Youmind 调 GPT-image-2，发现提示词简洁一点，反而更像正常照片。AI 像刚学会打扮的同事，少喷点香水，终于不那么像从样板间里走出来。";
   }
 
   if (/Roast|毒舌|吐槽|评论员|自嘲|主页|推文/i.test(text)) {
@@ -220,14 +325,13 @@ function buildHumanFacingFallbackObservation(candidate) {
     return "AI 购物助手现在很像热心亲戚：推荐得挺积极，真到合不合身、喜不喜欢，还得你自己拿主意。它能把信息拢到一块，省得人翻半天页面；但衣服穿上像不像买家秀，这一步暂时还得交给镜子。技术很忙，审美先别下岗。";
   }
 
-  const sourceDetail = candidate.summary || candidate.title;
-  return `这条小消息不能靠硬编段子撑起来，得从原文里的具体细节往外写：${sourceDetail}。它适合当今天的轻量观察，是因为 AI 新闻不只有发布会和参数表，也有用户真正点开、试用、卡住、放弃或觉得省事的那一瞬间。`;
+  const tool = detectFallbackToolName(text);
+  const platform = detectFallbackPlatform(`${candidate.url}\n${candidate.sourceText}`);
+  return `AI 新闻不一定都得上发布会，有时就是工位上一件小杂活被接走了。${platform}有人把 ${tool} 拿去处理一个具体任务，少一点手动折腾，多一点直接出结果。听着像生产力进步，落到人身上更像来了个新同事：活能干，验收单还得你签。`;
 }
 
 function buildFallbackFunItem(candidate) {
-  const title = hasDirectAiSignal(candidate.title)
-    ? candidate.title
-    : sanitizeMarkdownLinkTitle(`AI小观察：${candidate.title}`);
+  const title = sanitizeMarkdownLinkTitle(buildFallbackFunTitle(candidate));
   const observation =
     candidate.sourceType === "paper"
       ? buildPaperFallbackObservation(candidate)

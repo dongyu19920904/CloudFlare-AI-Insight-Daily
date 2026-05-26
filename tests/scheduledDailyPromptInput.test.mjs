@@ -1,0 +1,46 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { buildDailyGenerationPromptInput } from "../src/dailyGenerationPromptInput.js";
+
+test("buildDailyGenerationPromptInput includes AI fun candidates in the main generation prompt", () => {
+  const primaryItems = [
+    [
+      "News Title: Codex 帮音频转 MP4",
+      "Published: 2026-05-26",
+      "Url: https://x.com/vista8/status/2058786114882900133",
+      "Content Summary: X 不支持直接发音频，有人让 Codex 调用 ffmpeg 把音频转成 MP4 再发。",
+    ].join("\n"),
+  ];
+  const funItems = [
+    [
+      "News Title: 现在的AI非常利好2D游戏开发，动作完全交给视频模型生成，卡牌、回合制、射击、对话类、塔防都能做。",
+      "Published: 2026-05-26",
+      "Url: https://x.com/Gorden_Sun/status/2058939766742335643",
+      "Content Summary: Gorden Sun 提到 AI 利好 2D 游戏开发，动作可以交给视频模型生成，但仍需要玩法和数值支撑。",
+    ].join("\n"),
+  ];
+
+  const promptInput = buildDailyGenerationPromptInput(primaryItems, funItems);
+
+  assert.match(promptInput, /Codex 帮音频转 MP4/);
+  assert.match(promptInput, /AI趣闻专用候选素材/);
+  assert.match(promptInput, /让趣闻由模型完整生成/);
+  assert.match(promptInput, /不要因为它们出现在这里就塞进 TOP 10/);
+  assert.match(promptInput, /Hook -> What -> Punchline/);
+  assert.match(promptInput, /2058939766742335643/);
+});
+
+test("buildDailyGenerationPromptInput does not duplicate fun candidates already in primary items", () => {
+  const sharedItem = [
+    "News Title: Codex 帮音频转 MP4",
+    "Published: 2026-05-26",
+    "Url: https://x.com/vista8/status/2058786114882900133",
+    "Content Summary: X 不支持直接发音频，有人让 Codex 调用 ffmpeg 把音频转成 MP4 再发。",
+  ].join("\n");
+
+  const promptInput = buildDailyGenerationPromptInput([sharedItem], [sharedItem]);
+
+  assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
+  assert.equal(promptInput.match(/2058786114882900133/g)?.length, 1);
+});

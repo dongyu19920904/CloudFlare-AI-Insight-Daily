@@ -60,6 +60,8 @@ test("ensureDailyFunSectionHasSourceItem fills an empty AI fun section from sele
   assert.doesNotMatch(result.markdown, /适合放在\s*AI趣闻/);
   assert.doesNotMatch(result.markdown, /适合补成\s*AI\s*趣闻/);
   assert.doesNotMatch(result.markdown, /有意思的不是它声量多大/);
+  assert.doesNotMatch(result.markdown, /这条小消息不能靠硬编段子/);
+  assert.doesNotMatch(result.markdown, /适合当今天的轻量观察/);
 
   const validation = validateDailyPublication({
     summaryText: "今天 AI 工具继续进入真实工作流，日报需要保持栏目完整，不能只留下空标题。",
@@ -155,7 +157,7 @@ test("ensureDailyFunSectionHasSourceItem can use an unused selected source when 
   ]);
 
   assert.equal(result.inserted, true);
-  assert.match(result.markdown, /AI小观察/);
+  assert.match(result.markdown, /AI 又来收拾一件小杂活/);
   assert.match(result.markdown, /lighter-markdown-editor/);
 });
 
@@ -199,6 +201,44 @@ test("ensureDailyFunSectionHasSourceItem turns map-reading source into a lively 
   assert.match(result.markdown, /爱抢答的小伙计/);
   assert.doesNotMatch(result.markdown, /最近在读书过程中，如果涉及/);
   assert.doesNotMatch(result.markdown, /有意思的不是它声量多大/);
+});
+
+test("ensureDailyFunSectionHasSourceItem rewrites long source titles into short fun titles", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: 现在的AI非常利好2D游戏开发，动作完全交给视频模型生成，卡牌、回合制、射击、对话类、塔防都能做。而且稍有门槛，需要些游戏玩法和数值的支撑，不像前端一句话就能生成。",
+      "Published: 2026-05-26",
+      "Url: https://x.com/Gorden_Sun/status/2058939766742335643",
+      "Content Summary: Gorden Sun 提到 AI 利好 2D 游戏开发，动作可以交给视频模型生成，卡牌、回合制、射击、对话类、塔防都能做，但仍需要玩法和数值支撑。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /2058939766742335643/);
+  assert.match(result.markdown, /2D 游戏也开始找 AI 做动作了/);
+  assert.match(result.markdown, /视频模型已经能接过动作生成/);
+  assert.match(result.markdown, /动画实习生/);
+  assert.match(result.markdown, /关卡好不好玩/);
+  assert.doesNotMatch(result.markdown, /现在的AI非常利好2D游戏开发/);
+  assert.doesNotMatch(result.markdown, /这条小消息不能靠硬编段子/);
+  assert.doesNotMatch(result.markdown, /适合当今天的轻量观察/);
+});
+
+test("ensureDailyFunSectionHasSourceItem rewrites Codex utility sources with a punchline", () => {
+  const result = ensureDailyFunSectionHasSourceItem(baseDailyMarkdown, [
+    [
+      "News Title: Codex 帮音频转 MP4",
+      "Published: 2026-05-26",
+      "Url: https://x.com/vista8/status/2058786114882900133",
+      "Content Summary: X 不支持直接发音频，有人让 Codex 调用 ffmpeg 把音频转成 MP4 再发。",
+    ].join("\n"),
+  ]);
+
+  assert.equal(result.inserted, true);
+  assert.match(result.markdown, /Codex 连转格式这种小活也接了/);
+  assert.match(result.markdown, /ffmpeg 那串参数/);
+  assert.match(result.markdown, /发出去前还得你自己听一遍/);
+  assert.doesNotMatch(result.markdown, /这条小消息不能靠硬编段子/);
 });
 
 test("ensureDailyFunSectionHasSourceItem turns unavoidable paper fallback into readable observation", () => {

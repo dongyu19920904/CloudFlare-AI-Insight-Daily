@@ -46,6 +46,7 @@ import {
 } from '../publishValidation.js';
 import { sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { ensureDailyFunSectionHasSourceItem } from '../dailyFunFallback.js';
+import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -461,7 +462,8 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "请严格遵守以下规则：",
         "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
         "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **😄 AI趣闻` / `## **❓ 相关问题**`",
-        "- `## **😄 AI趣闻` 下必须至少有 1 条带原始来源链接的内容；不要只输出空标题，也不要用 `## **🔮 AI趋势预测` 替代 AI趣闻",
+        "- `## **😄 AI趣闻` 下必须至少有 1 条带原始来源链接的完整趣闻；不要只输出空标题，也不要用 `## **🔮 AI趋势预测` 替代 AI趣闻",
+        "- 如果原始素材里有【AI趣闻专用候选素材】，必须优先从那里选 1 条写成完整趣闻：标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
@@ -696,6 +698,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         // 2. Prepare Content Items
         const {
             selectedContentItems,
+            dailyFunContentItems,
             mediaCandidates,
             itemsWithMedia,
             itemsWithoutMedia,
@@ -710,6 +713,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         debugInfo.itemsWithoutMedia = itemsWithoutMedia;
         debugInfo.mediaCandidates = mediaCandidates.length;
         debugInfo.promptSourceMix = selectedCounts;
+        debugInfo.dailyFunCandidateItems = Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0;
 
         if (selectedContentItems.length === 0) {
             console.log(`[Scheduled] No items found. Skipping generation.`);
@@ -719,7 +723,10 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         // 3. Generate Content (Call 2)
         console.log(`[Scheduled] Generating content...`);
         let fullPromptForCall2_System = getSystemPromptSummarizationStepOne(dateStr);
-        let fullPromptForCall2_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n';
+        let fullPromptForCall2_User = buildDailyGenerationPromptInput(
+            selectedContentItems,
+            dailyFunContentItems
+        );
         
         let outputOfCall2 = await generateContentWithTransportFallback(env, fullPromptForCall2_User, fullPromptForCall2_System);
         outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
@@ -1132,7 +1139,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     console.log(`[Scheduled][Daily] Generating content...`);
     const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);
-    const outputOfCall2User = '\n\n------\n\n' + selectedContentItems.join('\n\n------\n\n') + '\n\n------\n\n';
+    const outputOfCall2User = buildDailyGenerationPromptInput(
+        selectedContentItems,
+        options.dailyFunContentItems
+    );
 
     let outputOfCall2 = await generateContentWithTransportFallback(env, outputOfCall2User, outputOfCall2System);
     outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
