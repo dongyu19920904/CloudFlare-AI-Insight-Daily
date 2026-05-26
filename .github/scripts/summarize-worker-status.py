@@ -250,7 +250,6 @@ rows = [
     ("Previous-day filtered counts", debug.get("previousDayFilteredCounts")),
     ("Prompt candidate count", debug.get("promptTotalCandidateCount")),
     ("Prompt selected counts", debug.get("promptSelectedCounts")),
-    ("AI fun fallback inserted", debug.get("dailyFunFallbackInserted")),
     ("AI fun candidate items", debug.get("dailyFunCandidateItems")),
     ("AI fun candidate count", diagnostics.get("dailyFunCandidateCount")),
     ("Selection candidate counts", diagnostics.get("candidateCounts")),

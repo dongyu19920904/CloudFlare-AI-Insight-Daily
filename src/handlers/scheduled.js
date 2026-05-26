@@ -45,7 +45,6 @@ import {
     validateOpportunityPublication,
 } from '../publishValidation.js';
 import { sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
-import { ensureDailyFunSectionHasSourceItem } from '../dailyFunFallback.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
@@ -631,14 +630,6 @@ function removeMismatchedTopItemImages(markdown, mediaCandidates) {
     return { markdown: cleanedMarkdown, removedCount };
 }
 
-function removeSecondaryDailySections(markdown) {
-    return String(markdown || '')
-        .replace(/^##\s*\*\*.*值得关注.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
-        .replace(/^##\s*\*\*.*AI趣闻.*\*\*[\s\S]*?(?=\n##\s+|$)/im, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
-
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
     // 濡傛灉鎸囧畾浜嗘棩鏈燂紝浣跨敤鎸囧畾鏃ユ湡锛涘惁鍒欎娇鐢ㄥ綋鍓嶆棩鏈?
     const dateStr = specifiedDate || getISODate();
@@ -1132,10 +1123,6 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     if (selectedContentItems.length === 0) {
         throw new Error('No content items found for daily generation.');
     }
-    const dailyFunSourceItems = [
-        ...(Array.isArray(options.dailyFunContentItems) ? options.dailyFunContentItems : []),
-        ...selectedContentItems,
-    ];
 
     console.log(`[Scheduled][Daily] Generating content...`);
     const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);
@@ -1156,9 +1143,6 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     debugInfo.mismatchedTopImagesRemoved += cleanedOutput.removedCount;
     debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
     outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
-    const funFallback = ensureDailyFunSectionHasSourceItem(outputOfCall2, dailyFunSourceItems);
-    outputOfCall2 = funFallback.markdown;
-    debugInfo.dailyFunFallbackInserted = Boolean(funFallback.inserted);
 
     console.log(`[Scheduled][Daily] Generating summary...`);
     let outputOfCall3 = await generateContentWithTransportFallback(env, outputOfCall2, getSystemPromptSummarizationStepThree());
@@ -1166,28 +1150,11 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
-    const postSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(dailySummaryMarkdownContent, dailyFunSourceItems);
-    dailySummaryMarkdownContent = postSanitizeFunFallback.markdown;
-    debugInfo.dailyFunFallbackInserted = Boolean(debugInfo.dailyFunFallbackInserted || postSanitizeFunFallback.inserted);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
         minimumTopItems: options.minimumTopItems || 0,
     });
-
-    if (!validation.ok && validation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
-        const fallbackDailySummaryMarkdownContent = removeSecondaryDailySections(dailySummaryMarkdownContent);
-        const fallbackValidation = validateDailyPublication({
-            summaryText: outputOfCall3,
-            pageMarkdown: fallbackDailySummaryMarkdownContent,
-            minimumTopItems: options.minimumTopItems || 0,
-        });
-
-        if (fallbackValidation.ok) {
-            dailySummaryMarkdownContent = fallbackDailySummaryMarkdownContent;
-            validation = fallbackValidation;
-        }
-    }
 
     if (!validation.ok) {
         console.warn(
@@ -1208,9 +1175,6 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedOutputOfCall2,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
-        const repairedFunFallback = ensureDailyFunSectionHasSourceItem(repairedOutputOfCall2, dailyFunSourceItems);
-        repairedOutputOfCall2 = repairedFunFallback.markdown;
-        debugInfo.dailyFunFallbackInserted = Boolean(debugInfo.dailyFunFallbackInserted || repairedFunFallback.inserted);
 
         let repairedOutputOfCall3 = await generateContentWithTransportFallback(
             env,
@@ -1225,41 +1189,11 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
-        const repairedPostSanitizeFunFallback = ensureDailyFunSectionHasSourceItem(
-            repairedDailySummaryMarkdownContent,
-            dailyFunSourceItems
-        );
-        repairedDailySummaryMarkdownContent = repairedPostSanitizeFunFallback.markdown;
-        debugInfo.dailyFunFallbackInserted = Boolean(
-            debugInfo.dailyFunFallbackInserted || repairedPostSanitizeFunFallback.inserted
-        );
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
             minimumTopItems: options.minimumTopItems || 0,
         });
-
-        if (!repairedValidation.ok && repairedValidation.issues.every((issue) => /reuse the same source url|reuse the same story across sections/i.test(issue))) {
-            const fallbackDailySummaryMarkdownContent = removeSecondaryDailySections(repairedDailySummaryMarkdownContent);
-            const fallbackValidation = validateDailyPublication({
-                summaryText: repairedOutputOfCall3,
-                pageMarkdown: fallbackDailySummaryMarkdownContent,
-                minimumTopItems: options.minimumTopItems || 0,
-            });
-
-            if (fallbackValidation.ok) {
-                repairedDailySummaryMarkdownContent = fallbackDailySummaryMarkdownContent;
-                outputOfCall2 = repairedOutputOfCall2;
-                outputOfCall3 = repairedOutputOfCall3;
-                dailySummaryMarkdownContent = repairedDailySummaryMarkdownContent;
-                validation = fallbackValidation;
-                debugInfo.dailyRepairAttempted = true;
-                debugInfo.dailyRepairPassed = true;
-                debugInfo.dailyRepairIssues = [];
-                debugInfo.dailyGenerated = true;
-                return { outputOfCall3, dailySummaryMarkdownContent, validation };
-            }
-        }
 
         outputOfCall2 = repairedOutputOfCall2;
         outputOfCall3 = repairedOutputOfCall3;
