@@ -110,3 +110,17 @@ export function sanitizeDuplicateDailySections(markdown) {
 
   return sanitized.replace(/\n{3,}/g, "\n\n").trim();
 }
+
+export function removeEmptyDailyFunSection(markdown) {
+  return String(markdown || "")
+    .replace(
+      /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+      (section) => {
+        const sourceLinks = [...section.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+          .filter((match) => match.index == null || section[match.index - 1] !== "!");
+        return sourceLinks.length === 0 ? "" : section;
+      },
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

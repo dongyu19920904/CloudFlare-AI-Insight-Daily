@@ -44,7 +44,7 @@ import {
     validateAccountOpportunityPublication,
     validateOpportunityPublication,
 } from '../publishValidation.js';
-import { sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
+import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
@@ -460,9 +460,9 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "",
         "请严格遵守以下规则：",
         "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
-        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **😄 AI趣闻` / `## **❓ 相关问题**`",
-        "- `## **😄 AI趣闻` 下必须至少有 1 条带原始来源链接的完整趣闻；不要只输出空标题，也不要用 `## **🔮 AI趋势预测` 替代 AI趣闻",
-        "- 如果原始素材里有【AI趣闻专用候选素材】，必须优先从那里选 1 条写成完整趣闻：标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
+        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **❓ 相关问题**`",
+        "- `## **😄 AI趣闻` 是可选栏目；如果能从【AI趣闻专用候选素材】里写出完整趣闻，就输出 1 条；如果写不出完整、有来源链接的趣闻，就省略整个 AI趣闻栏目，不要只输出空标题",
+        "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
@@ -1150,6 +1150,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = removeEmptyDailyFunSection(dailySummaryMarkdownContent);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
@@ -1189,6 +1190,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
+        repairedDailySummaryMarkdownContent = removeEmptyDailyFunSection(repairedDailySummaryMarkdownContent);
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,

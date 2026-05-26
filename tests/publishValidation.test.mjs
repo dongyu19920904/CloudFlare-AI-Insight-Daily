@@ -81,7 +81,7 @@ test("validateDailyPublication accepts a structured daily page", () => {
   assert.deepEqual(result.warnings, []);
 });
 
-test("validateDailyPublication rejects missing watch and AI fun section headings", () => {
+test("validateDailyPublication rejects missing watch heading but allows missing AI fun", () => {
   const result = validateDailyPublication({
     summaryText: "今天新闻足够多，日报必须保留完整栏目标题，否则重复内容会漏过校验。",
     pageMarkdown: `## **今日摘要**
@@ -125,7 +125,7 @@ test("validateDailyPublication rejects missing watch and AI fun section headings
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /watch section heading/i);
-  assert.match(result.issues.join("\n"), /AI fun section heading/i);
+  assert.doesNotMatch(result.issues.join("\n"), /AI fun section heading/i);
 });
 
 test("validateDailyPublication rejects empty secondary sections and FAQ", () => {
@@ -166,7 +166,8 @@ AI 工具正在从聊天窗口走向真实工作流。
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /watch section must contain at least one source item/i);
-  assert.match(result.issues.join("\n"), /AI fun section must contain at least one source item/i);
+  assert.doesNotMatch(result.issues.join("\n"), /AI fun section must contain at least one source item/i);
+  assert.match(result.warnings.join("\n"), /AI fun section must contain at least one source item/i);
   assert.match(result.issues.join("\n"), /FAQ section must not be empty/i);
 });
 

@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { sanitizeDuplicateDailySections, stripDailyHeadingCountSuffix } from "../src/dailySectionSanitizer.js";
+import {
+  removeEmptyDailyFunSection,
+  sanitizeDuplicateDailySections,
+  stripDailyHeadingCountSuffix,
+} from "../src/dailySectionSanitizer.js";
 
 test("stripDailyHeadingCountSuffix removes stale item counts from daily headings", () => {
   const markdown = [
@@ -92,4 +96,32 @@ test("sanitizeDuplicateDailySections removes fun items already used in watch sec
 
   assert.doesNotMatch(sanitized, /这条和值得关注重复/);
   assert.match(sanitized, /fun-ai-workbench/);
+});
+
+test("removeEmptyDailyFunSection removes empty or source-less AI fun section", () => {
+  const markdown = `## **今日AI资讯**
+
+## **🔥 重磅 TOP 1**
+
+### 1. [OpenAI 发布新的 Agent 工作流](https://example.com/openai-agent)
+这是一条不同的 TOP 新闻。
+
+## **📌 值得关注**
+
+- **[产品]** [一个补充动态](https://example.com/watch-1) - 正常补充内容。
+
+## **😄 AI趣闻**
+
+今天没有自然好笑的素材。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的工具？
+先看官方入口，再选择适合自己的服务方式。`;
+
+  const sanitized = removeEmptyDailyFunSection(markdown);
+
+  assert.doesNotMatch(sanitized, /AI趣闻/);
+  assert.match(sanitized, /值得关注/);
+  assert.match(sanitized, /相关问题/);
 });

@@ -440,9 +440,7 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   } else if (countContentSourceLinks(watchSection) === 0) {
     issues.push("Daily watch section must contain at least one source item");
   }
-  if (!funSection) {
-    issues.push("Daily page must contain an AI fun section heading");
-  } else if (countContentSourceLinks(funSection) === 0) {
+  if (funSection && countContentSourceLinks(funSection) === 0) {
     issues.push("Daily AI fun section must contain at least one source item");
   }
 
@@ -517,6 +515,8 @@ function isSoftDailyPublicationIssue(issue) {
   return (
     issue === "Daily TOP reuses the same source URL" ||
     issue === "Daily TOP must contain at most one GitHub/open-source project item" ||
+    issue === "Daily AI fun section must contain at least one source item" ||
+    issue === "Daily AI fun section contains a known non-AI topic" ||
     issue === "Daily AI fun section uses a paper/arXiv source"
   );
 }
