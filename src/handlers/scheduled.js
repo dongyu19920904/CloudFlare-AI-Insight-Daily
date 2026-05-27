@@ -46,6 +46,7 @@ import {
 } from '../publishValidation.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
+import { filterGithubProjectsAgainstPreviousTop } from '../githubProjectReplay.js';
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
@@ -119,6 +120,15 @@ function getPreviousDates(dateStr, count = 1) {
     }
 
     return dates;
+}
+
+function getPreviousDatesInSameMonth(dateStr, count = 31) {
+    const currentMonth = String(dateStr || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(currentMonth)) return [];
+
+    return getPreviousDates(dateStr, count).filter((candidateDate) => (
+        String(candidateDate || '').slice(0, 7) === currentMonth
+    ));
 }
 
 function normalizeReplayUrl(url) {
@@ -315,6 +325,85 @@ async function loadPreviousTopItems(env, dateStr, lookbackDays = 1) {
     }
 
     return { previousDate, items: firstPreviousTopItems, allItems: dedupedReplayItems };
+}
+
+async function loadPreviousMonthlyTopItems(env, dateStr, lookbackDays = 31) {
+    const previousDates = getPreviousDatesInSameMonth(dateStr, lookbackDays);
+    const topItems = [];
+    let loadedDays = 0;
+
+    for (const candidateDate of previousDates) {
+        try {
+            const previousMarkdown = await getGitHubFileContent(env, `daily/${candidateDate}.md`);
+            const candidateTopItems = extractPreviousTopItems(previousMarkdown);
+            if (!isUsablePreviousDaily(previousMarkdown, candidateTopItems)) {
+                console.warn(`[Scheduled] Previous daily ${candidateDate} missing usable TOP section, skipping monthly GitHub project replay filter for this date.`);
+                continue;
+            }
+
+            loadedDays += 1;
+            topItems.push(...candidateTopItems.map((item) => ({ ...item, date: candidateDate })));
+        } catch (error) {
+            console.warn(`[Scheduled] Failed to load previous daily ${candidateDate}, skipping monthly GitHub project replay filter for this date: ${error.message}`);
+        }
+    }
+
+    return {
+        checkedDays: previousDates.length,
+        loadedDays,
+        items: topItems,
+    };
+}
+
+function isEnvFlagEnabled(value, defaultValue = true) {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return defaultValue;
+}
+
+async function applyMonthlyGithubProjectTopReplayFilter(env, dateStr, allUnifiedData, debugInfo) {
+    if (!isEnvFlagEnabled(env.DAILY_GITHUB_PROJECT_MONTHLY_TOP_DEDUPE, true)) {
+        debugInfo.monthlyGithubProjectTopDedupeEnabled = false;
+        return;
+    }
+
+    debugInfo.monthlyGithubProjectTopDedupeEnabled = true;
+
+    if (!Array.isArray(allUnifiedData?.project) || allUnifiedData.project.length === 0) {
+        debugInfo.monthlyGithubProjectFilteredCount = 0;
+        return;
+    }
+
+    const monthlyLookbackDays = Math.max(
+        1,
+        Number.parseInt(env.DAILY_GITHUB_PROJECT_MONTHLY_LOOKBACK_DAYS || '31', 10) || 31
+    );
+    const previousMonthlyTopItems = await loadPreviousMonthlyTopItems(env, dateStr, monthlyLookbackDays);
+    const {
+        filteredItems,
+        filteredCount,
+        filteredRepos,
+        replayRepoCount,
+        replayRepoNameCount,
+    } = filterGithubProjectsAgainstPreviousTop(allUnifiedData.project, previousMonthlyTopItems.items);
+
+    allUnifiedData.project = filteredItems;
+
+    debugInfo.monthlyGithubProjectTopReplayCheckedDays = previousMonthlyTopItems.checkedDays;
+    debugInfo.monthlyGithubProjectTopReplayLoadedDays = previousMonthlyTopItems.loadedDays;
+    debugInfo.monthlyGithubProjectTopReplayItems = previousMonthlyTopItems.items.length;
+    debugInfo.monthlyGithubProjectTopRepoCount = replayRepoCount;
+    debugInfo.monthlyGithubProjectTopRepoNameCount = replayRepoNameCount;
+    debugInfo.monthlyGithubProjectFilteredCount = filteredCount;
+    debugInfo.monthlyGithubProjectFilteredRepos = filteredRepos.slice(0, 20);
+
+    if (filteredCount > 0) {
+        console.log(
+            `[Scheduled][Daily] Filtered ${filteredCount} GitHub projects that already appeared in TOP this month: ${filteredRepos.slice(0, 10).join(', ')}`
+        );
+    }
 }
 
 function extractMarkdownSection(markdown, heading) {
@@ -646,6 +735,14 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         previousReplayLookbackDays: 0,
         previousDayFilteredNews: 0,
         previousDayFilteredCounts: {},
+        monthlyGithubProjectTopDedupeEnabled: false,
+        monthlyGithubProjectTopReplayCheckedDays: 0,
+        monthlyGithubProjectTopReplayLoadedDays: 0,
+        monthlyGithubProjectTopReplayItems: 0,
+        monthlyGithubProjectTopRepoCount: 0,
+        monthlyGithubProjectTopRepoNameCount: 0,
+        monthlyGithubProjectFilteredCount: 0,
+        monthlyGithubProjectFilteredRepos: [],
         outputHasMediaBeforeFallback: false,
         outputHasMediaAfterFallback: false,
         mismatchedTopImagesRemoved: 0,
@@ -676,6 +773,8 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             debugInfo.previousDayFilteredNews = filteredCount;
             console.log(`[Scheduled] Filtered ${filteredCount} repeated news items from previous daily ${previousDate}.`);
         }
+
+        await applyMonthlyGithubProjectTopReplayFilter(env, dateStr, allUnifiedData, debugInfo);
 
         const fetchPromises = [];
         for (const sourceType in dataSources) {
@@ -1100,6 +1199,11 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
             }
         }
     }
+
+    if (options.applyMonthlyGithubTopProjectFilter) {
+        await applyMonthlyGithubProjectTopReplayFilter(env, dateStr, allUnifiedData, debugInfo);
+    }
+
     debugInfo.sourceItemCountsAfterReplayFilter = countUnifiedDataItems(allUnifiedData);
 
     if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
@@ -1796,6 +1900,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectionDiagnostics,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
+        applyMonthlyGithubTopProjectFilter: true,
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.dailyFunCandidateItems = Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0;
