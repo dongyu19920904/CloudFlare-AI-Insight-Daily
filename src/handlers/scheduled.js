@@ -122,7 +122,7 @@ function getPreviousDates(dateStr, count = 1) {
     return dates;
 }
 
-function getPreviousDatesInSameMonth(dateStr, count = 31) {
+function getPreviousDatesInSameMonth(dateStr, count = 7) {
     const currentMonth = String(dateStr || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(currentMonth)) return [];
 
@@ -327,7 +327,7 @@ async function loadPreviousTopItems(env, dateStr, lookbackDays = 1) {
     return { previousDate, items: firstPreviousTopItems, allItems: dedupedReplayItems };
 }
 
-async function loadPreviousMonthlyTopItems(env, dateStr, lookbackDays = 31) {
+async function loadPreviousMonthlyTopItems(env, dateStr, lookbackDays = 7) {
     const previousDates = getPreviousDatesInSameMonth(dateStr, lookbackDays);
     const topItems = [];
     let loadedDays = 0;
@@ -378,7 +378,7 @@ async function applyMonthlyGithubProjectTopReplayFilter(env, dateStr, allUnified
 
     const monthlyLookbackDays = Math.max(
         1,
-        Number.parseInt(env.DAILY_GITHUB_PROJECT_MONTHLY_LOOKBACK_DAYS || '31', 10) || 31
+        Number.parseInt(env.DAILY_GITHUB_PROJECT_MONTHLY_LOOKBACK_DAYS || '7', 10) || 7
     );
     const previousMonthlyTopItems = await loadPreviousMonthlyTopItems(env, dateStr, monthlyLookbackDays);
     const {

@@ -46,6 +46,7 @@ PROJECTS_API_URL = ""
 GITHUB_PROJECT_SEARCH_DAYS = "7"
 GITHUB_PROJECT_SEARCH_LIMIT = "10"
 GITHUB_PROJECT_SEARCH_QUERIES = "\"claude code\" in:name,description stars:>10|cursor in:name,description stars:>20|windsurf in:name,description stars:>10|cline in:name,description stars:>20|\"roo code\" in:name,description stars:>10|opencode in:name,description stars:>10|\"mcp server\" in:name,description stars:>20|\"solo founder\" in:name,description stars:>1"
+DAILY_GITHUB_PROJECT_MONTHLY_LOOKBACK_DAYS = "7"
 
 MAX_ITEMS_PER_TYPE = "50"
 MAX_ITEMS_PAPER = "8"
