@@ -29,6 +29,110 @@ function parseSearchQueries(env, pushedAfter) {
     });
 }
 
+function decodeHtml(text) {
+    return String(text || '')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)));
+}
+
+function stripTags(html) {
+    return decodeHtml(String(html || '').replace(/<[^>]+>/g, ' '))
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function parseNumberText(text) {
+    const normalized = String(text || '').replace(/,/g, '').trim();
+    const parsed = parseInt(normalized, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isAiRelatedProject(project) {
+    const text = [
+        project?.name || '',
+        project?.owner || '',
+        project?.description || '',
+        project?.language || '',
+    ].join(' ');
+
+    return (
+        /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic|prompt|prompts|transformer|diffusion|embedding|inference|fine[-\s]?tuning|vibe\s*cod(?:e|ing))\b/i.test(text) ||
+        /\b(machine learning|deep learning|computer vision|natural language|neural network|generative|autonomous agent)\b/i.test(text) ||
+        /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|推理|训练|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI编程|智能编程|模型|寒武纪/i.test(text)
+    );
+}
+
+export function parseGithubTrendingHtml(html, limit = 25) {
+    const projects = [];
+    const seen = new Set();
+    const articleRegex = /<article\b[\s\S]*?<\/article>/gi;
+
+    for (const articleMatch of String(html || '').matchAll(articleRegex)) {
+        const article = articleMatch[0];
+        const repoLinkMatch = article.match(/<h2\b[\s\S]*?<a\b[^>]*href="\/([^"\/]+)\/([^"\/]+)"[^>]*>([\s\S]*?)<\/a>/i);
+        if (!repoLinkMatch) continue;
+
+        const owner = decodeHtml(repoLinkMatch[1]).trim();
+        const name = decodeHtml(repoLinkMatch[2]).trim();
+        const repoKey = `${owner.toLowerCase()}/${name.toLowerCase()}`;
+        if (!owner || !name || seen.has(repoKey)) continue;
+
+        const descriptionMatch = article.match(/<p\b[^>]*class="[^"]*color-fg-muted[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
+        const languageMatch = article.match(/itemprop="programmingLanguage"[^>]*>([\s\S]*?)<\/span>/i);
+        const totalStarsMatch = article.match(/\/stargazers"[^>]*>[\s\S]*?<\/svg>\s*([\d,]+)/i);
+        const forksMatch = article.match(/\/forks"[^>]*>[\s\S]*?<\/svg>\s*([\d,]+)/i);
+        const starsTodayMatch = article.match(/([\d,]+)\s+stars\s+today/i);
+
+        seen.add(repoKey);
+        projects.push({
+            name,
+            owner,
+            url: `https://github.com/${owner}/${name}`,
+            description: stripTags(descriptionMatch?.[1] || ''),
+            language: stripTags(languageMatch?.[1] || ''),
+            languageColor: '',
+            totalStars: parseNumberText(totalStarsMatch?.[1] || ''),
+            forks: parseNumberText(forksMatch?.[1] || ''),
+            starsToday: parseNumberText(starsTodayMatch?.[1] || ''),
+            builtBy: [],
+            source: 'GitHub Trending Daily',
+            sourceKind: 'trending-daily',
+        });
+
+        if (projects.length >= limit) break;
+    }
+
+    return projects;
+}
+
+async function fetchGithubTrendingDailyProjects(env) {
+    const limit = Math.max(1, Number.parseInt(env.GITHUB_PROJECT_SEARCH_LIMIT || '10', 10) || 10);
+    const trendingUrl = String(env.GITHUB_TRENDING_DAILY_URL || 'https://github.com/trending?since=daily').trim();
+
+    console.log(`Fetching GitHub daily trending projects from: ${trendingUrl}`);
+    const response = await fetch(trendingUrl, {
+        headers: {
+            'Accept': 'text/html,application/xhtml+xml',
+            'User-Agent': 'AI-Insight-Daily-Worker',
+        },
+    });
+
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`GitHub Trending page returned ${response.status}: ${body.slice(0, 200)}`);
+    }
+
+    const html = await response.text();
+    return parseGithubTrendingHtml(html, 50)
+        .filter(isAiRelatedProject)
+        .slice(0, limit);
+}
+
 async function fetchGithubSearchProjects(env) {
     const limit = Math.max(1, Number.parseInt(env.GITHUB_PROJECT_SEARCH_LIMIT || '10', 10) || 10);
     const pushedAfter = getDateDaysAgo(env.GITHUB_PROJECT_SEARCH_DAYS || '7');
@@ -79,6 +183,8 @@ async function fetchGithubSearchProjects(env) {
                 builtBy: [],
                 pushedAt: repo.pushed_at,
                 createdAt: repo.created_at,
+                source: 'GitHub Search',
+                sourceKind: 'search',
             });
             if (projects.length >= limit) break;
         }
@@ -102,21 +208,39 @@ async function fetchConfiguredProjects(env) {
 const ProjectsDataSource = {
     fetch: async (env) => {
         let projects = [];
+        let searchProjects = [];
 
         try {
             projects = await fetchConfiguredProjects(env);
         } catch (error) {
-            console.warn(`Configured GitHub trending source failed, falling back to GitHub Search API: ${error.message}`);
+            console.warn(`Configured GitHub project source failed, falling back to GitHub daily trending: ${error.message}`);
         }
 
         if (!Array.isArray(projects) || projects.length === 0) {
             try {
-                projects = await fetchGithubSearchProjects(env);
+                projects = await fetchGithubTrendingDailyProjects(env);
             } catch (error) {
-                console.error('Error fetching projects from GitHub Search API:', error.message);
-                return { error: 'Failed to fetch projects data', details: error.message, items: [] };
+                console.error('Error fetching projects from GitHub daily trending:', error.message);
+                projects = [];
             }
         }
+
+        if (String(env.GITHUB_PROJECT_SEARCH_ENABLE || 'true').toLowerCase() !== 'false') {
+            try {
+                searchProjects = await fetchGithubSearchProjects(env);
+            } catch (error) {
+                console.warn('GitHub Search project supplement failed:', error.message);
+                searchProjects = [];
+            }
+        }
+
+        const seenUrls = new Set();
+        projects = [...(projects || []), ...(searchProjects || [])].filter((project) => {
+            const url = String(project?.url || '').toLowerCase();
+            if (!url || seenUrls.has(url)) return false;
+            seenUrls.add(url);
+            return true;
+        });
 
         if (!Array.isArray(projects) || projects.length === 0) {
             console.log('No projects fetched.');
@@ -179,7 +303,7 @@ JSON Array of Chinese Translations:`;
                     description: project.description_zh || project.description || '',
                     published_date: project.pushedAt || project.createdAt || now,
                     authors: project.owner ? [project.owner] : [],
-                    source: 'GitHub Search',
+                    source: project.source || 'GitHub Search',
                     details: {
                         owner: project.owner,
                         name: project.name,
@@ -189,6 +313,7 @@ JSON Array of Chinese Translations:`;
                         forks: project.forks,
                         starsToday: project.starsToday,
                         builtBy: project.builtBy || [],
+                        sourceKind: project.sourceKind || (project.source === 'GitHub Trending Daily' ? 'trending-daily' : 'search'),
                     },
                 });
             });

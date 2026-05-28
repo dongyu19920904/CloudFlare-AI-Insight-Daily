@@ -102,6 +102,9 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
   assert.match(prompt, /不能进入 TOP 10/);
   assert.match(prompt, /Placement Hint: This is a welfare\/freebie item/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
+  assert.match(prompt, /Source: GitHub Trending Daily/);
+  assert.match(prompt, /TOP 里的 GitHub 项目只能来自当天日榜/);
+  assert.match(prompt, /来自 `GitHub Search`/);
   assert.match(prompt, /## \*\*📌 值得关注\*\*/);
   assert.match(prompt, /不要在标题里写/);
   assert.doesNotMatch(prompt, /值得关注（\d/);

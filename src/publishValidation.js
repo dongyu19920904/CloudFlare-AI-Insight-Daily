@@ -8,6 +8,8 @@ const COMMON_FAILURE_PATTERNS = [
   /无法生成/i,
 ];
 
+import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+
 const DAILY_META_PATTERNS = [
   /AI思考:?/i,
   /我看了一下(今天|这批)?素材/,
@@ -367,6 +369,12 @@ function collectDuplicateTopicsBySection(sectionMap) {
 function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const issues = [];
   const minimumTopItems = Math.max(0, Number(options.minimumTopItems) || 0);
+  const enforceTopGithubProjectAllowlist = Boolean(options.enforceTopGithubProjectAllowlist);
+  const allowedTopGithubProjectKeys = new Set(
+    (options.allowedTopGithubProjectUrls || [])
+      .map((url) => normalizeGithubProjectUrl(url))
+      .filter(Boolean)
+  );
   const faqHeadingPattern = /^##\s*\*\*❓\s*相关问题(?:（仅1条）)?\*\*/im;
   const topSection = extractSection(pageMarkdown, /^##\s*\*\*.*TOP.*\*\*/im);
 
@@ -427,6 +435,17 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   if (topItems.some((item) => isWelfareContext(item.context, item.url))) {
     issues.push("Daily welfare/freebie items should stay in watch section, not TOP");
+  }
+
+  if (enforceTopGithubProjectAllowlist) {
+    const disallowedGithubTopProject = topItems.some((item) => {
+      const urlKey = normalizeGithubProjectUrl(item.url);
+      if (!urlKey) return false;
+      return !allowedTopGithubProjectKeys.has(urlKey);
+    });
+    if (disallowedGithubTopProject) {
+      issues.push("Daily TOP GitHub project must come from today's GitHub Trending Daily candidates");
+    }
   }
 
   if (topItems.some((item) => isKnownNonAiTopTopic(item))) {
@@ -525,6 +544,8 @@ export function validateDailyPublication({
   summaryText,
   pageMarkdown,
   minimumTopItems = 0,
+  allowedTopGithubProjectUrls = [],
+  enforceTopGithubProjectAllowlist = false,
 }) {
   const collectedIssues = [
     ...collectMarkdownIssues(summaryText, {
@@ -542,7 +563,11 @@ export function validateDailyPublication({
       ],
       forbiddenPatterns: DAILY_META_PATTERNS,
     }),
-    ...collectDailyStructureIssues(pageMarkdown, { minimumTopItems }),
+    ...collectDailyStructureIssues(pageMarkdown, {
+      minimumTopItems,
+      allowedTopGithubProjectUrls,
+      enforceTopGithubProjectAllowlist,
+    }),
   ];
 
   const issues = collectedIssues.filter((issue) => !isSoftDailyPublicationIssue(issue));

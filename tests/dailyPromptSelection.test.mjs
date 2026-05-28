@@ -21,8 +21,8 @@ function buildProjectItem(index) {
   return {
     type: "project",
     title: `Project ${index}`,
-    description: `Project description ${index}`,
-    source: "GitHub Trending",
+    description: `AI agent project description ${index}`,
+    source: "GitHub Trending Daily",
     url: `https://github.com/example/project-${index}`,
     published_date: "2026-04-06",
     details: {
@@ -30,7 +30,8 @@ function buildProjectItem(index) {
       language: "TypeScript",
       starsToday: 100 + index,
       totalStars: 1000 + index,
-      content_html: `<p>Project ${index} workflow template release</p>`,
+        sourceKind: "trending-daily",
+        content_html: `<p>Project ${index} AI agent workflow template release</p>`,
     },
   };
 }
@@ -70,7 +71,12 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   assert.equal(result.selectedCounts.project, 2);
   assert.equal(result.selectedCounts.socialMedia, 1);
   assert.match(result.selectedContentItems.join("\n"), /Project Name:/);
+  assert.match(result.selectedContentItems.join("\n"), /Source: GitHub Trending Daily/);
   assert.match(result.selectedContentItems.join("\n"), /Stars Today:/);
+  assert.deepEqual(result.allowedTopGithubProjectUrls.sort(), [
+    "https://github.com/example/project-1",
+    "https://github.com/example/project-2",
+  ]);
 });
 
 test("buildDailyPromptSelection keeps default project candidates from flooding the prompt", () => {
@@ -106,6 +112,45 @@ test("buildDailyPromptSelection treats project-like news as part of the project 
   const selectedText = result.selectedContentItems.join("\n");
   assert.match(selectedText, /Project Name:/);
   assert.doesNotMatch(selectedText, /ColaMD/i);
+});
+
+test("buildDailyPromptSelection only allows AI-related daily trending projects for TOP", () => {
+  const searchProject = buildProjectItem(1);
+  searchProject.title = "Claude helper from search";
+  searchProject.source = "GitHub Search";
+  searchProject.details.sourceKind = "search";
+
+  const nonAiTrendingProject = buildProjectItem(2);
+  nonAiTrendingProject.title = "invoice-exporter";
+  nonAiTrendingProject.description = "A small accounting CSV export utility.";
+  nonAiTrendingProject.details.content_html = "<p>A small accounting CSV export utility.</p>";
+
+  const aiTrendingProject = buildProjectItem(3);
+  aiTrendingProject.title = "mcp-agent-workbench";
+  aiTrendingProject.description = "AI agent workbench for testing MCP server workflows.";
+
+  const result = buildDailyPromptSelection(
+    {
+      news: Array.from({ length: 2 }, (_, index) => buildNewsItem(index + 1)),
+      project: [searchProject, nonAiTrendingProject, aiTrendingProject],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 4,
+      DAILY_PROMPT_NEWS_ITEMS: 2,
+      DAILY_PROMPT_PROJECT_ITEMS: 2,
+      DAILY_PROMPT_PROJECT_HARD_CAP: 2,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.match(promptText, /mcp-agent-workbench/);
+  assert.doesNotMatch(promptText, /Claude helper from search/);
+  assert.doesNotMatch(promptText, /invoice-exporter/);
+  assert.deepEqual(result.allowedTopGithubProjectUrls, ["https://github.com/example/project-3"]);
 });
 
 test("buildDailyPromptSelection keeps one major AI vendor from flooding the prompt", () => {

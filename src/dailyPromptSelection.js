@@ -212,14 +212,16 @@ function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
 
 function hasAiRelevanceSignal(text) {
   return (
-    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(text) ||
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic|prompt|prompts|transformer|diffusion|embedding|inference|fine[-\s]?tuning|vibe\s*cod(?:e|ing))\b/i.test(text) ||
+    /\b(machine learning|deep learning|computer vision|natural language|neural network|generative|autonomous agent)\b/i.test(text) ||
     /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|推理|训练|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|寒武纪|Vibe Coding/i.test(text)
   );
 }
 
 function hasStrongAiRelevanceSignal(text) {
   return (
-    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic)\b/i.test(text) ||
+    /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic|prompt|prompts|transformer|diffusion|embedding|inference|fine[-\s]?tuning|vibe\s*cod(?:e|ing))\b/i.test(text) ||
+    /\b(machine learning|deep learning|computer vision|natural language|neural network|generative|autonomous agent)\b/i.test(text) ||
     /人工智能|大模型|生成式|智能体|多模态|机器学习|深度学习|神经网络|算力|提示词|开源模型|本地模型|AI原生|AI化|AI产品|AI工具|AI生图|AI芯片|寒武纪|Vibe Coding/i.test(text)
   );
 }
@@ -242,7 +244,17 @@ function hasNonAiTopicNoise(text) {
 }
 
 function isAiRelevantDailyPromptCandidate(candidate) {
-  if (candidate?.sourceType === "project" || candidate?.sourceType === "paper") {
+  if (candidate?.sourceType === "project") {
+    return isDailyTrendingProjectCandidate(candidate) && hasAiRelevanceSignal([
+      candidate?.title || "",
+      candidate?.description || "",
+      candidate?.plainText || "",
+      candidate?.source || "",
+      candidate?.url || "",
+    ].join(" "));
+  }
+
+  if (candidate?.sourceType === "paper") {
     return true;
   }
 
@@ -273,6 +285,13 @@ function isAiRelevantDailyPromptCandidate(candidate) {
   ].join(" ");
 
   return hasAiRelevanceSignal(text);
+}
+
+function isDailyTrendingProjectCandidate(candidate) {
+  if (candidate?.sourceType !== "project") return false;
+  if (candidate?.isDailyTrendingProject) return true;
+  return /GitHub\s+Trending/i.test(String(candidate?.source || "")) &&
+    !/GitHub\s+Search/i.test(String(candidate?.source || ""));
 }
 
 function isWelfareCandidateText(text) {
@@ -363,7 +382,12 @@ function buildDailyPromptCandidate(item) {
       itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
       break;
     case "project":
-      itemText = `Project Name: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nOwner: ${item.details?.owner || "Unknown"}\nLanguage: ${item.details?.language || "Unknown"}\nStars Today: ${item.details?.starsToday || "Unknown"}\nTotal Stars: ${item.details?.totalStars || "Unknown"}\nDescription: ${truncatePromptText(item.description)}`;
+      itemText = `Project Name: ${item.title}\nSource: ${item.source || "Unknown"}\nPublished: ${item.published_date}\nUrl: ${item.url}\nOwner: ${item.details?.owner || "Unknown"}\nLanguage: ${item.details?.language || "Unknown"}\nStars Today: ${item.details?.starsToday || "Unknown"}\nTotal Stars: ${item.details?.totalStars || "Unknown"}\nDescription: ${truncatePromptText(item.description)}`;
+      if (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) {
+        itemText += "\nPlacement Hint: This project is from today's GitHub daily trending list and may enter TOP only if it is clearly AI-related and not used in the last 7 days.";
+      } else {
+        itemText += "\nPlacement Hint: This project is not from today's GitHub daily trending list. Do not put it in TOP.";
+      }
       break;
     case "paper":
       itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
@@ -409,6 +433,10 @@ function buildDailyPromptCandidate(item) {
     plainText: plainTextContent,
     placeholders: mediaPlaceholders,
     isWelfare,
+    isDailyTrendingProject:
+      item.type === "project" &&
+      (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) &&
+      !/GitHub\s+Search/i.test(String(item.source || "")),
     searchText: [item.title, item.description, item.source, plainTextContent].filter(Boolean).join(" "),
     matchTokens: extractMatchTokens({
       title: item.title,
@@ -597,11 +625,16 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const totalCandidateCount = Object.values(candidateCounts).reduce((count, sourceCount) => count + sourceCount, 0);
   const orderedSelectedCandidates = orderSelectedDailyPromptCandidates(selectedCandidates);
   const selectedMediaCount = orderedSelectedCandidates.filter((candidate) => candidate.itemHasMedia).length;
+  const allowedTopGithubProjectUrls = orderedSelectedCandidates
+    .filter((candidate) => isDailyTrendingProjectCandidate(candidate))
+    .map((candidate) => candidate.url)
+    .filter(Boolean);
   const dailyFunCandidateLimit = parsePositiveInt(env.DAILY_FUN_FALLBACK_CANDIDATES, 12);
   const dailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
 
   return {
     selectedContentItems: orderedSelectedCandidates.map((candidate) => candidate.itemText),
+    allowedTopGithubProjectUrls,
     dailyFunContentItems: dailyFunCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,
     itemsWithMedia,

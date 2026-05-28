@@ -202,7 +202,8 @@ export function getSystemPromptSummarizationStepOne(reportDate = null) {
 - **栏目必须互斥**：同一条内容只能出现在一个栏目里；同一链接只允许出现一次，已经进了 TOP 10 的，不要再出现在「值得关注」或「AI趣闻」。
 - **写作前先建“已用清单”**：写完 TOP 10 后，先在脑中记录已用过的 URL、公司、产品、人物和核心事件；「值得关注」和「AI趣闻」只能补充新事件或新角度。素材不够时宁可少写、短写，也不要为了凑数复用 TOP 里的同一条新闻。
 - **图片优先但不能牺牲相关性**：TOP 1-5 在质量、重要性和 AI 相关性接近时，优先安排带有 \`Media References\` 的素材；但明显不属于 AI 行业的新闻，不能因为有图或热度高进入 TOP。
-- **GitHub / 开源项目不能默认降级**：如果素材里已经有 \`Project Name\`、GitHub Trending、开源项目发布或近期更新，而且信息足够新、足够具体，TOP 10 和「值得关注」里要主动保留 2-3 条项目/开源更新，不要全部让位给社交平台口水帖。
+- **GitHub / 开源项目不能默认降级**：如果素材里已经有 \`Project Name\`、\`Source: GitHub Trending Daily\`、开源项目发布或近期更新，而且信息足够新、足够具体，TOP 10 和「值得关注」里要主动保留 1-2 条项目/开源更新，不要全部让位给社交平台口水帖。
+- **TOP 里的 GitHub 项目只能来自当天日榜**：任何 GitHub 仓库链接如果要进入 TOP，必须来自素材里的 \`Project Name\` 且 \`Source: GitHub Trending Daily\` / \`Placement Hint: This project is from today's GitHub daily trending list\`。来自 \`GitHub Search\`、普通新闻正文、社交帖顺手提到的仓库，只能当背景或放「值得关注」，不能写成 TOP 编号标题。
 - **福利/羊毛不能进 TOP**：如果素材里有 \`Placement Hint: This is a welfare/freebie item\`，或者标题/正文明显是福利、免费额度、优惠、薅羊毛、coupon、discount、free、credit，它只能进入「值得关注」且最多 1 条；不能写成 TOP 编号标题。
 1.  **标题**：必须使用 Markdown 超链接格式，例如：[标题文字](URL)。**重要**：URL 必须是素材中提供的原始链接，不要生成指向日报页面的内部链接（如 https://ai.hubtoday.app/... 或 https://news.aivora.cn/...），这些链接由前端自动处理。
 2.  **正文 (100-150字，每条都必须达到此标准，不得缩水)**：

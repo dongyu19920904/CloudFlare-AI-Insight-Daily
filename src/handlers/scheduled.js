@@ -44,6 +44,13 @@ import {
     validateAccountOpportunityPublication,
     validateOpportunityPublication,
 } from '../publishValidation.js';
+import {
+    extractGithubTopProjectsFromMarkdown,
+    filterGithubProjectsAgainstRecentTop,
+    loadRecentGithubTopProjects,
+    mergeRecentGithubTopProjects,
+    storeRecentGithubTopProjects,
+} from '../githubTopProjectDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
 
@@ -464,6 +471,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- `## **😄 AI趣闻` 是可选栏目；如果能从【AI趣闻专用候选素材】里写出完整趣闻，就输出 1 条；如果写不出完整、有来源链接的趣闻，就省略整个 AI趣闻栏目，不要只输出空标题",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里保留 1 条短提醒",
+        "- 任何 GitHub 仓库链接如果要进入 TOP，必须来自素材里的 `Source: GitHub Trending Daily` 或 `Placement Hint: This project is from today's GitHub daily trending list`；来自 GitHub Search、普通新闻、社交帖的仓库链接不能进 TOP",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
@@ -1103,6 +1111,19 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     }
     debugInfo.sourceItemCountsAfterReplayFilter = countUnifiedDataItems(allUnifiedData);
 
+    if (options.applyGithubTopProjectDedupe && Array.isArray(allUnifiedData.project)) {
+        const recentGithubTopProjects = await loadRecentGithubTopProjects(env.DATA_KV);
+        const { filteredItems, filteredCount } = filterGithubProjectsAgainstRecentTop(
+            allUnifiedData.project,
+            recentGithubTopProjects,
+            dateStr,
+            env.DAILY_GITHUB_TOP_PROJECT_DEDUPE_DAYS || 7
+        );
+        allUnifiedData.project = filteredItems;
+        debugInfo.recentGithubTopProjectCount = recentGithubTopProjects.length;
+        debugInfo.recentGithubTopProjectFiltered = filteredCount;
+    }
+
     if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
         const fetchPromises = [];
         for (const sourceType in dataSources) {
@@ -1156,6 +1177,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
         minimumTopItems: options.minimumTopItems || 0,
+        allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
+        enforceTopGithubProjectAllowlist: true,
     });
 
     if (!validation.ok) {
@@ -1196,6 +1219,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             summaryText: repairedOutputOfCall3,
             pageMarkdown: repairedDailySummaryMarkdownContent,
             minimumTopItems: options.minimumTopItems || 0,
+            allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
+            enforceTopGithubProjectAllowlist: true,
         });
 
         outputOfCall2 = repairedOutputOfCall2;
@@ -1691,6 +1716,29 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
     );
 }
 
+async function storePublishedDailyGithubTopProjects(env, dateStr, dailySummaryMarkdownContent, debugInfo) {
+    const newRecords = extractGithubTopProjectsFromMarkdown(dailySummaryMarkdownContent, dateStr);
+    debugInfo.dailyTopGithubProjectCount = newRecords.length;
+    if (newRecords.length === 0) return;
+
+    try {
+        const existingRecords = await loadRecentGithubTopProjects(env.DATA_KV);
+        const mergedRecords = mergeRecentGithubTopProjects(
+            existingRecords,
+            newRecords,
+            dateStr,
+            env.DAILY_GITHUB_TOP_PROJECT_DEDUPE_DAYS || 7
+        );
+        await storeRecentGithubTopProjects(env.DATA_KV, mergedRecords);
+        debugInfo.dailyTopGithubProjectDedupeStored = true;
+        debugInfo.dailyTopGithubProjectRecentCount = mergedRecords.length;
+    } catch (error) {
+        debugInfo.dailyTopGithubProjectDedupeStored = false;
+        debugInfo.dailyTopGithubProjectDedupeError = error.message;
+        console.warn(`[Scheduled][Daily] Failed to store GitHub TOP project dedupe records: ${error.message}`);
+    }
+}
+
 function extractHomeNextPath(markdownContent) {
     const match = String(markdownContent || '').match(/^next:\s*(\S+)\s*$/m);
     return match?.[1] || '';
@@ -1795,8 +1843,10 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         totalCandidateCount,
         selectedCounts,
         selectionDiagnostics,
+        allowedTopGithubProjectUrls,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
+        applyGithubTopProjectDedupe: true,
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.dailyFunCandidateItems = Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0;
@@ -1813,6 +1863,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         {
             minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
             dailyFunContentItems,
+            allowedTopGithubProjectUrls,
         }
     );
 
@@ -1820,6 +1871,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
         minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+        allowedTopGithubProjectUrls,
+        enforceTopGithubProjectAllowlist: true,
     });
     debugInfo.dailyValidationPassed = validation.ok;
     debugInfo.dailyValidationIssues = validation.issues;
@@ -1830,6 +1883,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     }
 
     await commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent);
+    await storePublishedDailyGithubTopProjects(env, dateStr, dailySummaryMarkdownContent, debugInfo);
     debugInfo.dailyPublished = true;
     return debugInfo;
 }

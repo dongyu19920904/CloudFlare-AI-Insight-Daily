@@ -781,6 +781,99 @@ test("validateOpportunityPublication accepts the lighter daily-style opportunity
   assert.deepEqual(result.issues, []);
 });
 
+test("validateDailyPublication enforces daily trending allowlist for GitHub TOP projects", () => {
+  const markdown = [
+    "## **今日摘要**",
+    "",
+    "```",
+    "今天 GitHub 项目很多，但 TOP 只能用当天日榜里的 AI 相关项目。",
+    "```",
+    "",
+    "## ⚡ 快速导航",
+    "",
+    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "",
+    "## **今日AI资讯**",
+    "",
+    "### **👀 只有一句话**",
+    "Claude Code 生态继续升温。",
+    "",
+    "### **🔑 3 个关键词**",
+    "#ClaudeCode #GitHub日榜 #AI项目",
+    "",
+    "## **🔥 重磅 TOP 1**",
+    "",
+    "### 1. [Search 里来的 Claude 项目](https://github.com/example/search-only)",
+    "这条仓库链接不是当天 GitHub 日榜候选，不能写进 TOP。这里补足正文长度，让校验聚焦在来源限制上。",
+    "",
+    "## **📌 值得关注**",
+    "",
+    "- **[产品]** [一个补充动态](https://example.com/watch-1) - 这条补充动态没有和 TOP 重复。",
+    "",
+    "## **❓ 相关问题**",
+    "",
+    "### 如何体验 Claude Code？",
+    "可以访问 [爱窝啦 Aivora](https://aivora.cn) 获取账号支持，适合国内用户快速体验。",
+  ].join("\n");
+
+  const result = validateDailyPublication({
+    summaryText: "今天 GitHub 项目很多，但 TOP 只能用当天日榜里的 AI 相关项目。",
+    pageMarkdown: markdown,
+    minimumTopItems: 1,
+    allowedTopGithubProjectUrls: ["https://github.com/example/daily-trending"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /GitHub project must come from today's GitHub Trending Daily/i);
+});
+
+test("validateDailyPublication accepts allowlisted daily trending GitHub TOP project", () => {
+  const markdown = [
+    "## **今日摘要**",
+    "",
+    "```",
+    "今天 GitHub 日榜里出现了一个 AI 编程项目，值得开发者关注。",
+    "```",
+    "",
+    "## ⚡ 快速导航",
+    "",
+    "- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览",
+    "",
+    "## **今日AI资讯**",
+    "",
+    "### **👀 只有一句话**",
+    "Claude Code 生态继续升温。",
+    "",
+    "### **🔑 3 个关键词**",
+    "#ClaudeCode #GitHub日榜 #AI项目",
+    "",
+    "## **🔥 重磅 TOP 1**",
+    "",
+    "### 1. [日榜里的 Claude 项目](https://github.com/example/daily-trending)",
+    "这条仓库来自当天 GitHub 日榜候选，主题也直接指向 AI 编程工具。它适合进入 TOP，而不是从搜索结果里反复抓老项目。这里补足正文长度，保证页面结构完整。",
+    "",
+    "## **📌 值得关注**",
+    "",
+    "- **[产品]** [一个补充动态](https://example.com/watch-1) - 这条补充动态没有和 TOP 重复。",
+    "",
+    "## **❓ 相关问题**",
+    "",
+    "### 如何体验 Claude Code？",
+    "可以访问 [爱窝啦 Aivora](https://aivora.cn) 获取账号支持，适合国内用户快速体验。",
+  ].join("\n");
+
+  const result = validateDailyPublication({
+    summaryText: "今天 GitHub 日榜里出现了一个 AI 编程项目，值得开发者关注。",
+    pageMarkdown: markdown,
+    minimumTopItems: 1,
+    allowedTopGithubProjectUrls: ["https://github.com/example/daily-trending"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test("validateOpportunityPublication requires source-linked section titles", () => {
   const result = validateOpportunityPublication({
     markdown: `# 今日AI商机
