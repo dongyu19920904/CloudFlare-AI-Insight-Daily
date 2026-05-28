@@ -463,6 +463,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **❓ 相关问题**`",
         "- `## **😄 AI趣闻` 是可选栏目；如果能从【AI趣闻专用候选素材】里写出完整趣闻，就输出 1 条；如果写不出完整、有来源链接的趣闻，就省略整个 AI趣闻栏目，不要只输出空标题",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
+        "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里保留 1 条短提醒",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",

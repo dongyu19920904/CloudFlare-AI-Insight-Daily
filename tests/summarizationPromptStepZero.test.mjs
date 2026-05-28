@@ -98,6 +98,9 @@ test("daily prompt requires numbered Top items, section exclusivity, and GitHub 
   assert.match(prompt, /明显不属于 AI 行业的新闻/);
   assert.match(prompt, /TOP 10 必须是 AI 直接主题/);
   assert.match(prompt, /任天堂\/Switch 涨价/);
+  assert.match(prompt, /福利\/羊毛硬规则/);
+  assert.match(prompt, /不能进入 TOP 10/);
+  assert.match(prompt, /Placement Hint: This is a welfare\/freebie item/);
   assert.match(prompt, /GitHub|Project Name|开源项目/);
   assert.match(prompt, /## \*\*📌 值得关注\*\*/);
   assert.match(prompt, /不要在标题里写/);

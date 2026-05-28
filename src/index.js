@@ -393,6 +393,7 @@ export default {
             const specifiedDate = getSpecifiedDate(url);
             const requestedMode = url.searchParams.get('mode');
             const runAsync = url.searchParams.get('async') === '1';
+            const runStream = url.searchParams.get('stream') === '1';
             const mode =
                 path === '/testTriggerScheduledDaily'
                     ? 'daily'
@@ -404,6 +405,70 @@ export default {
                         ? requestedMode
                         : 'daily';
             try {
+                if (runStream) {
+                    const encoder = new TextEncoder();
+                    const stream = new ReadableStream({
+                        start(controller) {
+                            const write = (payload) => {
+                                controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
+                            };
+                            const startedAt = new Date().toISOString();
+                            write({
+                                success: true,
+                                state: 'running',
+                                mode,
+                                date: specifiedDate || 'current date',
+                                startedAt,
+                            });
+
+                            const heartbeat = setInterval(() => {
+                                write({
+                                    state: 'running',
+                                    mode,
+                                    date: specifiedDate || 'current date',
+                                    heartbeatAt: new Date().toISOString(),
+                                });
+                            }, 15000);
+
+                            runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger-stream')
+                                .then((debug) => {
+                                    write({
+                                        success: true,
+                                        state: 'success',
+                                        message: `Scheduled ${mode} task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
+                                        mode,
+                                        date: specifiedDate || 'current date',
+                                        finishedAt: new Date().toISOString(),
+                                        debug: debug || null,
+                                    });
+                                })
+                                .catch((error) => {
+                                    write({
+                                        success: false,
+                                        state: 'error',
+                                        error: error?.message || String(error),
+                                        stack: error?.stack ? String(error.stack) : '',
+                                        mode,
+                                        date: specifiedDate || 'current date',
+                                        finishedAt: new Date().toISOString(),
+                                    });
+                                })
+                                .finally(() => {
+                                    clearInterval(heartbeat);
+                                    controller.close();
+                                });
+                        },
+                    });
+
+                    return new Response(stream, {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'application/x-ndjson; charset=utf-8',
+                            'Cache-Control': 'no-store',
+                        },
+                    });
+                }
+
                 if (runAsync) {
                     const statusKey = await queueScheduledMode(ctx, env, mode, specifiedDate);
                     return new Response(JSON.stringify({

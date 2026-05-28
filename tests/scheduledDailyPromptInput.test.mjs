@@ -45,3 +45,29 @@ test("buildDailyGenerationPromptInput does not duplicate fun candidates already 
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
   assert.equal(promptInput.match(/2058786114882900133/g)?.length, 1);
 });
+
+test("buildDailyGenerationPromptInput isolates welfare items to watch-only candidates", () => {
+  const normalItem = [
+    "News Title: Claude Code 更新计划模式",
+    "Published: 2026-05-28",
+    "Url: https://example.com/claude-code-plan",
+    "Content Summary: Claude Code 增加新的代码规划能力。",
+  ].join("\n");
+  const welfareItem = [
+    "News Title: LinuxDo 每日薅羊毛：一个 AI credit 福利",
+    "Published: 2026-05-28",
+    "Url: https://linux.do/t/free-ai-credit",
+    "Content Summary: 一个限时 AI credit 福利，适合今天领取。",
+    "Placement Hint: This is a welfare/freebie item. Put at most one such item in 值得关注, not TOP.",
+  ].join("\n");
+
+  const promptInput = buildDailyGenerationPromptInput([normalItem, welfareItem], []);
+  const primaryBlock = promptInput.split("【值得关注专用候选素材】")[0];
+  const watchOnlyBlock = promptInput.split("【值得关注专用候选素材】")[1] || "";
+
+  assert.match(primaryBlock, /Claude Code 更新计划模式/);
+  assert.doesNotMatch(primaryBlock, /LinuxDo 每日薅羊毛/);
+  assert.match(watchOnlyBlock, /LinuxDo 每日薅羊毛/);
+  assert.match(watchOnlyBlock, /最多选 1 条/);
+  assert.match(watchOnlyBlock, /严禁把这些素材写进 `## \*\*🔥 重磅 TOP 10\*\*`/);
+});

@@ -776,7 +776,12 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
                     message = message.trim();
                 }
 
-                if (message === "" || message === "[DONE]") {
+                if (message === "") {
+                    continue;
+                }
+
+                if (message === "[DONE]") {
+                    if (hasYieldedContent) return;
                     continue;
                 }
                 
@@ -1243,8 +1248,9 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
         let buffer = '';
         let hasYieldedContent = false;
         let currentBlockType = null;
+        let streamCompleted = false;
 
-        while (true) {
+        while (!streamCompleted) {
             const { done, value } = await reader.read();
             if (done) break;
 
@@ -1255,7 +1261,10 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
             for (const line of lines) {
                 if (!line.trim() || !line.startsWith('data: ')) continue;
                 const data = line.substring(6).trim();
-                if (data === '[DONE]') continue;
+                if (data === '[DONE]') {
+                    streamCompleted = true;
+                    break;
+                }
 
                 try {
                     const parsed = JSON.parse(data);
@@ -1271,6 +1280,9 @@ async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = n
                         }
                     } else if (parsed.type === 'content_block_stop') {
                         currentBlockType = null;
+                    } else if (parsed.type === 'message_stop') {
+                        streamCompleted = true;
+                        break;
                     } else if (parsed.type === 'error') {
                         throw new Error(`Anthropic stream error: ${parsed.error?.message || 'Unknown'}`);
                     }
