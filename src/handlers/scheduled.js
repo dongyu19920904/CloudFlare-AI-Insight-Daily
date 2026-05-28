@@ -1124,7 +1124,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         debugInfo.recentGithubTopProjectFiltered = filteredCount;
     }
 
-    if (!options.preferCachedData || !debugInfo.usedCachedDailySourceData) {
+    if (!options.skipSourceCacheWrite && (!options.preferCachedData || !debugInfo.usedCachedDailySourceData)) {
         const fetchPromises = [];
         for (const sourceType in dataSources) {
             if (Object.hasOwnProperty.call(dataSources, sourceType)) {
@@ -1830,11 +1830,13 @@ async function handleScheduledBackup(event, env, ctx, specifiedDate = null) {
     return { daily, opportunity, accountOpportunity };
 }
 
-export async function handleScheduledDaily(event, env, ctx, specifiedDate = null) {
+export async function handleScheduledDaily(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily');
-    console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+    const dryRun = Boolean(options.dryRun);
+    debugInfo.dailyDryRun = dryRun;
+    console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 
     const {
         selectedContentItems,
@@ -1847,6 +1849,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
         applyGithubTopProjectDedupe: true,
+        skipSourceCacheWrite: dryRun,
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.dailyFunCandidateItems = Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0;
@@ -1879,6 +1882,13 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.dailyValidationWarnings = validation.warnings || [];
     if (!validation.ok) {
         console.warn(`[Scheduled][Daily] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
+        return debugInfo;
+    }
+
+    if (dryRun) {
+        debugInfo.dailyWouldPublish = true;
+        debugInfo.dailyPublished = false;
+        console.log(`[Scheduled][Daily] Dry-run completed successfully for ${dateStr}; skipping GitHub publish.`);
         return debugInfo;
     }
 

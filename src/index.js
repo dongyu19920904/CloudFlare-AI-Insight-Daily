@@ -195,7 +195,7 @@ async function runScheduledEventWithStatus(event, env, ctx) {
     }
 }
 
-async function runScheduledMode(mode, env, specifiedDate) {
+async function runScheduledMode(mode, env, specifiedDate, options = {}) {
     const fakeEvent = { scheduledTime: Date.now(), cron: '' };
     const fakeCtx = { waitUntil: (promise) => promise };
 
@@ -208,13 +208,13 @@ async function runScheduledMode(mode, env, specifiedDate) {
     }
 
     if (mode === 'daily') {
-        return handleScheduledDaily(fakeEvent, env, fakeCtx, specifiedDate);
+        return handleScheduledDaily(fakeEvent, env, fakeCtx, specifiedDate, options);
     }
 
     return handleScheduled(fakeEvent, env, fakeCtx, specifiedDate, 'all');
 }
 
-async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'manual') {
+async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'manual', options = {}) {
     const date = specifiedDate || getISODate();
     const statusDateOrAlias = specifiedDate || null;
     const startedAt = new Date().toISOString();
@@ -222,6 +222,7 @@ async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'ma
         mode,
         date,
         source,
+        dryRun: Boolean(options.dryRun),
         startedAt,
     };
 
@@ -233,7 +234,7 @@ async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'ma
     });
 
     try {
-        const debug = await runScheduledMode(mode, env, specifiedDate);
+        const debug = await runScheduledMode(mode, env, specifiedDate, options);
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
             ...baseStatus,
             state: 'success',
@@ -394,6 +395,7 @@ export default {
             const requestedMode = url.searchParams.get('mode');
             const runAsync = url.searchParams.get('async') === '1';
             const runStream = url.searchParams.get('stream') === '1';
+            const dryRun = url.searchParams.get('dryRun') === '1';
             const mode =
                 path === '/testTriggerScheduledDaily'
                     ? 'daily'
@@ -405,6 +407,20 @@ export default {
                         ? requestedMode
                         : 'daily';
             try {
+                if (dryRun && mode !== 'daily') {
+                    return jsonResponse({
+                        success: false,
+                        error: 'dryRun is only supported for daily generation test triggers.',
+                        mode,
+                    }, 400);
+                }
+                if (dryRun && runAsync) {
+                    return jsonResponse({
+                        success: false,
+                        error: 'dryRun cannot be combined with async=1. Use stream=1 or a synchronous request.',
+                        mode,
+                    }, 400);
+                }
                 if (runStream) {
                     const encoder = new TextEncoder();
                     const stream = new ReadableStream({
@@ -418,6 +434,7 @@ export default {
                                 state: 'running',
                                 mode,
                                 date: specifiedDate || 'current date',
+                                dryRun,
                                 startedAt,
                             });
 
@@ -426,11 +443,12 @@ export default {
                                     state: 'running',
                                     mode,
                                     date: specifiedDate || 'current date',
+                                    dryRun,
                                     heartbeatAt: new Date().toISOString(),
                                 });
                             }, 15000);
 
-                            runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger-stream')
+                            runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger-stream', { dryRun })
                                 .then((debug) => {
                                     write({
                                         success: true,
@@ -438,6 +456,7 @@ export default {
                                         message: `Scheduled ${mode} task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
                                         mode,
                                         date: specifiedDate || 'current date',
+                                        dryRun,
                                         finishedAt: new Date().toISOString(),
                                         debug: debug || null,
                                     });
@@ -450,6 +469,7 @@ export default {
                                         stack: error?.stack ? String(error.stack) : '',
                                         mode,
                                         date: specifiedDate || 'current date',
+                                        dryRun,
                                         finishedAt: new Date().toISOString(),
                                     });
                                 })
@@ -484,12 +504,13 @@ export default {
                         headers: { 'Content-Type': 'application/json; charset=utf-8' }
                     });
                 }
-                const debug = await runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger');
+                const debug = await runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger', { dryRun });
                 return new Response(JSON.stringify({
                     success: true,
                     message: `Scheduled ${mode} task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,
                     mode,
                     date: specifiedDate || 'current date',
+                    dryRun,
                     timestamp: new Date().toISOString(),
                     debug: debug || null,
                 }), {
