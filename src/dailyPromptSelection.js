@@ -210,6 +210,20 @@ function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
     .map(({ candidate }) => candidate);
 }
 
+function summarizeDailyFunCandidate(candidate, selectedCandidates, reservedDailyFunCandidate) {
+  if (!candidate) return null;
+
+  return {
+    sourceType: candidate.sourceType || "",
+    title: candidate.title || "",
+    source: candidate.source || "",
+    url: candidate.url || "",
+    funScore: scoreDailyFunCandidate(candidate),
+    inPrimaryPrompt: selectedCandidates.includes(candidate),
+    reservedForFun: candidate === reservedDailyFunCandidate,
+  };
+}
+
 function hasAiRelevanceSignal(text) {
   return (
     /\b(ai|agi|llm|gpt|chatgpt|claude|gemini|openai|anthropic|deepmind|xai|grok|copilot|sora|llama|mistral|deepseek|qwen|kimi|cursor|codex|mcp|rag|agent|agentic|prompt|prompts|transformer|diffusion|embedding|inference|fine[-\s]?tuning|vibe\s*cod(?:e|ing))\b/i.test(text) ||
@@ -614,6 +628,28 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
   }
 
+  const dailyFunCandidateLimit = parsePositiveInt(env.DAILY_FUN_FALLBACK_CANDIDATES, 12);
+  const dailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
+  let reservedDailyFunCandidate = null;
+  const selectedItemTextsBeforeFunReserve = new Set(selectedCandidates.map((candidate) => candidate.itemText));
+  const hasFunCandidateOutsidePrimary = dailyFunCandidates.some(
+    (candidate) => !selectedItemTextsBeforeFunReserve.has(candidate.itemText)
+  );
+
+  if (!hasFunCandidateOutsidePrimary && dailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
+    const reserveCandidate =
+      dailyFunCandidates.find(
+        (candidate) => selectedCandidates.includes(candidate) && candidate.sourceType !== "project" && !candidate.isWelfare
+      ) ||
+      dailyFunCandidates.find((candidate) => selectedCandidates.includes(candidate));
+    const reserveIndex = selectedCandidates.indexOf(reserveCandidate);
+
+    if (reserveIndex >= 0) {
+      removeSelectedCandidateAt(reserveIndex);
+      reservedDailyFunCandidate = reserveCandidate;
+    }
+  }
+
   const candidateCounts = orderedSourceTypes.reduce((acc, sourceType) => {
     acc[sourceType] = (buckets.get(sourceType) || []).length;
     return acc;
@@ -629,8 +665,10 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     .filter((candidate) => isDailyTrendingProjectCandidate(candidate))
     .map((candidate) => candidate.url)
     .filter(Boolean);
-  const dailyFunCandidateLimit = parsePositiveInt(env.DAILY_FUN_FALLBACK_CANDIDATES, 12);
-  const dailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
+  const dailyFunCandidateSamples = dailyFunCandidates
+    .slice(0, 5)
+    .map((candidate) => summarizeDailyFunCandidate(candidate, orderedSelectedCandidates, reservedDailyFunCandidate))
+    .filter(Boolean);
 
   return {
     selectedContentItems: orderedSelectedCandidates.map((candidate) => candidate.itemText),
@@ -656,6 +694,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       selectedMediaCount,
       selectedMediaInFirstFive: orderedSelectedCandidates.slice(0, 5).filter((candidate) => candidate.itemHasMedia).length,
       dailyFunCandidateCount: dailyFunCandidates.length,
+      dailyFunReservedFromPrimary: Boolean(reservedDailyFunCandidate),
+      dailyFunCandidateSamples,
       rejectedNonAiCount,
       selectedProjectLikeCount,
     },

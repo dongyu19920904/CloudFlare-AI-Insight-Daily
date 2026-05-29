@@ -447,6 +447,62 @@ test("buildDailyPromptSelection keeps a human-facing fun candidate pool outside 
   assert.ok(result.selectionDiagnostics.dailyFunCandidateCount >= 1);
 });
 
+test("buildDailyPromptSelection reserves one strong fun candidate when primary prompt would consume them all", () => {
+  const topics = [
+    "Kimi 填表多点十下",
+    "Codex 把音频装进视频",
+    "Claude 测试认错又重跑",
+    "Cursor 终端红屏巡逻",
+    "ChatGPT 行程排成早八",
+    "Gemini 截图分类分太细",
+    "MCP 插件串门走错门",
+    "Sora 动图多长一秒",
+    "Grok 群聊总结抓错重点",
+    "Agent 周报写出工位味",
+    "Copilot 注释越改越长",
+    "Roo Code 脚本跑到加班",
+  ];
+  const funNewsItems = topics.map((topic, index) => ({
+    type: "news",
+    title: topic,
+    description: "开发者在即刻分享 AI 编程实测，工具接管浏览器和终端，结果把小任务办得过分认真。",
+    source: "即刻",
+    url: `https://m.okjike.com/originalPosts/fun-${index + 1}`,
+    published_date: "2026-05-29",
+    details: {
+      content_html:
+        "<p>用户截图演示 Cursor、Claude 和浏览器一起处理报错，AI 自动点击、改代码、重试，最后还要人来收拾现场。</p>",
+    },
+  }));
+
+  const result = buildDailyPromptSelection(
+    {
+      news: funNewsItems,
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 12,
+      DAILY_PROMPT_NEWS_ITEMS: 12,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+      DAILY_PROMPT_ENTITY_HARD_CAP: 99,
+      DAILY_FUN_FALLBACK_CANDIDATES: 12,
+    }
+  );
+
+  const primaryItems = new Set(result.selectedContentItems);
+  const funOnlyItems = result.dailyFunContentItems.filter((item) => !primaryItems.has(item));
+
+  assert.equal(result.selectedContentItems.length, 11);
+  assert.ok(funOnlyItems.length >= 1);
+  assert.equal(result.selectionDiagnostics.dailyFunReservedFromPrimary, true);
+  assert.equal(result.selectionDiagnostics.dailyFunCandidateSamples[0].reservedForFun, true);
+  assert.match(funOnlyItems.join("\n"), /Kimi 填表|收拾现场/);
+});
+
 test("buildDailyPromptSelection returns diagnostics for status reporting", () => {
   const result = buildDailyPromptSelection(
     {

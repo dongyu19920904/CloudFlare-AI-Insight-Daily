@@ -94,6 +94,17 @@ function containsRenderedMedia(markdown) {
     return /!\[[^\]]*\]\([^)]+\)|<img\b|<video\b/i.test(markdown);
 }
 
+function getDailyFunSectionStats(markdown) {
+    const section = String(markdown || '').match(
+        /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|$)/im
+    )?.[0] || '';
+
+    return {
+        present: section.length > 0,
+        sourceLinkCount: (section.match(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g) || []).length,
+    };
+}
+
 function truncatePromptText(text, maxChars = 500) {
     const normalized = String(text || '').replace(/\s+/g, ' ').trim();
     if (normalized.length <= maxChars) return normalized;
@@ -1232,6 +1243,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         debugInfo.dailyRepairIssues = repairedValidation.issues;
     }
 
+    const dailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
+    debugInfo.dailyFunSectionPresent = dailyFunStats.present;
+    debugInfo.dailyFunSectionSourceLinks = dailyFunStats.sourceLinkCount;
     debugInfo.dailyGenerated = true;
 
     return { outputOfCall3, dailySummaryMarkdownContent, validation };

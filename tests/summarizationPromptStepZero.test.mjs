@@ -51,6 +51,9 @@ test("AI趣闻 prompt asks for people-first, lightly humorous observation instea
   assert.match(prompt, /最后一段\/最后一句必须有包袱/);
   assert.match(prompt, /如果最后一句删掉后正文没有损失/);
   assert.match(prompt, /AI趣闻优先输出 1 条完整趣闻/);
+  assert.match(prompt, /AI趣闻专用候选素材/);
+  assert.match(prompt, /必须输出 1 条/);
+  assert.match(prompt, /人物\/用户视角的小观察/);
   assert.match(prompt, /省略整个 AI趣闻栏目/);
   assert.match(prompt, /不要只保留空标题/);
   assert.doesNotMatch(prompt, /如果当天没有合适的趣闻，可以不写这一栏/);
