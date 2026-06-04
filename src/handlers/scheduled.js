@@ -53,6 +53,12 @@ import {
 } from '../githubTopProjectDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
+import {
+    buildStandaloneDailyFunPromptInput,
+    insertDailyFunSection,
+    normalizeStandaloneDailyFunSection,
+    selectStandaloneDailyFunCandidates,
+} from '../dailyFunSection.js';
 
 const DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE = 'Daily AI fun section missing despite dedicated candidates';
 
@@ -98,7 +104,7 @@ function containsRenderedMedia(markdown) {
 
 function getDailyFunSectionStats(markdown) {
     const section = String(markdown || '').match(
-        /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|$)/im
+        /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im
     )?.[0] || '';
 
     return {
@@ -469,6 +475,14 @@ function assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env) {
     if (env.INSERT_FOOT == 'true') dailySummaryMarkdownContent += insertFoot() + `\n\n`;
 
     return dailySummaryMarkdownContent;
+}
+
+function getStandaloneDailyFunSystemPrompt() {
+    return [
+        "你是 AI日报的中文编辑，只写真实来源驱动的 AI趣闻栏目。",
+        "不要编造新闻，不要写兜底内容，不要解释生成过程。",
+        "输出必须是 Markdown；如果写不出合格栏目，就输出空字符串。",
+    ].join('\n');
 }
 
 function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssues, dateStr) {
@@ -1270,6 +1284,59 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         debugInfo.dailyRepairAttempted = true;
         debugInfo.dailyRepairPassed = repairedValidation.ok;
         debugInfo.dailyRepairIssues = repairedValidation.issues;
+    }
+
+    const funStatsBeforeStandaloneGeneration = getDailyFunSectionStats(dailySummaryMarkdownContent);
+    if (validation.ok && hasDedicatedDailyFunCandidates && !funStatsBeforeStandaloneGeneration.present) {
+        const standaloneDailyFunCandidates = selectStandaloneDailyFunCandidates(
+            selectedContentItems,
+            options.dailyFunContentItems,
+            5
+        );
+        const standaloneDailyFunPrompt = buildStandaloneDailyFunPromptInput(dateStr, standaloneDailyFunCandidates);
+
+        debugInfo.dailyFunSeparateGenerationAttempted = Boolean(standaloneDailyFunPrompt);
+        debugInfo.dailyFunSeparateCandidateItems = standaloneDailyFunCandidates.length;
+
+        if (standaloneDailyFunPrompt) {
+            try {
+                let standaloneDailyFunSection = await generateContentWithTransportFallback(
+                    env,
+                    standaloneDailyFunPrompt,
+                    getStandaloneDailyFunSystemPrompt()
+                );
+                standaloneDailyFunSection = removeMarkdownCodeBlock(standaloneDailyFunSection);
+                standaloneDailyFunSection = normalizeStandaloneDailyFunSection(standaloneDailyFunSection);
+
+                debugInfo.dailyFunSeparateGenerationValid = Boolean(standaloneDailyFunSection);
+
+                if (standaloneDailyFunSection) {
+                    const markdownWithStandaloneFun = insertDailyFunSection(
+                        dailySummaryMarkdownContent,
+                        standaloneDailyFunSection
+                    );
+                    const validationWithStandaloneFun = validateDailyPublication({
+                        summaryText: outputOfCall3,
+                        pageMarkdown: markdownWithStandaloneFun,
+                        minimumTopItems: options.minimumTopItems || 0,
+                        allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
+                        enforceTopGithubProjectAllowlist: true,
+                    });
+
+                    if (validationWithStandaloneFun.ok) {
+                        dailySummaryMarkdownContent = markdownWithStandaloneFun;
+                        validation = validationWithStandaloneFun;
+                        debugInfo.dailyFunSeparateGenerationInserted = true;
+                    } else {
+                        debugInfo.dailyFunSeparateGenerationInserted = false;
+                        debugInfo.dailyFunSeparateGenerationRejectedIssues = validationWithStandaloneFun.issues;
+                    }
+                }
+            } catch (error) {
+                console.warn(`[Scheduled][Daily] Standalone AI fun generation failed: ${error.message}`);
+                debugInfo.dailyFunSeparateGenerationError = error.message;
+            }
+        }
     }
 
     const dailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
