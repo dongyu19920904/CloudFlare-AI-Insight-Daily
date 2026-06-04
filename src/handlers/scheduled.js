@@ -54,6 +54,8 @@ import {
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
 
+const DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE = 'Daily AI fun section missing despite dedicated candidates';
+
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
 
@@ -479,6 +481,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "请严格遵守以下规则：",
         "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
         "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **❓ 相关问题**`",
+        `- 如果上一次问题包含 \`${DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE}\`，说明输入里已经有【AI趣闻专用候选素材】，这次必须优先从那里选 1 条输出 \`## **😄 AI趣闻**\`，并保留原始来源链接`,
         "- `## **😄 AI趣闻` 是可选栏目；如果能从【AI趣闻专用候选素材】里写出完整趣闻，就输出 1 条；如果写不出完整、有来源链接的趣闻，就省略整个 AI趣闻栏目，不要只输出空标题",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里保留 1 条短提醒",
@@ -1191,6 +1194,22 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
         enforceTopGithubProjectAllowlist: true,
     });
+    const hasDedicatedDailyFunCandidates = outputOfCall2User.includes('【AI趣闻专用候选素材】');
+    const initialDailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
+    debugInfo.dailyFunCandidatesInPrompt = hasDedicatedDailyFunCandidates;
+    debugInfo.dailyFunSectionPresentBeforeRepair = initialDailyFunStats.present;
+
+    if (validation.ok && hasDedicatedDailyFunCandidates && !initialDailyFunStats.present) {
+        validation = {
+            ...validation,
+            ok: false,
+            issues: [
+                ...(validation.issues || []),
+                DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE,
+            ],
+        };
+        debugInfo.dailyRepairMissingFun = true;
+    }
 
     if (!validation.ok) {
         console.warn(
