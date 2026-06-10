@@ -1,4 +1,8 @@
 import { hasMedia, stripHtml } from "./helpers.js";
+import {
+  LOW_EVIDENCE_AI_WORKFLOW_HINT,
+  isLowEvidenceAiWorkflowPitch,
+} from "./sourcePolicies.js";
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
   if (!html) return [];
@@ -126,6 +130,7 @@ function scoreDailyPromptCandidate(candidate) {
 
   if (candidate?.itemHasMedia) score += 14;
   if (candidate?.isWelfare) score += 10;
+  if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
 
   const sourceText = `${candidate?.source || ""} ${candidate?.title || ""} ${candidate?.description || ""}`.toLowerCase();
   if (/github|open source|open-source|开源|project/i.test(sourceText)) score += 8;
@@ -144,6 +149,7 @@ function scoreDailyPromptPresentation(candidate) {
 
   if (candidate?.itemHasMedia) score += 10;
   if (candidate?.isWelfare) score -= 30;
+  if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 60;
 
   return score;
 }
@@ -178,6 +184,7 @@ function scoreDailyFunCandidate(candidate) {
     score -= 60;
   }
   if (candidate?.isWelfare) score -= 20;
+  if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
 
   return score;
 }
@@ -435,6 +442,11 @@ function buildDailyPromptCandidate(item) {
   if (isWelfare) {
     itemText += "\nPlacement Hint: This is a welfare/freebie item. Put at most one such item in 值得关注, not TOP.";
   }
+  const isLowEvidenceWorkflowPitch =
+    item.details?.lowEvidenceAiWorkflowPitch === true || isLowEvidenceAiWorkflowPitch(item);
+  if (isLowEvidenceWorkflowPitch) {
+    itemText += `\n${LOW_EVIDENCE_AI_WORKFLOW_HINT}`;
+  }
 
   return {
     sourceType: item.type,
@@ -447,6 +459,7 @@ function buildDailyPromptCandidate(item) {
     plainText: plainTextContent,
     placeholders: mediaPlaceholders,
     isWelfare,
+    isLowEvidenceAiWorkflowPitch: isLowEvidenceWorkflowPitch,
     isDailyTrendingProject:
       item.type === "project" &&
       (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) &&

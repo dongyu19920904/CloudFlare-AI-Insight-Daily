@@ -1,11 +1,15 @@
+function isDailyWatchOnlyPromptItem(item) {
+  const text = String(item || "");
+  return (
+    /Placement Hint:\s*This is a welfare\/freebie item/i.test(text) ||
+    /Placement Hint:\s*This is a low-evidence AI workflow pitch/i.test(text)
+  );
+}
+
 export function buildDailyGenerationPromptInput(selectedContentItems = [], dailyFunContentItems = []) {
   const allPrimaryItems = (selectedContentItems || []).filter(Boolean);
-  const watchOnlyItems = allPrimaryItems.filter((item) =>
-    /Placement Hint:\s*This is a welfare\/freebie item/i.test(String(item || ""))
-  );
-  const primaryItems = allPrimaryItems.filter((item) =>
-    !/Placement Hint:\s*This is a welfare\/freebie item/i.test(String(item || ""))
-  );
+  const watchOnlyItems = allPrimaryItems.filter((item) => isDailyWatchOnlyPromptItem(item));
+  const primaryItems = allPrimaryItems.filter((item) => !isDailyWatchOnlyPromptItem(item));
   const primaryPrompt = `\n\n------\n\n${primaryItems.join("\n\n------\n\n")}\n\n------\n\n`;
   const selectedItemKeys = new Set(allPrimaryItems.map((item) => String(item).trim()).filter(Boolean));
   const funOnlyItems = (dailyFunContentItems || [])
@@ -18,6 +22,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     promptParts.push([
       "【值得关注专用候选素材】",
       "下面这些素材带有福利/羊毛/免费额度/优惠属性，只能作为 `## **📌 值得关注**` 里的提醒，最多选 1 条。",
+      "Some candidates may be AI workflow pitches without official, tutorial, course, repo, or reproducible evidence rather than freebies; they are also watch-only and must not enter TOP.",
       "严禁把这些素材写进 `## **🔥 重磅 TOP 10**`，即使它们有图片、热度或 AI 关键词也不例外。",
       "如果你无法把它写成一条简短提醒，就直接不用它，不要为了凑数放进 TOP。",
       "",

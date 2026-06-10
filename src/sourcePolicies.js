@@ -158,6 +158,57 @@ function isRoundupSocialPost(item) {
     return source.includes('gorden sun') && /日报|日刊/.test(title);
 }
 
+export const LOW_EVIDENCE_AI_WORKFLOW_HINT =
+    'Placement Hint: This is a low-evidence AI workflow pitch without official, tutorial, course, repo, or reproducible workflow evidence. Keep it out of TOP; at most use it in watch section as unverified, or skip it.';
+
+function buildQualityPolicyText(input) {
+    if (typeof input === 'string') return input;
+
+    return [
+        input?.title,
+        input?.description,
+        input?.source,
+        input?.url,
+        input?.details?.content_html,
+    ].filter(Boolean).join(' ');
+}
+
+function hasAiCreatorWorkflowPitch(text) {
+    const normalized = String(text || '');
+    const hasAiSignal =
+        /\b(ai|aigc|chatgpt|gpt|claude|gemini|sora|runway|capcut|cursor|codex)\b/i.test(normalized) ||
+        /人工智能|生成式|大模型|剪映/i.test(normalized);
+    const hasCreatorWorkflow =
+        /短视频|视频|口播|带货|寄拍|自媒体|副业|涨粉|粉丝|矩阵|四平台|多平台|自动发布|工作流|workflow|automation|auto[-\s]?publish|creator|douyin|抖音|快手|小红书|youtube|tiktok/i.test(normalized);
+    const hasBigPromise =
+        /一天\s*(?:[一二三四五六七八九十\d]+)\s*条|一周\s*万粉|万粉|涨粉|爆粉|全自动|自动化|批量|一键|四平台|多平台|月入|日入|躺赚|被动收入|副业|带货/i.test(normalized);
+
+    return hasAiSignal && hasCreatorWorkflow && hasBigPromise;
+}
+
+function hasStrongWorkflowEvidence(text) {
+    const normalized = String(text || '');
+    const evidenceText = normalized.replace(
+        /(?:(?:没有|无|缺少|未提供|没有给出|没给|不是|并非|非官方|未见|看不到|找不到)\s*|\b(?:without|no|not)\b\s*).{0,90}(?:github\.com|gitlab\.com|github|repo(?:sitory)?|代码仓库|源码|工作流文件|配置文件|配置文档|模板下载|下载链接|官方信息|官方发布|官方链接|官方文档|官方教程|课程链接|课程地址|教程链接|视频教程|完整教程|搭建教程|文档|course|tutorial|lesson|docs?)/gi,
+        ' '
+    );
+
+    return (
+        /github\.com\/(?!features\/|topics\/|marketplace\/|blog\/)[^/\s)#?]+\/[^/\s)#?]+/i.test(evidenceText) ||
+        /gitlab\.com\/[^/\s)#?]+\/[^/\s)#?]+/i.test(evidenceText) ||
+        /huggingface\.co\/spaces\/[^/\s)#?]+\/[^/\s)#?]+/i.test(evidenceText) ||
+        /(?:https?:\/\/[^\s)]+\/[^\s)]*(?:docs?|documentation|tutorial|course|lesson|learn|academy|guide|template|workflow|download)[^\s)]*)/i.test(evidenceText) ||
+        /开源|代码仓库|源码|repo(?:sitory)?|workflow\s+file|工作流文件|配置文件|配置文档|模板下载|下载链接|官方信息|官方发布|官方链接|官方文档|官方教程|课程链接|课程地址|教程链接|视频教程|完整教程|搭建教程|step[-\s]?by[-\s]?step|official\s+(?:docs?|tutorial|course|guide|release|announcement)|course\s+link|tutorial\s+link|video\s+tutorial/i.test(evidenceText) ||
+        /(n8n|dify|coze|make\.com|zapier|ffmpeg|comfyui|剪映|capcut).{0,40}(模板|配置|workflow|工作流|教程|文档|download|下载|repo|仓库)/i.test(evidenceText)
+    );
+}
+
+export function isLowEvidenceAiWorkflowPitch(input) {
+    const text = buildQualityPolicyText(input);
+    if (!hasAiCreatorWorkflowPitch(text)) return false;
+    return !hasStrongWorkflowEvidence(text);
+}
+
 function buildDedupKey(item) {
     const normalizedUrl = canonicalizeUrl(item?.url);
     if (normalizedUrl) return normalizedUrl;
@@ -182,7 +233,17 @@ export function applyNewsSourcePolicy(items) {
         if (dedupKey && seen.has(dedupKey)) continue;
         if (dedupKey) seen.add(dedupKey);
 
-        output.push(item);
+        output.push(
+            isLowEvidenceAiWorkflowPitch(item)
+                ? {
+                    ...item,
+                    details: {
+                        ...(item.details || {}),
+                        lowEvidenceAiWorkflowPitch: true,
+                    },
+                }
+                : item
+        );
     }
 
     return output;

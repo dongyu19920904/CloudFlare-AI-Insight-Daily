@@ -510,6 +510,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         ...dailyFunRepairRules,
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里保留 1 条短提醒",
+        "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，或明显是短视频/副业/带货/涨粉类强承诺但没有官方信息、教程/课程链接、GitHub、工作流文件、配置文档或可复现证据的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里写成“观察/存疑”提醒，素材充足时直接不用",
         "- 任何 GitHub 仓库链接如果要进入 TOP，必须来自素材里的 `Source: GitHub Trending Daily` 或 `Placement Hint: This project is from today's GitHub daily trending list`；来自 GitHub Search、普通新闻、社交帖的仓库链接不能进 TOP",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",

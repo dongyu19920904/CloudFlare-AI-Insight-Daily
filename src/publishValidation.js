@@ -9,6 +9,7 @@ const COMMON_FAILURE_PATTERNS = [
 ];
 
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+import { isLowEvidenceAiWorkflowPitch } from "./sourcePolicies.js";
 
 const DAILY_META_PATTERNS = [
   /AI思考:?/i,
@@ -272,6 +273,10 @@ function isWelfareContext(context, url = "") {
   return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(text);
 }
 
+function isLowEvidenceAiWorkflowPitchContext(context, url = "") {
+  return isLowEvidenceAiWorkflowPitch(`${context || ""} ${url || ""}`);
+}
+
 function isPaperLikeContext(context, url = "") {
   const text = `${context || ""} ${url || ""}`;
   return /arxiv\.org|huggingface\.co\/papers|论文|研究|paper|abstract|benchmark|dataset/i.test(text);
@@ -435,6 +440,10 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   if (topItems.some((item) => isWelfareContext(item.context, item.url))) {
     issues.push("Daily welfare/freebie items should stay in watch section, not TOP");
+  }
+
+  if (topItems.some((item) => isLowEvidenceAiWorkflowPitchContext(item.context, item.url))) {
+    issues.push("Daily low-evidence AI workflow pitches should stay in watch section, not TOP");
   }
 
   if (enforceTopGithubProjectAllowlist) {
