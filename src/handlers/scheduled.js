@@ -53,6 +53,7 @@ import {
 } from '../githubTopProjectDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
+import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
 import {
     buildStandaloneDailyFunPromptInput,
     insertDailyFunSection,
@@ -991,9 +992,10 @@ async function loadFoloCookie(env) {
     return foloCookie;
 }
 
-async function loadCachedUnifiedData(env, dateStr) {
+async function loadCachedUnifiedData(env, dateStr, options = {}) {
     const allUnifiedData = {};
     let hasAnyCachedItems = false;
+    const missingSourceTypes = [];
 
     for (const sourceType in dataSources) {
         if (!Object.hasOwnProperty.call(dataSources, sourceType)) continue;
@@ -1007,11 +1009,21 @@ async function loadCachedUnifiedData(env, dateStr) {
                 }
             } else {
                 allUnifiedData[sourceType] = [];
+                missingSourceTypes.push(sourceType);
             }
         } catch (error) {
             console.warn(`[Scheduled] Failed to load cached ${sourceType} data for ${dateStr}: ${error.message}`);
             allUnifiedData[sourceType] = [];
+            missingSourceTypes.push(sourceType);
         }
+    }
+
+    if (options.requireAllSourceTypes && missingSourceTypes.length > 0) {
+        if (options.debugInfo) {
+            options.debugInfo.cachedDailyMissingSourceTypes = missingSourceTypes;
+        }
+        console.log(`[Scheduled] Cached source data for ${dateStr} is incomplete: ${missingSourceTypes.join(', ')}.`);
+        return null;
     }
 
     return hasAnyCachedItems ? allUnifiedData : null;
@@ -1098,7 +1110,10 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     let allUnifiedData = null;
 
     if (options.preferCachedData) {
-        allUnifiedData = await loadCachedUnifiedData(env, dateStr);
+        allUnifiedData = await loadCachedUnifiedData(env, dateStr, {
+            requireAllSourceTypes: true,
+            debugInfo,
+        });
         if (allUnifiedData) {
             debugInfo.usedCachedDailySourceData = true;
             console.log(`[Scheduled] Reusing cached source data for ${dateStr}.`);
@@ -1940,6 +1955,35 @@ async function handleScheduledBackup(event, env, ctx, specifiedDate = null) {
     return { daily, opportunity, accountOpportunity };
 }
 
+export async function handleScheduledDailyPrefetch(event, env, ctx, specifiedDate = null) {
+    const dateStr = specifiedDate || getISODate();
+    setFetchDate(dateStr);
+    const debugInfo = buildBaseDebugInfo(dateStr, 'daily-prefetch');
+    console.log(`[Scheduled][DailyPrefetch] Starting source prefetch for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+
+    const result = await prefetchDailySourceCategories(env, dateStr);
+    debugInfo.dailyPrefetchAttempted = true;
+    debugInfo.dailyPrefetchComplete = result.failedCategories.length === 0;
+    debugInfo.dailyPrefetchCategories = result.categories;
+    debugInfo.dailyPrefetchSuccessfulCategories = result.successfulCategories;
+    debugInfo.dailyPrefetchFailedCategories = result.failedCategories;
+    debugInfo.dailyPrefetchResults = result.results;
+    debugInfo.totalSourceItemCount = result.totalItemCount;
+    debugInfo.sourceItemCounts = result.results.reduce((counts, item) => {
+        counts[item.category] = Number(item.itemCount) || 0;
+        return counts;
+    }, {});
+
+    if (result.successfulCategories.length === 0) {
+        throw new Error(`Daily source prefetch failed for all categories on ${dateStr}`);
+    }
+
+    console.log(
+        `[Scheduled][DailyPrefetch] Finished for ${dateStr}: ${result.successfulCategories.length}/${result.categories.length} categories, ${result.totalItemCount} items.`
+    );
+    return debugInfo;
+}
+
 export async function handleScheduledDaily(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
@@ -1957,7 +2001,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectionDiagnostics,
         allowedTopGithubProjectUrls,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: Boolean(specifiedDate),
+        preferCachedData: options.preferCachedData !== false,
         applyGithubTopProjectDedupe: true,
         skipSourceCacheWrite: dryRun,
     });
@@ -2092,6 +2136,10 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null, mod
 
     if (resolvedMode === 'daily-backup') {
         return handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+    }
+
+    if (resolvedMode === 'daily-prefetch') {
+        return handleScheduledDailyPrefetch(event, env, ctx, specifiedDate);
     }
 
     if (resolvedMode === 'account-opportunity') {

@@ -8,17 +8,19 @@ import { handleMediaProxy } from './handlers/mediaProxy.js';
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData, handleGenerateRssContent } from './handlers/writeRssData.js';
-import { handleFoloCookieAdmin, resolveFoloCookie } from './handlers/foloCookieAdmin.js';
-import { fetchDataByCategory, dataSources } from './dataFetchers.js';
+import { handleFoloCookieAdmin } from './handlers/foloCookieAdmin.js';
+import { dataSources } from './dataFetchers.js';
 import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
-import { getFromKV, storeInKV } from './kv.js';
-import { getISODate, setFetchDate } from './helpers.js';
+import { getFromKV } from './kv.js';
+import { getISODate } from './helpers.js';
 import { resolveScheduledModeFromEvent } from './scheduleRouting.js';
 import { getScheduledStatusKey, storeScheduledRunStatus } from './scheduledStatus.js';
 import { repairDailyHomePointer } from './dailyHomeRepair.js';
+import { fetchAndStoreSourceCategory } from './dailySourcePrefetch.js';
 import {
     handleScheduled,
     handleScheduledDaily,
+    handleScheduledDailyPrefetch,
     handleScheduledOpportunity,
     handleScheduledAccountOpportunity,
 } from './handlers/scheduled.js';
@@ -52,30 +54,6 @@ function validateTestTriggerSecret(url, env) {
     }
 
     return null;
-}
-
-async function fetchAndStoreSourceCategory(env, category, dateStr) {
-    setFetchDate(dateStr);
-    const { cookie: foloCookie, source: foloCookieSource } = await resolveFoloCookie(env);
-    const items = await fetchDataByCategory(env, category, foloCookie);
-    const key = `${dateStr}-${category}`;
-    const existingItems = await getFromKV(env.DATA_KV, key);
-    const hasExistingItems = Array.isArray(existingItems) && existingItems.length > 0;
-    const shouldStore = items.length > 0 || !hasExistingItems;
-
-    if (shouldStore) {
-        await storeInKV(env.DATA_KV, key, items);
-    }
-
-    return {
-        key,
-        category,
-        date: dateStr,
-        itemCount: items.length,
-        stored: shouldStore,
-        previousItemCount: Array.isArray(existingItems) ? existingItems.length : 0,
-        foloCookieSource,
-    };
 }
 
 async function queueScheduledMode(ctx, env, mode, specifiedDate) {
@@ -198,6 +176,10 @@ async function runScheduledEventWithStatus(event, env, ctx) {
 async function runScheduledMode(mode, env, specifiedDate, options = {}) {
     const fakeEvent = { scheduledTime: Date.now(), cron: '' };
     const fakeCtx = { waitUntil: (promise) => promise };
+
+    if (mode === 'daily-prefetch') {
+        return handleScheduledDailyPrefetch(fakeEvent, env, fakeCtx, specifiedDate);
+    }
 
     if (mode === 'account-opportunity') {
         return handleScheduledAccountOpportunity(fakeEvent, env, fakeCtx, specifiedDate);

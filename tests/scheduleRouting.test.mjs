@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  extractCronHour,
   extractCronMinute,
   resolveScheduledModeFromEvent,
 } from "../src/scheduleRouting.js";
 
 const env = {
+  DAILY_PREFETCH_CRON_SCHEDULE: "50 0 * * *",
   DAILY_CRON_SCHEDULE: "0 1 * * *",
   DAILY_BACKUP_CRON_SCHEDULE: "12 1 * * *",
   OPPORTUNITY_CRON_SCHEDULE: "20 1 * * *",
@@ -18,6 +20,24 @@ test("extractCronMinute reads the first minute field from a standard cron expres
   assert.equal(extractCronMinute("0 1 * * *"), 0);
   assert.equal(extractCronMinute("20 1 * * *"), 20);
   assert.equal(extractCronMinute("50 1 * * *"), 50);
+});
+
+test("extractCronHour reads the second hour field from a standard cron expression", () => {
+  assert.equal(extractCronHour("50 0 * * *"), 0);
+  assert.equal(extractCronHour("0 1 * * *"), 1);
+  assert.equal(extractCronHour("10 2 * * *"), 2);
+});
+
+test("resolveScheduledModeFromEvent maps the prefetch cron to daily-prefetch", () => {
+  const mode = resolveScheduledModeFromEvent(
+    {
+      cron: "50 0 * * *",
+      scheduledTime: Date.parse("2026-03-28T00:50:00.000Z"),
+    },
+    env
+  );
+
+  assert.equal(mode, "daily-prefetch");
 });
 
 test("resolveScheduledModeFromEvent maps the shared cron's 01:00 UTC run to daily", () => {
@@ -54,6 +74,29 @@ test("resolveScheduledModeFromEvent maps the shared cron's 01:50 UTC run to acco
   );
 
   assert.equal(mode, "account-opportunity");
+});
+
+test("resolveScheduledModeFromEvent does not confuse 00:50 prefetch with 01:50 account opportunity", () => {
+  assert.equal(
+    resolveScheduledModeFromEvent(
+      {
+        cron: "50 0 * * *",
+        scheduledTime: Date.parse("2026-03-28T00:50:00.000Z"),
+      },
+      env
+    ),
+    "daily-prefetch"
+  );
+  assert.equal(
+    resolveScheduledModeFromEvent(
+      {
+        cron: "0,12,20,50 1 * * *",
+        scheduledTime: Date.parse("2026-03-28T01:50:00.000Z"),
+      },
+      env
+    ),
+    "account-opportunity"
+  );
 });
 
 test("resolveScheduledModeFromEvent respects an explicit mode override", () => {
