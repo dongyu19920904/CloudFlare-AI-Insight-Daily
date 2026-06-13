@@ -1,4 +1,6 @@
 import { stripHtml } from "./helpers.js";
+import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+import { normalizeOpportunitySourceUrl } from "./opportunityReplayDedupe.js";
 import {
   getOpportunityLaneById,
   opportunityPlaybook,
@@ -511,6 +513,90 @@ function normalizeReplaySignalText(text) {
   return String(text || "").toLowerCase();
 }
 
+function countReplayRecords(records = [], keyGetter = (record) => record?.key) {
+  const counts = new Map();
+
+  for (const record of records || []) {
+    const key = String(keyGetter(record) || "").toLowerCase();
+    if (!key) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+
+  return counts;
+}
+
+function buildOpportunityReplayLookup(memory) {
+  const sourceUrlCounts = countReplayRecords(memory?.sourceUrls);
+  const githubProjectCounts = countReplayRecords(memory?.githubProjects);
+  const ruleIdCounts = countReplayRecords(memory?.ruleIds, (record) => record?.id || record?.key);
+  const laneCounts = countReplayRecords(memory?.lanes, (record) => record?.id || record?.key);
+  const termCounts = countReplayRecords(memory?.terms, (record) => record?.term || record?.key);
+
+  return {
+    sourceUrlCounts,
+    githubProjectCounts,
+    ruleIdCounts,
+    laneCounts,
+    termCounts,
+    isEmpty:
+      sourceUrlCounts.size === 0 &&
+      githubProjectCounts.size === 0 &&
+      ruleIdCounts.size === 0 &&
+      laneCounts.size === 0 &&
+      termCounts.size === 0,
+  };
+}
+
+function getReplaySourceMatch(item, replayLookup) {
+  if (!item || !replayLookup || replayLookup.isEmpty) return null;
+
+  const githubKey = normalizeGithubProjectUrl(item.url);
+  if (githubKey && replayLookup.githubProjectCounts.has(githubKey)) {
+    return { type: "github", key: githubKey };
+  }
+
+  const sourceKey = normalizeOpportunitySourceUrl(item.url);
+  if (sourceKey && replayLookup.sourceUrlCounts.has(sourceKey)) {
+    return { type: "url", key: sourceKey };
+  }
+
+  return null;
+}
+
+function getWeeklyReplayPenalty(candidate, replayLookup) {
+  if (!candidate || !replayLookup || replayLookup.isEmpty) {
+    return { penalty: 0, reason: "" };
+  }
+
+  const reasons = [];
+  let penalty = 0;
+
+  const ruleCount = replayLookup.ruleIdCounts.get(String(candidate.id || "").toLowerCase()) || 0;
+  if (ruleCount > 0) {
+    penalty += Math.min(24, 10 + ruleCount * 4);
+    reasons.push("近7天同类商机降权");
+  }
+
+  const laneCount = replayLookup.laneCounts.get(String(candidate.preferredLane || "").toLowerCase()) || 0;
+  if (laneCount >= 2) {
+    penalty += Math.min(8, laneCount * 2);
+    reasons.push("近7天同卖法过密");
+  }
+
+  const matchedTermCount = (candidate.matchedTerms || []).filter((term) =>
+    replayLookup.termCounts.has(String(term).toLowerCase())
+  ).length;
+  if (matchedTermCount >= 2) {
+    penalty += 6;
+    reasons.push("近7天关键词相近");
+  }
+
+  return {
+    penalty: Math.min(30, penalty),
+    reason: reasons.join(" / "),
+  };
+}
+
 export function inferOpportunityReplaySignals(
   markdown,
   playbook = opportunityPlaybook
@@ -585,7 +671,7 @@ function getPreviousTopicPenalty(candidate, replaySignals) {
   return { penalty: 0, reason: "" };
 }
 
-function buildCandidateFromGroup(group, playbook, replaySignals = null) {
+function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLookup = null) {
   const laneDecision = getResolvedLaneOrder(group);
   const preferredLane = getOpportunityLaneById(
     laneDecision.preferredLaneId,
@@ -630,9 +716,22 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null) {
     },
     replaySignals
   );
-  const score = Math.max(0, baseScore - replayPenalty.penalty);
-  const scoreText = replayPenalty.penalty
-    ? `${summarizeScoreBreakdown(scores)} / ${replayPenalty.reason} -${replayPenalty.penalty}`
+  const weeklyReplayPenalty = getWeeklyReplayPenalty(
+    {
+      id: group.rule.id,
+      matchedTerms: [...group.matchedTerms],
+      preferredLane: laneDecision.preferredLaneId,
+    },
+    replayLookup
+  );
+  const totalReplayPenalty = replayPenalty.penalty + weeklyReplayPenalty.penalty;
+  const replayPenaltyReasons = [
+    replayPenalty.reason,
+    weeklyReplayPenalty.reason,
+  ].filter(Boolean).join(" / ");
+  const score = Math.max(0, baseScore - totalReplayPenalty);
+  const scoreText = totalReplayPenalty
+    ? `${summarizeScoreBreakdown(scores)} / ${replayPenaltyReasons} -${totalReplayPenalty}`
     : summarizeScoreBreakdown(scores);
   const label = getResolvedCandidateLabel(group.rule, laneDecision.preferredLaneId);
   const recommendation = getLaneSpecificRecommendation(
@@ -662,8 +761,10 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null) {
     label,
     score,
     baseScore,
-    replayPenalty: replayPenalty.penalty,
-    replayPenaltyReason: replayPenalty.reason,
+    replayPenalty: totalReplayPenalty,
+    replayPenaltyReason: replayPenaltyReasons,
+    previousMainTopicPenalty: replayPenalty.penalty,
+    weeklyReplayPenalty: weeklyReplayPenalty.penalty,
     scores,
     scoreText,
     preferredLane: preferredLane?.id || laneDecision.preferredLaneId,
@@ -706,6 +807,7 @@ export function buildOpportunityCandidates(
   options = {}
 ) {
   const groups = new Map();
+  const replayLookup = buildOpportunityReplayLookup(options.recentReplayMemory);
   const githubHotProjectRule = playbook.topicRules.find(
     (rule) => rule.id === "github_hot_project"
   );
@@ -714,6 +816,7 @@ export function buildOpportunityCandidates(
     for (const rawItem of items || []) {
       const item = toOpportunityItem(rawItem, sourceType);
       if (!item.title && !item.description && !item.plainText) continue;
+      if (getReplaySourceMatch(item, replayLookup)) continue;
 
       const ruleMatch = findBestRuleForItem(item, playbook);
       if (ruleMatch) {
@@ -744,7 +847,8 @@ export function buildOpportunityCandidates(
           matchedTerms: [...group.matchedTerms],
         },
         playbook,
-        options.previousMainTopicSignals || null
+        options.previousMainTopicSignals || null,
+        replayLookup
       )
     )
     .sort((a, b) => b.score - a.score);

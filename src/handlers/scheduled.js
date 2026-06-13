@@ -51,6 +51,14 @@ import {
     mergeRecentGithubTopProjects,
     storeRecentGithubTopProjects,
 } from '../githubTopProjectDedupe.js';
+import {
+    DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS,
+    createEmptyOpportunityReplayMemory,
+    extractOpportunityReplayMemoryFromMarkdown,
+    formatOpportunityReplayMemoryForPrompt,
+    getOpportunityReplayMemoryStats,
+    mergeOpportunityReplayMemories,
+} from '../opportunityReplayDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
 import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
@@ -364,33 +372,79 @@ function extractMarkdownSection(markdown, heading) {
     return content.slice(startIndex, endIndex).trim();
 }
 
-async function loadPreviousOpportunityMainTopicSignals(env, dateStr) {
-    const previousDate = getPreviousDate(dateStr);
-    if (!previousDate) {
-        return {
-            previousDate: null,
-            signals: { matchedRuleIds: [], matchedTerms: [], primaryLane: null },
-        };
+async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
+    const lookbackDays = Math.max(
+        1,
+        Number.parseInt(
+            options.lookbackDays || env.OPPORTUNITY_REPLAY_LOOKBACK_DAYS || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS,
+            10
+        ) || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS
+    );
+    const previousDates = getPreviousDates(dateStr, lookbackDays);
+    const previousDate = previousDates[0] || null;
+    let previousMainTopicSignals = { matchedRuleIds: [], matchedTerms: [], primaryLane: null };
+    let memory = createEmptyOpportunityReplayMemory();
+    let loadedCount = 0;
+    let missingCount = 0;
+
+    const targets = [];
+    for (const candidateDate of previousDates) {
+        targets.push({
+            date: candidateDate,
+            section: 'opportunity',
+            path: buildOpportunityPaths(candidateDate).pagePath,
+            playbook: opportunityPlaybook,
+        });
+        targets.push({
+            date: candidateDate,
+            section: 'account-opportunity',
+            path: buildAccountOpportunityPaths(candidateDate).pagePath,
+            playbook: accountOpportunityPlaybook,
+        });
     }
 
-    const previousPaths = buildOpportunityPaths(previousDate);
-
-    try {
-        const previousMarkdown = await getGitHubFileContent(env, previousPaths.pagePath);
-        const mainTopicSection =
-            extractMarkdownSection(previousMarkdown, '今日主推') || previousMarkdown;
-        const signals = inferOpportunityReplaySignals(mainTopicSection, opportunityPlaybook);
-
-        return { previousDate, signals };
-    } catch (error) {
-        console.warn(
-            `[Scheduled] Failed to load previous opportunity ${previousDate}, skipping replay penalty: ${error.message}`
-        );
-        return {
-            previousDate,
-            signals: { matchedRuleIds: [], matchedTerms: [], primaryLane: null },
-        };
+    if (options.includeCurrentOpportunity) {
+        targets.unshift({
+            date: dateStr,
+            section: 'opportunity',
+            path: buildOpportunityPaths(dateStr).pagePath,
+            playbook: opportunityPlaybook,
+        });
     }
+
+    for (const target of targets) {
+        try {
+            const markdown = await getGitHubFileContent(env, target.path);
+            loadedCount += 1;
+            memory = mergeOpportunityReplayMemories(
+                memory,
+                extractOpportunityReplayMemoryFromMarkdown(markdown, {
+                    date: target.date,
+                    section: target.section,
+                    playbook: target.playbook,
+                })
+            );
+
+            if (target.date === previousDate && target.section === 'opportunity') {
+                const mainTopicSection = extractMarkdownSection(markdown, '今日主推') || markdown;
+                previousMainTopicSignals = inferOpportunityReplaySignals(mainTopicSection, opportunityPlaybook);
+            }
+        } catch (error) {
+            missingCount += 1;
+            console.warn(
+                `[Scheduled] Failed to load ${target.section} replay file ${target.date}, skipping this file: ${error.message}`
+            );
+        }
+    }
+
+    return {
+        previousDate,
+        previousMainTopicSignals,
+        memory,
+        loadedCount,
+        missingCount,
+        lookbackDays,
+    };
 }
 
 function filterNewsAgainstPreviousTop(newsItems, previousTopItems) {
@@ -1136,10 +1190,25 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         dateStr,
         replayLookbackDays
     );
-    const {
-        previousDate: previousOpportunityDate,
-        signals: previousOpportunityReplaySignals,
-    } = await loadPreviousOpportunityMainTopicSignals(env, dateStr);
+    let previousOpportunityDate = null;
+    let previousOpportunityReplaySignals = { matchedRuleIds: [], matchedTerms: [], primaryLane: null };
+    let recentOpportunityReplayMemory = createEmptyOpportunityReplayMemory();
+    let recentOpportunityReplayLoadedCount = 0;
+    let recentOpportunityReplayMissingCount = 0;
+    let opportunityReplayLookbackDays = 0;
+
+    if (options.loadOpportunityReplay) {
+        const replay = await loadRecentOpportunityReplayMemory(env, dateStr, {
+            lookbackDays: env.OPPORTUNITY_REPLAY_LOOKBACK_DAYS || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS,
+            includeCurrentOpportunity: Boolean(options.includeCurrentOpportunityReplay),
+        });
+        previousOpportunityDate = replay.previousDate;
+        previousOpportunityReplaySignals = replay.previousMainTopicSignals;
+        recentOpportunityReplayMemory = replay.memory;
+        recentOpportunityReplayLoadedCount = replay.loadedCount;
+        recentOpportunityReplayMissingCount = replay.missingCount;
+        opportunityReplayLookbackDays = replay.lookbackDays;
+    }
 
     debugInfo.previousDayReplayDate = previousDate;
     debugInfo.previousDayTopItems = previousTopItems.length;
@@ -1148,6 +1217,10 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     debugInfo.previousOpportunityReplayDate = previousOpportunityDate;
     debugInfo.previousOpportunityReplayRules =
         previousOpportunityReplaySignals.matchedRuleIds?.length || 0;
+    debugInfo.opportunityReplayLookbackDays = opportunityReplayLookbackDays;
+    debugInfo.opportunityReplayLoadedFiles = recentOpportunityReplayLoadedCount;
+    debugInfo.opportunityReplayMissingFiles = recentOpportunityReplayMissingCount;
+    debugInfo.opportunityReplayMemoryStats = getOpportunityReplayMemoryStats(recentOpportunityReplayMemory);
 
     const replayItems = previousDailyItems.length > 0 ? previousDailyItems : previousTopItems;
     if (replayItems.length > 0) {
@@ -1191,6 +1264,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     return {
         allUnifiedData,
         previousOpportunityReplaySignals,
+        recentOpportunityReplayMemory,
         ...buildDailyPromptSelection(allUnifiedData, env),
     };
 }
@@ -1473,6 +1547,7 @@ async function generateOpportunityMarkdown(
         opportunityPlaybook,
         {
             previousMainTopicSignals: options.previousMainTopicSignals || null,
+            recentReplayMemory: options.recentReplayMemory || null,
         }
     );
     const playbookText = [
@@ -1496,10 +1571,12 @@ async function generateOpportunityMarkdown(
     debugInfo.opportunityTopScore = opportunityCandidates[0]?.score || 0;
 
     console.log(`[Scheduled][Opportunity] Generating content...`);
+    const replayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const opportunityPromptInput = [
         `## 候选主题\n\n${opportunityCandidatesText}`,
+        replayMemoryPrompt ? `## 近7天商机记忆\n\n${replayMemoryPrompt}` : '',
         `## 今日摘要\n\n${opportunitySourceDigest}`,
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
 
     const opportunitySystemPrompt = getSystemPromptAiOpportunity(dateStr, playbookText);
     let opportunityMarkdownContent = await generateContentWithTransportFallback(
@@ -1579,6 +1656,7 @@ async function generateAccountOpportunityMarkdown(
         accountOpportunityPlaybook,
         {
             previousMainTopicSignals: options.previousMainTopicSignals || null,
+            recentReplayMemory: options.recentReplayMemory || null,
         }
     );
     const playbookText = [
@@ -1602,10 +1680,12 @@ async function generateAccountOpportunityMarkdown(
     debugInfo.accountOpportunityTopScore = accountOpportunityCandidates[0]?.score || 0;
 
     console.log(`[Scheduled][AccountOpportunity] Generating content...`);
+    const accountReplayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const accountOpportunityPromptInput = [
         `## 候选主题\n\n${accountOpportunityCandidatesText}`,
+        accountReplayMemoryPrompt ? `## 近7天商机记忆\n\n${accountReplayMemoryPrompt}` : '',
         `## 今日摘要\n\n${accountOpportunitySourceDigest}`,
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
 
     const accountOpportunitySystemPrompt = getSystemPromptAiAccountOpportunity(dateStr, playbookText);
     let accountOpportunityMarkdownContent = await generateContentWithTransportFallback(
@@ -2059,8 +2139,13 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
     console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo, {
+    const {
+        allUnifiedData,
+        previousOpportunityReplaySignals,
+        recentOpportunityReplayMemory,
+    } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
+        loadOpportunityReplay: true,
     });
     const { opportunityPaths, opportunityMarkdownContent } = await generateOpportunityMarkdown(
         env,
@@ -2069,6 +2154,7 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
         debugInfo,
         {
             previousMainTopicSignals: previousOpportunityReplaySignals,
+            recentReplayMemory: recentOpportunityReplayMemory,
         }
     );
 
@@ -2094,8 +2180,14 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     const debugInfo = buildBaseDebugInfo(dateStr, 'account-opportunity');
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
-    const { allUnifiedData, previousOpportunityReplaySignals } = await loadScheduledContext(env, dateStr, debugInfo, {
+    const {
+        allUnifiedData,
+        previousOpportunityReplaySignals,
+        recentOpportunityReplayMemory,
+    } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
+        loadOpportunityReplay: true,
+        includeCurrentOpportunityReplay: true,
     });
     const { accountOpportunityPaths, accountOpportunityMarkdownContent } = await generateAccountOpportunityMarkdown(
         env,
@@ -2104,6 +2196,7 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         debugInfo,
         {
             previousMainTopicSignals: previousOpportunityReplaySignals,
+            recentReplayMemory: recentOpportunityReplayMemory,
         }
     );
 
