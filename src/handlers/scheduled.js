@@ -420,8 +420,9 @@ async function storeOpportunityReplayMemoryToKv(env, dateStr, section, markdown,
             section,
             playbook,
         });
+        const latestStoredMemory = await loadOpportunityReplayMemoryFromKv(env, dateStr, lookbackDays);
         const mergedMemory = pruneOpportunityReplayMemory(
-            mergeOpportunityReplayMemories(existingMemory, currentMemory),
+            mergeOpportunityReplayMemories(latestStoredMemory, existingMemory, currentMemory),
             dateStr,
             lookbackDays
         );
