@@ -53,11 +53,13 @@ import {
 } from '../githubTopProjectDedupe.js';
 import {
     DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS,
+    OPPORTUNITY_REPLAY_MEMORY_KEY,
     createEmptyOpportunityReplayMemory,
     extractOpportunityReplayMemoryFromMarkdown,
     formatOpportunityReplayMemoryForPrompt,
     getOpportunityReplayMemoryStats,
     mergeOpportunityReplayMemories,
+    pruneOpportunityReplayMemory,
 } from '../opportunityReplayDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
 import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
@@ -372,6 +374,70 @@ function extractMarkdownSection(markdown, heading) {
     return content.slice(startIndex, endIndex).trim();
 }
 
+function hasOpportunityReplayMemory(memory) {
+    const stats = getOpportunityReplayMemoryStats(memory);
+    return Object.values(stats).some((count) => count > 0);
+}
+
+function hasOpportunityReplayRecord(memory, section, dateStr) {
+    const collections = [
+        memory?.sourceUrls,
+        memory?.githubProjects,
+        memory?.ruleIds,
+        memory?.lanes,
+        memory?.terms,
+        memory?.titles,
+    ];
+
+    return collections.some((records) =>
+        (records || []).some((record) => record?.section === section && record?.date === dateStr)
+    );
+}
+
+async function loadOpportunityReplayMemoryFromKv(env, dateStr, lookbackDays) {
+    if (!env.DATA_KV) return createEmptyOpportunityReplayMemory();
+
+    try {
+        const stored = await getFromKV(env.DATA_KV, OPPORTUNITY_REPLAY_MEMORY_KEY);
+        return pruneOpportunityReplayMemory(stored, dateStr, lookbackDays);
+    } catch (error) {
+        console.warn(`[Scheduled] Failed to load opportunity replay memory from KV: ${error.message}`);
+        return createEmptyOpportunityReplayMemory();
+    }
+}
+
+async function storeOpportunityReplayMemoryToKv(env, dateStr, section, markdown, playbook, existingMemory, debugInfo) {
+    if (!env.DATA_KV) return;
+
+    try {
+        const lookbackDays = Math.max(
+            1,
+            Number.parseInt(env.OPPORTUNITY_REPLAY_LOOKBACK_DAYS || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS, 10) ||
+                DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS
+        );
+        const currentMemory = extractOpportunityReplayMemoryFromMarkdown(markdown, {
+            date: dateStr,
+            section,
+            playbook,
+        });
+        const mergedMemory = pruneOpportunityReplayMemory(
+            mergeOpportunityReplayMemories(existingMemory, currentMemory),
+            dateStr,
+            lookbackDays
+        );
+        await storeInKV(env.DATA_KV, OPPORTUNITY_REPLAY_MEMORY_KEY, mergedMemory, 86400 * (lookbackDays + 2));
+        if (debugInfo) {
+            debugInfo.opportunityReplayMemoryStored = true;
+            debugInfo.opportunityReplayMemoryStoredStats = getOpportunityReplayMemoryStats(mergedMemory);
+        }
+    } catch (error) {
+        console.warn(`[Scheduled] Failed to store opportunity replay memory in KV: ${error.message}`);
+        if (debugInfo) {
+            debugInfo.opportunityReplayMemoryStoreError = error.message;
+        }
+    }
+}
+
 async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
     const lookbackDays = Math.max(
         1,
@@ -380,31 +446,37 @@ async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
             10
         ) || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS
     );
-    const previousDates = getPreviousDates(dateStr, lookbackDays);
+    const previousDates = getPreviousDates(dateStr, 1);
     const previousDate = previousDates[0] || null;
     let previousMainTopicSignals = { matchedRuleIds: [], matchedTerms: [], primaryLane: null };
-    let memory = createEmptyOpportunityReplayMemory();
+    let memory = await loadOpportunityReplayMemoryFromKv(env, dateStr, lookbackDays);
     let loadedCount = 0;
     let missingCount = 0;
+    let loadedFromKv = hasOpportunityReplayMemory(memory);
 
     const targets = [];
-    for (const candidateDate of previousDates) {
-        targets.push({
-            date: candidateDate,
-            section: 'opportunity',
-            path: buildOpportunityPaths(candidateDate).pagePath,
-            playbook: opportunityPlaybook,
-        });
-        targets.push({
-            date: candidateDate,
-            section: 'account-opportunity',
-            path: buildAccountOpportunityPaths(candidateDate).pagePath,
-            playbook: accountOpportunityPlaybook,
-        });
+    if (!loadedFromKv) {
+        for (const candidateDate of previousDates) {
+            targets.push({
+                date: candidateDate,
+                section: 'opportunity',
+                path: buildOpportunityPaths(candidateDate).pagePath,
+                playbook: opportunityPlaybook,
+            });
+            targets.push({
+                date: candidateDate,
+                section: 'account-opportunity',
+                path: buildAccountOpportunityPaths(candidateDate).pagePath,
+                playbook: accountOpportunityPlaybook,
+            });
+        }
     }
 
-    if (options.includeCurrentOpportunity) {
-        targets.unshift({
+    if (
+        options.includeCurrentOpportunity &&
+        !hasOpportunityReplayRecord(memory, 'opportunity', dateStr)
+    ) {
+        targets.push({
             date: dateStr,
             section: 'opportunity',
             path: buildOpportunityPaths(dateStr).pagePath,
@@ -443,6 +515,7 @@ async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
         memory,
         loadedCount,
         missingCount,
+        loadedFromKv,
         lookbackDays,
     };
 }
@@ -1196,6 +1269,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     let recentOpportunityReplayLoadedCount = 0;
     let recentOpportunityReplayMissingCount = 0;
     let opportunityReplayLookbackDays = 0;
+    let opportunityReplayLoadedFromKv = false;
 
     if (options.loadOpportunityReplay) {
         const replay = await loadRecentOpportunityReplayMemory(env, dateStr, {
@@ -1208,6 +1282,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         recentOpportunityReplayLoadedCount = replay.loadedCount;
         recentOpportunityReplayMissingCount = replay.missingCount;
         opportunityReplayLookbackDays = replay.lookbackDays;
+        opportunityReplayLoadedFromKv = replay.loadedFromKv;
     }
 
     debugInfo.previousDayReplayDate = previousDate;
@@ -1218,6 +1293,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     debugInfo.previousOpportunityReplayRules =
         previousOpportunityReplaySignals.matchedRuleIds?.length || 0;
     debugInfo.opportunityReplayLookbackDays = opportunityReplayLookbackDays;
+    debugInfo.opportunityReplayLoadedFromKv = opportunityReplayLoadedFromKv;
     debugInfo.opportunityReplayLoadedFiles = recentOpportunityReplayLoadedCount;
     debugInfo.opportunityReplayMissingFiles = recentOpportunityReplayMissingCount;
     debugInfo.opportunityReplayMemoryStats = getOpportunityReplayMemoryStats(recentOpportunityReplayMemory);
@@ -2170,6 +2246,15 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     }
 
     await commitOpportunityOutputs(env, dateStr, opportunityPaths, opportunityMarkdownContent);
+    await storeOpportunityReplayMemoryToKv(
+        env,
+        dateStr,
+        'opportunity',
+        opportunityMarkdownContent,
+        opportunityPlaybook,
+        recentOpportunityReplayMemory,
+        debugInfo
+    );
     debugInfo.opportunityPublished = true;
     return debugInfo;
 }
@@ -2216,6 +2301,15 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         dateStr,
         accountOpportunityPaths,
         accountOpportunityMarkdownContent
+    );
+    await storeOpportunityReplayMemoryToKv(
+        env,
+        dateStr,
+        'account-opportunity',
+        accountOpportunityMarkdownContent,
+        accountOpportunityPlaybook,
+        recentOpportunityReplayMemory,
+        debugInfo
     );
     debugInfo.accountOpportunityPublished = true;
     return debugInfo;

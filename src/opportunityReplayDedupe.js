@@ -1,6 +1,7 @@
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 
 export const DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS = 7;
+export const OPPORTUNITY_REPLAY_MEMORY_KEY = "opportunity-replay-memory:recent";
 
 const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const INTERNAL_HOSTS = new Set(["aivora.cn", "news.aivora.cn"]);
@@ -23,6 +24,27 @@ function dedupeRecords(records = [], keyField = "key") {
   }
 
   return deduped;
+}
+
+function parseDateOnly(dateStr) {
+  const date = new Date(`${String(dateStr || "").slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dayDiff(leftDateStr, rightDateStr) {
+  const left = parseDateOnly(leftDateStr);
+  const right = parseDateOnly(rightDateStr);
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  return Math.round((left.getTime() - right.getTime()) / 86400000);
+}
+
+function pruneRecordsByDate(records = [], currentDate, lookbackDays) {
+  const days = Math.max(1, Number.parseInt(lookbackDays, 10) || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS);
+  return (Array.isArray(records) ? records : []).filter((record) => {
+    if (!record?.date) return false;
+    const diff = dayDiff(currentDate, record.date);
+    return diff >= 0 && diff <= days;
+  });
 }
 
 export function createEmptyOpportunityReplayMemory() {
@@ -89,6 +111,21 @@ export function mergeOpportunityReplayMemories(...memories) {
     lanes: dedupeRecords(merged.lanes, "key"),
     titles: dedupeRecords(merged.titles, "key"),
   };
+}
+
+export function pruneOpportunityReplayMemory(
+  memory,
+  currentDate,
+  lookbackDays = DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS
+) {
+  return mergeOpportunityReplayMemories({
+    sourceUrls: pruneRecordsByDate(memory?.sourceUrls, currentDate, lookbackDays),
+    githubProjects: pruneRecordsByDate(memory?.githubProjects, currentDate, lookbackDays),
+    ruleIds: pruneRecordsByDate(memory?.ruleIds, currentDate, lookbackDays),
+    terms: pruneRecordsByDate(memory?.terms, currentDate, lookbackDays),
+    lanes: pruneRecordsByDate(memory?.lanes, currentDate, lookbackDays),
+    titles: pruneRecordsByDate(memory?.titles, currentDate, lookbackDays),
+  });
 }
 
 export function extractOpportunityReplayMemoryFromMarkdown(

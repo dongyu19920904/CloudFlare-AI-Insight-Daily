@@ -6,6 +6,7 @@ import {
   extractOpportunityReplayMemoryFromMarkdown,
   mergeOpportunityReplayMemories,
   normalizeOpportunitySourceUrl,
+  pruneOpportunityReplayMemory,
 } from "../src/opportunityReplayDedupe.js";
 
 test("normalizeOpportunitySourceUrl ignores tracking params and internal site links", () => {
@@ -58,4 +59,26 @@ test("mergeOpportunityReplayMemories dedupes repeated records", () => {
     merged.githubProjects.filter((record) => record.key === "github.com/acme/repeated").length,
     1
   );
+});
+
+test("pruneOpportunityReplayMemory keeps only records inside the lookback window", () => {
+  const memory = {
+    sourceUrls: [
+      { key: "example.com/fresh", date: "2026-06-13", section: "opportunity" },
+      { key: "example.com/old", date: "2026-06-01", section: "opportunity" },
+    ],
+    githubProjects: [
+      { key: "github.com/acme/fresh", date: "2026-06-12", section: "opportunity" },
+      { key: "github.com/acme/old", date: "2026-06-02", section: "opportunity" },
+    ],
+    ruleIds: [],
+    terms: [],
+    lanes: [],
+    titles: [],
+  };
+
+  const pruned = pruneOpportunityReplayMemory(memory, "2026-06-14", 7);
+
+  assert.deepEqual(pruned.sourceUrls.map((record) => record.key), ["example.com/fresh"]);
+  assert.deepEqual(pruned.githubProjects.map((record) => record.key), ["github.com/acme/fresh"]);
 });
