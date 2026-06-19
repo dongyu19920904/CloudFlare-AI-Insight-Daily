@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildDailyPromptSelection } from "../src/dailyPromptSelection.js";
 
-test("buildDailyPromptSelection adds a watch-only hint to low-evidence AI workflow pitches", () => {
+test("buildDailyPromptSelection adds a watch-only hint only after source policy marks a low-evidence workflow pitch", () => {
   const result = buildDailyPromptSelection(
     {
       news: [
@@ -21,11 +21,14 @@ test("buildDailyPromptSelection adds a watch-only hint to low-evidence AI workfl
         {
           type: "news",
           title: "用 AI 搭短视频全自动工作流：一天五条，一周万粉",
-          description: "只展示了一个视频和文案，没有 GitHub、工作流文件、配置文档或官方教程。",
+          description:
+            "只展示了一个视频和文案，没有 GitHub、工作流文件、配置文档或官方教程。",
           source: "Folo",
           url: "https://t.me/aigc1024/21018",
           published_date: "2026-06-10",
           details: {
+            foloSourceId: "55447111940354048",
+            lowEvidenceAiWorkflowPitch: true,
             content_html: "<p>AI 负责生成脚本、配音和剪辑，人负责选品和发布。</p>",
           },
         },

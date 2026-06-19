@@ -160,6 +160,14 @@ function isRoundupSocialPost(item) {
 
 export const LOW_EVIDENCE_AI_WORKFLOW_HINT =
     'Placement Hint: This is a low-evidence AI workflow pitch without official, tutorial, course, repo, or reproducible workflow evidence. Keep it out of TOP; at most use it in watch section as unverified, or skip it.';
+const DEFAULT_LOW_EVIDENCE_WORKFLOW_FOLO_SOURCE_IDS = ['55447111940354048'];
+
+function parsePolicyIdList(value, fallback = []) {
+    if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+    const text = String(value || '').trim();
+    if (!text) return fallback;
+    return text.split(/[,\s|]+/).map((item) => item.trim()).filter(Boolean);
+}
 
 function buildQualityPolicyText(input) {
     if (typeof input === 'string') return input;
@@ -209,6 +217,30 @@ export function isLowEvidenceAiWorkflowPitch(input) {
     return !hasStrongWorkflowEvidence(text);
 }
 
+function getFoloSourceId(item) {
+    const details = item?.details || {};
+    return String(
+        details.foloSourceId ||
+        details.foloFeedId ||
+        details.feedId ||
+        details.sourceId ||
+        item?.foloSourceId ||
+        item?.feedId ||
+        item?.sourceId ||
+        ''
+    ).trim();
+}
+
+function shouldApplyLowEvidenceWorkflowPolicy(item, options = {}) {
+    const sourceId = getFoloSourceId(item);
+    if (!sourceId) return false;
+    const targetIds = parsePolicyIdList(
+        options.lowEvidenceWorkflowFoloSourceIds,
+        DEFAULT_LOW_EVIDENCE_WORKFLOW_FOLO_SOURCE_IDS
+    );
+    return targetIds.includes(sourceId);
+}
+
 function buildDedupKey(item) {
     const normalizedUrl = canonicalizeUrl(item?.url);
     if (normalizedUrl) return normalizedUrl;
@@ -218,7 +250,7 @@ function buildDedupKey(item) {
     return `${normalizedTitle}::${normalizedDate}`;
 }
 
-export function applyNewsSourcePolicy(items) {
+export function applyNewsSourcePolicy(items, options = {}) {
     const seen = new Set();
     const output = [];
 
@@ -234,7 +266,7 @@ export function applyNewsSourcePolicy(items) {
         if (dedupKey) seen.add(dedupKey);
 
         output.push(
-            isLowEvidenceAiWorkflowPitch(item)
+            shouldApplyLowEvidenceWorkflowPolicy(item, options) && isLowEvidenceAiWorkflowPitch(item)
                 ? {
                     ...item,
                     details: {

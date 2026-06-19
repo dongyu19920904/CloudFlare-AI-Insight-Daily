@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { validateDailyPublication } from "../src/publishValidation.js";
 
-test("validateDailyPublication keeps low-evidence AI workflow pitches out of TOP", () => {
+test("validateDailyPublication does not hard-block generic low-evidence workflow pitch text", () => {
   const result = validateDailyPublication({
     summaryText: "今天有 AI 编程工具更新，也有一个低证据短视频自动化说法，需要放在观察而不是 TOP。",
     pageMarkdown: `## **今日摘要**
@@ -51,6 +51,5 @@ AI 编程工具是真更新，短视频自动化暴富说法先观察。
     minimumTopItems: 2,
   });
 
-  assert.equal(result.ok, false);
-  assert.match(result.issues.join("\n"), /low-evidence AI workflow pitches should stay in watch section/i);
+  assert.doesNotMatch(result.issues.join("\n"), /low-evidence AI workflow pitches should stay in watch section/i);
 });

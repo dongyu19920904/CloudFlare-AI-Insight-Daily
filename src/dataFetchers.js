@@ -54,7 +54,9 @@ export async function fetchAndTransformDataForType(sourceType, env, foloCookie) 
 
     if (sourceType === 'news') {
         const beforeNewsPolicyCount = allUnifiedDataForType.length;
-        allUnifiedDataForType = applyNewsSourcePolicy(allUnifiedDataForType);
+        allUnifiedDataForType = applyNewsSourcePolicy(allUnifiedDataForType, {
+            lowEvidenceWorkflowFoloSourceIds: env.LOW_EVIDENCE_WORKFLOW_FOLO_SOURCE_IDS,
+        });
         if (allUnifiedDataForType.length !== beforeNewsPolicyCount) {
             console.log(`Applied news source policy: ${beforeNewsPolicyCount} -> ${allUnifiedDataForType.length} items.`);
         }

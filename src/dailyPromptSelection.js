@@ -1,7 +1,6 @@
 import { hasMedia, stripHtml } from "./helpers.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
-  isLowEvidenceAiWorkflowPitch,
 } from "./sourcePolicies.js";
 
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
@@ -442,8 +441,7 @@ function buildDailyPromptCandidate(item) {
   if (isWelfare) {
     itemText += "\nPlacement Hint: This is a welfare/freebie item. Put at most one such item in 值得关注, not TOP.";
   }
-  const isLowEvidenceWorkflowPitch =
-    item.details?.lowEvidenceAiWorkflowPitch === true || isLowEvidenceAiWorkflowPitch(item);
+  const isLowEvidenceWorkflowPitch = item.details?.lowEvidenceAiWorkflowPitch === true;
   if (isLowEvidenceWorkflowPitch) {
     itemText += `\n${LOW_EVIDENCE_AI_WORKFLOW_HINT}`;
   }

@@ -103,6 +103,8 @@ const FoloMultiFeedsDataSource = {
                         source: entry.entries.author
                             ? `${entry.feeds?.title || ''} - ${entry.entries.author}`.trim()
                             : entry.feeds?.title || 'Folo',
+                        foloSourceId: id,
+                        foloSourceKind: kind,
                     })),
                 );
 
@@ -162,6 +164,8 @@ const FoloMultiFeedsDataSource = {
                 source: item.source || 'Folo',
                 details: {
                     content_html: item.content_html || '',
+                    foloSourceId: item.foloSourceId || '',
+                    foloSourceKind: item.foloSourceKind || '',
                 },
             }));
     },
