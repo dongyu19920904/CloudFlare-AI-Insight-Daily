@@ -9,11 +9,11 @@ function isDailyLowEvidenceWorkflowPromptItem(item) {
 }
 
 function isDailyWatchOnlyPromptItem(item) {
-  return isDailyWelfarePromptItem(item);
+  return false;
 }
 
 function isDailyPromptHiddenItem(item) {
-  return isDailyLowEvidenceWorkflowPromptItem(item);
+  return isDailyWelfarePromptItem(item) || isDailyLowEvidenceWorkflowPromptItem(item);
 }
 
 export function countDailyTopEligiblePromptItems(selectedContentItems = []) {

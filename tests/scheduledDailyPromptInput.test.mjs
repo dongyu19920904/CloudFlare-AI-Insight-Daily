@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDailyGenerationPromptInput } from "../src/dailyGenerationPromptInput.js";
+import {
+  buildDailyGenerationPromptInput,
+  countDailyTopEligiblePromptItems,
+} from "../src/dailyGenerationPromptInput.js";
 
 test("buildDailyGenerationPromptInput includes AI fun candidates in the main generation prompt", () => {
   const primaryItems = [
@@ -47,7 +50,7 @@ test("buildDailyGenerationPromptInput does not duplicate fun candidates already 
   assert.equal(promptInput.match(/2058786114882900133/g)?.length, 1);
 });
 
-test("buildDailyGenerationPromptInput isolates welfare items to watch-only candidates", () => {
+test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code 更新计划模式",
     "Published: 2026-05-28",
@@ -63,12 +66,9 @@ test("buildDailyGenerationPromptInput isolates welfare items to watch-only candi
   ].join("\n");
 
   const promptInput = buildDailyGenerationPromptInput([normalItem, welfareItem], []);
-  const primaryBlock = promptInput.split("【值得关注专用候选素材】")[0];
-  const watchOnlyBlock = promptInput.split("【值得关注专用候选素材】")[1] || "";
 
-  assert.match(primaryBlock, /Claude Code 更新计划模式/);
-  assert.doesNotMatch(primaryBlock, /LinuxDo 每日薅羊毛/);
-  assert.match(watchOnlyBlock, /LinuxDo 每日薅羊毛/);
-  assert.match(watchOnlyBlock, /最多选 1 条/);
-  assert.match(watchOnlyBlock, /严禁把这些素材写进 `## \*\*🔥 重磅 TOP 10\*\*`/);
+  assert.match(promptInput, /Claude Code 更新计划模式/);
+  assert.doesNotMatch(promptInput, /LinuxDo/);
+  assert.doesNotMatch(promptInput, /welfare\/freebie item/);
+  assert.equal(countDailyTopEligiblePromptItems([normalItem, welfareItem]), 1);
 });
