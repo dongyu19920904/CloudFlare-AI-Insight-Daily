@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDailyGenerationPromptInput } from "../src/dailyGenerationPromptInput.js";
+import {
+  buildDailyGenerationPromptInput,
+  countDailyTopEligiblePromptItems,
+} from "../src/dailyGenerationPromptInput.js";
 
-test("buildDailyGenerationPromptInput isolates low-evidence AI workflow pitches to watch-only candidates", () => {
+test("buildDailyGenerationPromptInput hides low-evidence AI workflow pitches from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code adds a safer planning mode",
     "Published: 2026-06-10",
@@ -25,6 +28,7 @@ test("buildDailyGenerationPromptInput isolates low-evidence AI workflow pitches 
 
   assert.match(primaryBlock, /Claude Code adds a safer planning mode/);
   assert.doesNotMatch(primaryBlock, /ten thousand followers a week/);
-  assert.match(watchOnlyBlock, /ten thousand followers a week/);
-  assert.match(watchOnlyBlock, /low-evidence AI workflow pitch/);
+  assert.doesNotMatch(watchOnlyBlock, /ten thousand followers a week/);
+  assert.doesNotMatch(watchOnlyBlock, /low-evidence AI workflow pitch/);
+  assert.equal(countDailyTopEligiblePromptItems([normalItem, lowEvidencePitch]), 1);
 });

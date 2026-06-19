@@ -62,7 +62,10 @@ import {
     pruneOpportunityReplayMemory,
 } from '../opportunityReplayDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
-import { buildDailyGenerationPromptInput } from '../dailyGenerationPromptInput.js';
+import {
+    buildDailyGenerationPromptInput,
+    countDailyTopEligiblePromptItems,
+} from '../dailyGenerationPromptInput.js';
 import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
 import {
     buildStandaloneDailyFunPromptInput,
@@ -2168,6 +2171,10 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
     debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
+    const dailyTopEligiblePromptItems = countDailyTopEligiblePromptItems(selectedContentItems);
+    const minimumTopItems = dailyTopEligiblePromptItems >= 10 ? 10 : Math.min(dailyTopEligiblePromptItems, 9);
+    debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
+    debugInfo.dailyMinimumTopItems = minimumTopItems;
 
     const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
@@ -2176,7 +2183,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         mediaCandidates,
         debugInfo,
         {
-            minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+            minimumTopItems,
             dailyFunContentItems,
             allowedTopGithubProjectUrls,
         }
@@ -2185,7 +2192,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const validation = generatedValidation || validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
-        minimumTopItems: selectedContentItems.length >= 10 ? 10 : Math.min(selectedContentItems.length, 9),
+        minimumTopItems,
         allowedTopGithubProjectUrls,
         enforceTopGithubProjectAllowlist: true,
     });

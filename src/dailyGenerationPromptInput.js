@@ -1,19 +1,39 @@
-function isDailyWatchOnlyPromptItem(item) {
+function isDailyWelfarePromptItem(item) {
   const text = String(item || "");
-  return (
-    /Placement Hint:\s*This is a welfare\/freebie item/i.test(text) ||
-    /Placement Hint:\s*This is a low-evidence AI workflow pitch/i.test(text)
-  );
+  return /Placement Hint:\s*This is a welfare\/freebie item/i.test(text);
+}
+
+function isDailyLowEvidenceWorkflowPromptItem(item) {
+  const text = String(item || "");
+  return /Placement Hint:\s*This is a low-evidence AI workflow pitch/i.test(text);
+}
+
+function isDailyWatchOnlyPromptItem(item) {
+  return isDailyWelfarePromptItem(item);
+}
+
+function isDailyPromptHiddenItem(item) {
+  return isDailyLowEvidenceWorkflowPromptItem(item);
+}
+
+export function countDailyTopEligiblePromptItems(selectedContentItems = []) {
+  return (selectedContentItems || [])
+    .filter(Boolean)
+    .filter((item) => !isDailyWatchOnlyPromptItem(item))
+    .filter((item) => !isDailyPromptHiddenItem(item))
+    .length;
 }
 
 export function buildDailyGenerationPromptInput(selectedContentItems = [], dailyFunContentItems = []) {
-  const allPrimaryItems = (selectedContentItems || []).filter(Boolean);
+  const allSelectedItems = (selectedContentItems || []).filter(Boolean);
+  const allPrimaryItems = allSelectedItems.filter((item) => !isDailyPromptHiddenItem(item));
   const watchOnlyItems = allPrimaryItems.filter((item) => isDailyWatchOnlyPromptItem(item));
   const primaryItems = allPrimaryItems.filter((item) => !isDailyWatchOnlyPromptItem(item));
   const primaryPrompt = `\n\n------\n\n${primaryItems.join("\n\n------\n\n")}\n\n------\n\n`;
-  const selectedItemKeys = new Set(allPrimaryItems.map((item) => String(item).trim()).filter(Boolean));
+  const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
+    .filter((item) => !isDailyPromptHiddenItem(item))
     .filter((item) => !selectedItemKeys.has(String(item).trim()));
 
   const promptParts = [primaryPrompt];
