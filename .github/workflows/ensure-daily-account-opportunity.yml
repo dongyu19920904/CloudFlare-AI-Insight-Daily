@@ -64,12 +64,47 @@ jobs:
             echo "Today's AI account opportunity page is missing."
           fi
 
+          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/_index.md"
+          HOME_STATUS_CODE=$(curl -sS -o home-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
+          EXPECTED_HOME_NEXT="/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}"
+          HOME_CURRENT="false"
+
+          if [ "$HOME_STATUS_CODE" = "200" ]; then
+            HOME_CURRENT=$(EXPECTED_HOME_NEXT="$EXPECTED_HOME_NEXT" python - <<'PY'
+          import base64
+          import json
+          import os
+          import re
+
+          with open("home-check.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          content = base64.b64decode(payload.get("content", "")).decode("utf-8", errors="replace")
+          match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
+          actual = (match.group(1) if match else "").rstrip("/")
+          expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
+          print("true" if actual == expected else "false")
+          PY
+          )
+          fi
+
+          echo "home_status=$HOME_STATUS_CODE" >> "$GITHUB_OUTPUT"
+          echo "home_current=$HOME_CURRENT" >> "$GITHUB_OUTPUT"
+
+          if [ "$STATUS_CODE" = "200" ] && [ "$HOME_CURRENT" = "true" ]; then
+            echo "healthy=true" >> "$GITHUB_OUTPUT"
+            echo "AI account opportunity output is healthy."
+          else
+            echo "healthy=false" >> "$GITHUB_OUTPUT"
+            echo "AI account opportunity output needs repair; page_status=${STATUS_CODE}, home_current=${HOME_CURRENT}."
+          fi
+
       - name: Skip because account-opportunity page already exists
-        if: steps.check.outputs.exists == 'true' && github.event.inputs.force != 'true'
-        run: echo "Skipping trigger because today's page already exists."
+        if: steps.check.outputs.healthy == 'true' && github.event.inputs.force != 'true'
+        run: echo "Skipping trigger because today's account-opportunity page and home are already current."
 
       - name: Trigger today's AI account opportunity generation
-        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
+        if: steps.check.outputs.healthy != 'true' || github.event.inputs.force == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -107,7 +142,7 @@ jobs:
           PY
 
       - name: Verify today's page after trigger
-        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
+        if: steps.check.outputs.healthy != 'true' || github.event.inputs.force == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -115,7 +150,7 @@ jobs:
         run: |
           PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
 
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
             STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
             if [ "$STATUS_CODE" = "200" ]; then
               echo "Verified today's AI account opportunity page on attempt ${attempt}."
@@ -127,6 +162,49 @@ jobs:
           done
 
           echo "Today's AI account opportunity page is still missing after trigger."
+          exit 1
+
+      - name: Verify account opportunity home after trigger
+        if: steps.check.outputs.healthy != 'true' || github.event.inputs.force == 'true'
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+        run: |
+          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/_index.md"
+          EXPECTED_HOME_NEXT="/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}"
+
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            STATUS_CODE=$(curl -sS -o verify-home.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
+            if [ "$STATUS_CODE" = "200" ]; then
+              HOME_CURRENT=$(EXPECTED_HOME_NEXT="$EXPECTED_HOME_NEXT" python - <<'PY'
+          import base64
+          import json
+          import os
+          import re
+
+          with open("verify-home.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          content = base64.b64decode(payload.get("content", "")).decode("utf-8", errors="replace")
+          match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
+          actual = (match.group(1) if match else "").rstrip("/")
+          expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
+          print("true" if actual == expected else "false")
+          PY
+              )
+
+              if [ "$HOME_CURRENT" = "true" ]; then
+                echo "Verified AI account opportunity home points to ${EXPECTED_HOME_NEXT} on attempt ${attempt}."
+                exit 0
+              fi
+            fi
+
+            echo "Account opportunity home not current yet on attempt ${attempt}, waiting..."
+            sleep 8
+          done
+
+          echo "AI account opportunity home still does not point to ${EXPECTED_HOME_NEXT}."
           exit 1
 
       - name: Validate current account opportunity page content
@@ -149,13 +227,46 @@ jobs:
           node .github/scripts/validate-publication-content.mjs
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
+      - name: Validate current account opportunity home freshness
+        id: validate_home
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+        run: |
+          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/_index.md"
+          EXPECTED_HOME_NEXT="/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}"
+          STATUS_CODE=$(curl -sS -o publication-home.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "::error::Unable to fetch account opportunity home content for validation (status=${STATUS_CODE})."
+            exit 1
+          fi
+
+          EXPECTED_HOME_NEXT="$EXPECTED_HOME_NEXT" python - <<'PY'
+          import base64
+          import json
+          import os
+          import re
+
+          with open("publication-home.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          content = base64.b64decode(payload.get("content", "")).decode("utf-8", errors="replace")
+          match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
+          actual = (match.group(1) if match else "").rstrip("/")
+          expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
+          if actual != expected:
+              raise SystemExit(f"Account opportunity home next is stale: {actual!r}, expected {expected!r}")
+          PY
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
       - name: Report Worker account opportunity status
         if: always()
         shell: bash
         env:
           MODE: account-opportunity
           TARGET_DATE: ${{ steps.target.outputs.date }}
-          PAGE_HEALTH: ${{ steps.validate_page.outputs.ok == 'true' && 'healthy' || 'needs-repair' }}
+          PAGE_HEALTH: ${{ steps.validate_page.outputs.ok == 'true' && steps.validate_home.outputs.ok == 'true' && 'healthy' || 'needs-repair' }}
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: |
           STATUS_HTTP_CODE="not_requested"
