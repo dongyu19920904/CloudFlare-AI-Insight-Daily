@@ -16,6 +16,7 @@ import { getISODate } from './helpers.js';
 import { resolveScheduledModeFromEvent } from './scheduleRouting.js';
 import { getScheduledStatusKey, storeScheduledRunStatus } from './scheduledStatus.js';
 import { repairDailyHomePointer } from './dailyHomeRepair.js';
+import { repairAccountOpportunityHomePointer, repairOpportunityHomePointer } from './opportunityHomeRepair.js';
 import { fetchAndStoreSourceCategory } from './dailySourcePrefetch.js';
 import {
     handleScheduled,
@@ -358,6 +359,27 @@ export default {
             return new Response(JSON.stringify({
                 success: true,
                 message: `Daily home pointer repaired for date: ${specifiedDate}`,
+                ...result,
+                timestamp: new Date().toISOString(),
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            });
+        } else if (
+            (path === '/testRepairOpportunityHome' ||
+                path === '/testRepairAccountOpportunityHome') &&
+            request.method === 'GET'
+        ) {
+            const authError = validateTestTriggerSecret(url, env);
+            if (authError) return authError;
+            const specifiedDate = getSpecifiedDate(url) || getISODate();
+            const isAccountOpportunity = path === '/testRepairAccountOpportunityHome';
+            const result = isAccountOpportunity
+                ? await repairAccountOpportunityHomePointer(env, specifiedDate)
+                : await repairOpportunityHomePointer(env, specifiedDate);
+            return new Response(JSON.stringify({
+                success: true,
+                message: `${isAccountOpportunity ? 'Account opportunity' : 'Opportunity'} home pointer repaired for date: ${specifiedDate}`,
                 ...result,
                 timestamp: new Date().toISOString(),
             }), {

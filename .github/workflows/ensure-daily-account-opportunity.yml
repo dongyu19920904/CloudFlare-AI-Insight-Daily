@@ -103,8 +103,38 @@ jobs:
         if: steps.check.outputs.healthy == 'true' && github.event.inputs.force != 'true'
         run: echo "Skipping trigger because today's account-opportunity page and home are already current."
 
+      - name: Repair account opportunity home from existing page
+        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current != 'true' && github.event.inputs.force != 'true'
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+        run: |
+          if [ -z "$TEST_TRIGGER_SECRET" ]; then
+            echo "::error::TEST_TRIGGER_SECRET is not configured in GitHub Actions. Refusing to call Worker repair endpoints."
+            exit 1
+          fi
+
+          echo "Repairing AI account opportunity home pointer for ${TARGET_DATE}"
+          curl -sS -G "${WORKER_BASE_URL}/testRepairAccountOpportunityHome" \
+            --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+            --data-urlencode "date=${TARGET_DATE}" \
+            > repair-response.json
+
+          python - <<'PY'
+          import json
+
+          with open("repair-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+          if not payload.get("success") or not payload.get("homeUpdated"):
+              raise SystemExit("Worker account opportunity home repair failed")
+          PY
+
       - name: Trigger today's AI account opportunity generation
-        if: steps.check.outputs.healthy != 'true' || github.event.inputs.force == 'true'
+        if: steps.check.outputs.exists != 'true' || github.event.inputs.force == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
