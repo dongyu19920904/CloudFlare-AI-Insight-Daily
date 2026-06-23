@@ -5,6 +5,7 @@ const OPPORTUNITY_LINK_LABEL =
 
 const QUICK_NAV_HEADER = "## ⚡ 快速导航";
 const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
+const LATEST_OPPORTUNITY_SHORTCODE = "{{< latest-opportunity >}}";
 
 export const DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION =
   "与 AI日报共享同源信息，再额外筛选 AI 工具、AI账号和低门槛实操机会。";
@@ -56,20 +57,22 @@ function replaceOrInsertFrontMatterLine(frontMatter, field, value) {
   return frontMatter.replace(/\r?\n---\s*\r?\n$/, `\n${field}: ${value}\n---\n`);
 }
 
+function removeFrontMatterLine(frontMatter, field) {
+  const pattern = new RegExp(`^${field}:\\s*.*\\r?\\n?`, "m");
+  return frontMatter.replace(pattern, "");
+}
+
 function buildSectionHomeFrontMatter(dateStr, options = {}) {
   const {
     title = "AI商机",
     description = DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
     sectionPrefix = "/opportunity",
   } = options;
-  const yearMonth = getYearMonth(dateStr);
-  const nextPath = `${sectionPrefix}/${yearMonth}/${dateStr}`;
 
   return `---
 linkTitle: AI商机
 title: ${title}
 breadcrumbs: false
-next: ${nextPath}
 description: "${description}"
 cascade:
   type: docs
@@ -95,8 +98,7 @@ export function updateSectionHomeIndexContent(
 
   if (existingContent && FRONT_MATTER_REGEX.test(existingContent)) {
     frontMatter = existingContent.match(FRONT_MATTER_REGEX)[0];
-    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "next", nextPath);
-    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "title", title);
+    frontMatter = removeFrontMatterLine(frontMatter, "next");
     frontMatter = replaceOrInsertFrontMatterLine(
       frontMatter,
       "description",
@@ -110,6 +112,5 @@ export function updateSectionHomeIndexContent(
     });
   }
 
-  const body = stripFrontMatter(sectionContent).trimStart();
-  return `${frontMatter.trimEnd()}\n\n${body}`;
+  return `${frontMatter.trimEnd()}\n\n${LATEST_OPPORTUNITY_SHORTCODE}`;
 }

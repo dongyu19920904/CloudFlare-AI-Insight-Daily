@@ -1,6 +1,7 @@
 import { getYearMonth } from "./contentUtils.js";
 
 const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
+const LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE = "{{< latest-account-opportunity >}}";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
   "聚焦账号、镜像、平替、封号、支付限制和闲鱼新品机会。";
@@ -34,20 +35,22 @@ function replaceOrInsertFrontMatterLine(frontMatter, field, value) {
   return frontMatter.replace(/\r?\n---\s*\r?\n$/, `\n${field}: ${value}\n---\n`);
 }
 
+function removeFrontMatterLine(frontMatter, field) {
+  const pattern = new RegExp(`^${field}:\\s*.*\\r?\\n?`, "m");
+  return frontMatter.replace(pattern, "");
+}
+
 function buildAccountOpportunityHomeFrontMatter(dateStr, options = {}) {
   const {
     title = "AI账号商机",
     description = DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     sectionPrefix = "/account-opportunity",
   } = options;
-  const yearMonth = getYearMonth(dateStr);
-  const nextPath = `${sectionPrefix}/${yearMonth}/${dateStr}`;
 
   return `---
 linkTitle: AI账号商机
 title: ${title}
 breadcrumbs: false
-next: ${nextPath}
 description: "${description}"
 cascade:
   type: docs
@@ -73,8 +76,7 @@ export function updateAccountOpportunityHomeIndexContent(
 
   if (existingContent && FRONT_MATTER_REGEX.test(existingContent)) {
     frontMatter = existingContent.match(FRONT_MATTER_REGEX)[0];
-    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "next", nextPath);
-    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "title", title);
+    frontMatter = removeFrontMatterLine(frontMatter, "next");
     frontMatter = replaceOrInsertFrontMatterLine(
       frontMatter,
       "description",
@@ -88,6 +90,5 @@ export function updateAccountOpportunityHomeIndexContent(
     });
   }
 
-  const body = stripFrontMatter(sectionContent).trimStart();
-  return `${frontMatter.trimEnd()}\n\n${body}`;
+  return `${frontMatter.trimEnd()}\n\n${LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE}`;
 }

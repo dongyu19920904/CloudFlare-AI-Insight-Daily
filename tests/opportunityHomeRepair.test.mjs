@@ -9,7 +9,7 @@ import {
 test("buildOpportunityHomeRepairContent repoints opportunity home from an existing page", () => {
   const existingHomeContent = `---
 linkTitle: AI Opportunity
-title: Old Opportunity 2026/6/21
+title: AI Opportunity
 breadcrumbs: false
 description: "old"
 cascade:
@@ -28,16 +28,17 @@ description: "new"
 
   const repaired = buildOpportunityHomeRepairContent(existingHomeContent, pageContent, "2026-06-22");
 
-  assert.match(repaired, /^title: New Opportunity 2026\/6\/22$/m);
-  assert.match(repaired, /^next: \/opportunity\/2026-06\/2026-06-22$/m);
-  assert.match(repaired, /## New opportunity body/);
+  assert.match(repaired, /^title: AI Opportunity$/m);
+  assert.doesNotMatch(repaired, /^next:/m);
+  assert.match(repaired, /\{\{< latest-opportunity >\}\}/);
+  assert.doesNotMatch(repaired, /## New opportunity body/);
   assert.doesNotMatch(repaired, /Old opportunity body/);
 });
 
 test("buildAccountOpportunityHomeRepairContent repoints account opportunity home from an existing page", () => {
   const existingHomeContent = `---
 linkTitle: AI Account Opportunity
-title: Old Account Opportunity 2026/6/21
+title: AI Account Opportunity
 breadcrumbs: false
 description: "old"
 cascade:
@@ -60,8 +61,9 @@ description: "new"
     "2026-06-22",
   );
 
-  assert.match(repaired, /^title: New Account Opportunity 2026\/6\/22$/m);
-  assert.match(repaired, /^next: \/account-opportunity\/2026-06\/2026-06-22$/m);
-  assert.match(repaired, /## New account opportunity body/);
+  assert.match(repaired, /^title: AI Account Opportunity$/m);
+  assert.doesNotMatch(repaired, /^next:/m);
+  assert.match(repaired, /\{\{< latest-account-opportunity >\}\}/);
+  assert.doesNotMatch(repaired, /## New account opportunity body/);
   assert.doesNotMatch(repaired, /Old account opportunity body/);
 });
