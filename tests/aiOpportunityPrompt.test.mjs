@@ -90,3 +90,16 @@ test("getSystemPromptAiOpportunity asks for creative-but-sellable variation inst
   assert.match(prompt, /今日主推和本周可试不要写成同一种卖法模式/);
   assert.match(prompt, /翻译包|组合包|迁移包|筛选服务|结果型模板包/);
 });
+
+test("getSystemPromptAiOpportunity applies business-material filters to avoid generic analysis", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-06-24", "### 当前业务");
+
+  assert.match(prompt, /商机资料内核/);
+  assert.match(prompt, /先选鱼塘，再选工具/);
+  assert.match(prompt, /目标鱼塘/);
+  assert.match(prompt, /可交付物/);
+  assert.match(prompt, /最低成本验证/);
+  assert.match(prompt, /复购\/升级路径/);
+  assert.match(prompt, /售后边界/);
+  assert.match(prompt, /只能放到“地图感”或“今天别碰”/);
+});

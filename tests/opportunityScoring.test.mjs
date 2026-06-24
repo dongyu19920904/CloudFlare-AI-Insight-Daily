@@ -322,3 +322,42 @@ test("buildOpportunityCandidates creates a generic GitHub hot project candidate 
   assert.match(githubCandidate.productAngle, /模板包|跑通包|轻服务|部署/);
   assert.ok(["bundle", "service"].includes(githubCandidate.preferredLane));
 });
+
+test("productized business materials outrank pure community heat", () => {
+  const candidates = buildOpportunityCandidates({
+    news: [
+      {
+        title: "MCP SDK 开源项目冲上 GitHub 热榜",
+        description: "github stars developers sdk release，技术圈都在讨论",
+        source: "GitHub Trending",
+        url: "https://github.com/example/mcp-sdk",
+        published_date: "2026-06-24",
+        details: { content_html: "<p>github stars developers sdk release</p>" },
+      },
+      {
+        title: "小红书 AI 起号 SOP 资料包更新",
+        description:
+          "包含标题模板、朋友圈话术、私域成交、客服售后 SOP，今天能做低价资料包和社群复购",
+        source: "AI Base",
+        url: "https://example.com/xhs-ai-sop",
+        published_date: "2026-06-24",
+        details: {
+          content_html:
+            "<p>template prompt sop title copy private domain after sales membership</p>",
+        },
+      },
+    ],
+  });
+
+  const materialCandidate = candidates.find(
+    (candidate) => candidate.id === "skills_templates"
+  );
+  const heatCandidate = candidates.find(
+    (candidate) => candidate.id === "github_hot_project"
+  );
+
+  assert.ok(materialCandidate);
+  assert.ok(heatCandidate);
+  assert.ok(materialCandidate.score > heatCandidate.score);
+  assert.equal(materialCandidate.preferredLane, "bundle");
+});

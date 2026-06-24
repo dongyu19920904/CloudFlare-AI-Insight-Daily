@@ -25,3 +25,15 @@ test("getSystemPromptAiAccountOpportunity asks for varied sellable modes beyond 
   assert.match(prompt, /标题只挂最关键的主来源/);
   assert.match(prompt, /输入素材里的原始 URL/);
 });
+
+test("getSystemPromptAiAccountOpportunity turns account signals into store operations", () => {
+  const prompt = getSystemPromptAiAccountOpportunity("2026-06-24", "### 当前业务");
+
+  assert.match(prompt, /账号店操盘内核/);
+  assert.match(prompt, /商品组合/);
+  assert.match(prompt, /闲鱼标题方向/);
+  assert.match(prompt, /教程\/交付物/);
+  assert.match(prompt, /售后边界/);
+  assert.match(prompt, /只观察 \/ 小范围试挂 \/ 不承诺长期稳定/);
+  assert.match(prompt, /账号店待办清单/);
+});

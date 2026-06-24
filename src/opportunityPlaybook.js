@@ -1,10 +1,57 @@
 export const opportunityPlaybook = {
   businessProfile: {
-    coreBusiness: ["AI账号", "AI内容", "模板包", "跑通包", "轻服务", "代配置"],
-    targetUsers: ["中文新手", "低预算用户", "想快速上手AI的人"],
+    coreBusiness: [
+      "AI账号",
+      "AI工具账号",
+      "资料包/模板/SOP",
+      "跑通包",
+      "轻服务/代配置",
+      "私域社群",
+    ],
+    targetUsers: [
+      "中文新手",
+      "低预算用户",
+      "AI账号买家",
+      "闲鱼小卖家",
+      "一人公司和内容副业新手",
+    ],
     tone: "务实、直接、偏成交，不写空话",
     editorialRule:
-      "先根据当天真实信息源判断机会，再决定最适合写成账号、模板包、跑通包还是轻服务；先写买家愿意付钱的理由，再补当天的新变化。",
+      "先根据当天真实信息源判断机会，再决定最适合写成账号、模板包、跑通包、私域资料还是轻服务；先写买家愿意付钱的理由、你能交付什么、今天怎么低成本验证，再补当天的新变化。",
+  },
+
+  strategyKernel: {
+    formula:
+      "选一个有钱且持续痛的人群 -> 用内容证明你懂他的问题 -> 用低价资料/模板/跑通包拿到第一单 -> 用私域和售后沉淀复购 -> 把一次性交付沉淀成 SOP、案例、产品和会员。",
+    buyerPonds: [
+      "AI账号购买者：怕折腾入口、怕不会用、怕售后没人管",
+      "闲鱼/微信小卖家：想上新品、改标题、降售后、提高成交",
+      "内容副业新手：想要选题、脚本、模板、工作流和可复制案例",
+      "小老板/个体商家：想用 AI 做客服、朋友圈、私域、商品文案",
+      "程序员/独立开发者：想把 GitHub 项目跑通、部署、改成小工具",
+    ],
+    selectionChecklist: [
+      "目标鱼塘是否明确：到底卖给谁，不要写成泛泛 AI 爱好者",
+      "痛点是否高频：今天、这周就会遇到，不是一年一次的概念",
+      "交付物是否具体：账号、教程、模板、SOP、表格、录屏、跑通服务",
+      "低成本验证是否成立：今晚能发一条文案、挂一版标题或做一个截图",
+      "复购或升级是否存在：资料库、社群、会员、月费、陪跑、代配置",
+      "售后边界是否清楚：不要把不稳定、高解释成本的方向硬写成主推",
+    ],
+    offerLadder: [
+      "免费/引流：避坑清单、工具清单、标题样例、上手截图",
+      "低价：资料包、模板库、教程包、账号搭售说明",
+      "中价：跑通包、配置包、训练营、陪跑小课",
+      "高价：代配置、自动化服务、私域系统、企业/团队方案",
+      "长期：资料库会员、社群答疑、月费维护、工具订阅",
+    ],
+    badOpportunitySignals: [
+      "只有热度，没有买家痛点",
+      "只有教程标题，没有实际交付链接、步骤或可验证结果",
+      "只有 GitHub stars，没有中文新手能拿到的结果",
+      "只会制造焦虑，但今天卖家不知道上什么货",
+      "售后风险高，还要求卖家承诺长期稳定",
+    ],
   },
 
   productLanes: [
@@ -256,16 +303,22 @@ export const opportunityPlaybook = {
     narrativeRequirement:
       "今日主推和本周可试都先用 1-2 句短段落讲清场景、痛点和结果，再补必要 bullets，不要写成问答表单。",
     requiredOpportunityFields: [
+      "目标鱼塘",
       "适合谁",
       "这钱从哪来",
+      "可交付物",
       "最简单卖法",
+      "最低成本验证",
       "今天先做哪一步",
       "今天就能发的文案",
+      "复购/升级路径",
+      "售后边界",
       "配图建议",
     ],
     requiredWeeklyTryFields: [
       "适合谁",
       "先怎么试",
+      "最低成本验证",
       "为什么先别冲太猛",
       "配图建议",
     ],
@@ -298,6 +351,7 @@ export function getOpportunityLaneById(
 
 export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
   const business = playbook.businessProfile;
+  const strategy = playbook.strategyKernel || {};
   const lanes = playbook.productLanes
     .map((lane) => {
       return [
@@ -328,6 +382,13 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
     `- 目标用户: ${business.targetUsers.join("、")}`,
     `- 语气: ${business.tone}`,
     `- 编辑原则: ${business.editorialRule}`,
+    "",
+    "### 商机资料提炼的判断内核",
+    `- 总公式: ${strategy.formula || ""}`,
+    `- 优先鱼塘: ${(strategy.buyerPonds || []).join("；")}`,
+    `- 筛选清单: ${(strategy.selectionChecklist || []).join("；")}`,
+    `- 产品阶梯: ${(strategy.offerLadder || []).join("；")}`,
+    `- 坏商机信号: ${(strategy.badOpportunitySignals || []).join("；")}`,
     "",
     "### 可卖方向",
     lanes,

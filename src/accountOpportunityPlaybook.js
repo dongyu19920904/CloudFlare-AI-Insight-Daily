@@ -2,11 +2,49 @@ import { getOpportunityLaneById } from "./opportunityPlaybook.js";
 
 export const accountOpportunityPlaybook = {
   businessProfile: {
-    coreBusiness: ["AI账号", "镜像入口", "平替体验包", "账号搭售", "账号迁移包"],
-    targetUsers: ["账号卖家本人", "闲鱼选品视角", "偏低售后、可当天试卖"],
+    coreBusiness: [
+      "AI账号",
+      "成品号/续费/卡密",
+      "镜像入口",
+      "平替体验包",
+      "账号搭售",
+      "账号迁移包",
+      "教程和售后说明",
+    ],
+    targetUsers: [
+      "账号卖家本人",
+      "闲鱼选品视角",
+      "偏低售后、可当天试卖",
+      "正在买 ChatGPT/Claude/Cursor/Gemini 的中文用户",
+    ],
     tone: "像操盘手做判断，直接、克制、偏执行，不写空话",
     editorialRule:
-      "先判断今天出现了什么账号信号，再推演原账号、平替账号、镜像、组合包和迁移包的机会；先写今天能卖什么，再写为什么。",
+      "先判断今天出现了什么账号信号，再推演原账号、平替账号、镜像、组合包、教程包和迁移包的机会；先写今天能卖什么、改什么标题、怎么交付和怎么控售后，再写为什么。",
+  },
+
+  strategyKernel: {
+    formula:
+      "账号不是只卖账号，而是卖“今天能用上 + 少踩坑 + 有教程 + 售后边界清楚”的解决方案入口。",
+    operatingRules: [
+      "今天先看买家麻烦：封号、支付、涨价、额度、不会安装、不会选择",
+      "再决定商品组合：成品号、续费、平替、组合体验、迁移包、教程包、避坑说明",
+      "每个机会都要能落到一版闲鱼标题、一页教程或一条朋友圈文案",
+      "高售后风险方向只能观察或小范围试挂，不要写成主推硬卖",
+      "能用教程、录屏、FAQ 降低售后的方向优先",
+      "账号生意要找复购：会员、续费、教程更新、社群答疑、工具组合",
+    ],
+    titleLabRules: [
+      "标题先写买家今天遇到的麻烦，再写账号/平替名",
+      "同一机会至少给出一个低售后标题方向，不夸长期稳定",
+      "标题不要堆模型参数、官方术语、技术圈黑话",
+    ],
+    productCombinations: [
+      "低价体验号 + 新手登录说明",
+      "账号 + 场景教程 + 常见问题",
+      "平替组合包 + 对比选择表",
+      "风控避坑说明 + 迁移清单",
+      "Cursor/Claude/Gemini 使用教程 + 售后边界",
+    ],
   },
 
   productLanes: [
@@ -232,9 +270,14 @@ export const accountOpportunityPlaybook = {
       "证据来源",
       "可信度",
       "是否今天能挂闲鱼",
+      "目标买家",
+      "商品组合",
+      "闲鱼标题方向",
       "今天先挂什么",
       "今天先测什么",
+      "教程/交付物",
       "售后风险",
+      "售后边界",
       "今天最小动作",
     ],
     requiredWeeklyTryFields: ["平替机会", "闲鱼新品"],
@@ -271,6 +314,7 @@ export function serializeAccountOpportunityPlaybook(
   playbook = accountOpportunityPlaybook
 ) {
   const business = playbook.businessProfile;
+  const strategy = playbook.strategyKernel || {};
   const lanes = playbook.productLanes
     .map((lane) => {
       return [
@@ -301,6 +345,12 @@ export function serializeAccountOpportunityPlaybook(
     `- 目标视角: ${business.targetUsers.join("、")}`,
     `- 语气: ${business.tone}`,
     `- 编辑原则: ${business.editorialRule}`,
+    "",
+    "### 账号店操盘内核",
+    `- 总公式: ${strategy.formula || ""}`,
+    `- 操盘规则: ${(strategy.operatingRules || []).join("；")}`,
+    `- 闲鱼标题实验规则: ${(strategy.titleLabRules || []).join("；")}`,
+    `- 常用商品组合: ${(strategy.productCombinations || []).join("；")}`,
     "",
     "### 可卖方向",
     lanes,

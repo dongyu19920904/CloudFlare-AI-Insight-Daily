@@ -31,6 +31,12 @@ const CONCRETE_PRODUCT_SIGNAL_PATTERN =
   /上线|发布|更新|开放|支持|接入|新增|推出|灰度|开源|sdk|plugin|插件|workflow|模板|template|github|release|launch|integration/i;
 const BUYER_OUTCOME_SIGNAL_PATTERN =
   /字幕|翻译|整理|提取|总结|写作|内容|提效|上手|跑通|配置|接入微信|微信|私聊|公众号|自动回复|客服|答疑|安装说明|模板交付|录屏|截图|场景|体验|低门槛/i;
+const BUSINESS_CONTEXT_SIGNAL_PATTERN =
+  /闲鱼|小红书|视频号|公众号|私域|社群|朋友圈|客服|售后|成交|标题|商品|选品|上架|试挂|资料包|模板|sop|教程|话术|卡密|账号|会员|套餐|续费|成品号|镜像|激活器|交付|报价|客户|复购|月费|训练营|陪跑|低价|代配置|代运营|内容|选题|脚本/i;
+const PRODUCTIZED_DELIVERY_SIGNAL_PATTERN =
+  /sop|模板|资料包|教程|清单|报价单|话术|标题|脚本|配置|部署|跑通|代配置|上手包|交付|表格|知识库|案例|录屏|截图|自动化|私域|客服|售后|发卡|卡密|商品页/i;
+const REPEAT_PURCHASE_SIGNAL_PATTERN =
+  /复购|月费|会员|社群|订阅|年费|训练营|陪跑|代运营|持续|维护|更新|私域|售后|答疑|资料库/i;
 const COMMUNITY_HEAT_SIGNAL_PATTERN =
   /github|star|stars|安装量|热议|刷屏|开发者|repo|issue|pull request|commit/i;
 const NOISY_DEMAND_PATTERN =
@@ -50,6 +56,18 @@ function hasConcreteSignal(item) {
 
 function hasBuyerOutcomeSignal(item) {
   return BUYER_OUTCOME_SIGNAL_PATTERN.test(item?.searchText || "");
+}
+
+function hasBusinessContextSignal(item) {
+  return BUSINESS_CONTEXT_SIGNAL_PATTERN.test(item?.searchText || "");
+}
+
+function hasProductizedDeliverySignal(item) {
+  return PRODUCTIZED_DELIVERY_SIGNAL_PATTERN.test(item?.searchText || "");
+}
+
+function hasRepeatPurchaseSignal(item) {
+  return REPEAT_PURCHASE_SIGNAL_PATTERN.test(item?.searchText || "");
 }
 
 function hasCommunityHeatSignal(item) {
@@ -291,6 +309,15 @@ function scoreClearChange(items) {
   const buyerOutcomeSignals = items.filter((item) =>
     hasBuyerOutcomeSignal(item)
   ).length;
+  const businessContextSignals = items.filter((item) =>
+    hasBusinessContextSignal(item)
+  ).length;
+  const productizedDeliverySignals = items.filter((item) =>
+    hasProductizedDeliverySignal(item)
+  ).length;
+  const repeatPurchaseSignals = items.filter((item) =>
+    hasRepeatPurchaseSignal(item)
+  ).length;
   const noisySignals = items.filter((item) =>
     NOISY_DEMAND_PATTERN.test(item.searchText)
   ).length;
@@ -310,6 +337,9 @@ function scoreClearChange(items) {
     sourceDiversity * 3 +
     concreteSignals * 3 +
     buyerOutcomeSignals * 3 +
+    businessContextSignals * 2 +
+    productizedDeliverySignals * 3 +
+    repeatPurchaseSignals * 2 +
     githubSignals * 2 +
     changeSignal -
     noisySignals * 4 -
@@ -324,6 +354,9 @@ function scoreSupportingItem(item, matchedTerms) {
   const changeSignal = CHANGE_SIGNAL_PATTERN.test(item.searchText) ? 2 : 0;
   const concreteSignal = hasConcreteSignal(item) ? 3 : 0;
   const buyerOutcomeSignal = hasBuyerOutcomeSignal(item) ? 4 : 0;
+  const businessContextSignal = hasBusinessContextSignal(item) ? 3 : 0;
+  const productizedDeliverySignal = hasProductizedDeliverySignal(item) ? 4 : 0;
+  const repeatPurchaseSignal = hasRepeatPurchaseSignal(item) ? 2 : 0;
   const communityHeatPenalty = isCommunityHeatOnlyItem(item) ? 4 : 0;
   const noisePenalty = isNoisyItem(item) ? 6 : 0;
   return (
@@ -331,7 +364,10 @@ function scoreSupportingItem(item, matchedTerms) {
     matchedTermSignal +
     changeSignal +
     concreteSignal +
-    buyerOutcomeSignal -
+    buyerOutcomeSignal +
+    businessContextSignal +
+    productizedDeliverySignal +
+    repeatPurchaseSignal -
     communityHeatPenalty -
     noisePenalty
   );
@@ -370,6 +406,21 @@ function getLaneSignalScores(group) {
     if (hasBuyerOutcomeSignal(item)) {
       laneSignalScores.bundle += 2;
       laneSignalScores.service += 3;
+    }
+
+    if (hasBusinessContextSignal(item)) {
+      laneSignalScores.bundle += 3;
+      laneSignalScores.service += 2;
+    }
+
+    if (hasProductizedDeliverySignal(item)) {
+      laneSignalScores.bundle += 4;
+      laneSignalScores.service += 3;
+    }
+
+    if (hasRepeatPurchaseSignal(item)) {
+      laneSignalScores.bundle += 2;
+      laneSignalScores.service += 2;
     }
 
     if (hasConcreteSignal(item)) {
