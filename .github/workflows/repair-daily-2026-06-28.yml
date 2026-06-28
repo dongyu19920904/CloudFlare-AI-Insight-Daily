@@ -1,0 +1,82 @@
+name: Repair Daily 2026-06-28
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/repair-daily-2026-06-28.yml"
+  workflow_dispatch:
+
+jobs:
+  repair-daily:
+    runs-on: ubuntu-latest
+    env:
+      WORKER_BASE_URL: https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev
+      FRONTEND_REPO: dongyu19920904/Hextra-AI-Insight-Daily
+      TARGET_DATE: "2026-06-28"
+      YEAR_MONTH: "2026-06"
+    steps:
+      - name: Trigger daily generation
+        shell: bash
+        env:
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TEST_TRIGGER_SECRET:-}" ]; then
+            echo "::error::TEST_TRIGGER_SECRET is not configured."
+            exit 1
+          fi
+
+          for category in news project paper socialMedia; do
+            echo "Prefetching ${category} for ${TARGET_DATE}..."
+            curl -fsS -G "${WORKER_BASE_URL}/testFetchCategory" \
+              --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+              --data-urlencode "date=${TARGET_DATE}" \
+              --data-urlencode "category=${category}" \
+              -o "prefetch-${category}.json"
+            cat "prefetch-${category}.json"
+            echo ""
+          done
+
+          echo "Triggering daily generation for ${TARGET_DATE}..."
+          curl -fsS -G "${WORKER_BASE_URL}/testTriggerScheduledDaily" \
+            --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+            --data-urlencode "date=${TARGET_DATE}" \
+            -o trigger-response.json
+          cat trigger-response.json
+          echo ""
+
+          python - <<'PY'
+          import json
+          with open("trigger-response.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+          if not payload.get("success"):
+              raise SystemExit(f"Worker trigger failed: {payload}")
+          debug = payload.get("debug") or {}
+          if debug and not debug.get("dailyPublished", True):
+              raise SystemExit(f"Daily content was not published: {debug}")
+          PY
+
+      - name: Verify generated files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RAW_URL="https://raw.githubusercontent.com/${FRONTEND_REPO}/main/daily/${TARGET_DATE}.md"
+          PAGE_URL="https://raw.githubusercontent.com/${FRONTEND_REPO}/main/content/cn/${YEAR_MONTH}/${TARGET_DATE}.md"
+
+          for attempt in $(seq 1 40); do
+            if curl -fsSLI "$RAW_URL" >/dev/null && curl -fsSLI "$PAGE_URL" >/dev/null; then
+              echo "Generated files are present."
+              echo "$RAW_URL"
+              echo "$PAGE_URL"
+              exit 0
+            fi
+            echo "Waiting for generated files (${attempt}/40)..."
+            sleep 15
+          done
+
+          echo "::error::Generated files did not appear."
+          exit 1
