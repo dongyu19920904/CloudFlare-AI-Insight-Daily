@@ -1,5 +1,6 @@
 // src/dataFetchers.js
 import NewsAggregatorDataSource from './dataSources/newsAggregator.js';
+import RssNewsDataSource from './dataSources/rss-news.js';
 import FoloMultiFeedsDataSource from './dataSources/folo-multi-feeds.js';
 import AibaseDataSource from './dataSources/aibase.js';
 import JiqizhixinDataSource from './dataSources/jiqizhixin.js';
@@ -17,7 +18,7 @@ import { applyLinuxDoPolicy, applyNewsSourcePolicy, resolveLinuxDoPolicy } from 
 // Register data sources as arrays to support multiple sources per type
 export const dataSources = {
     // news 下支持多个可选 Folo feed/list 源：只要在环境变量中配置对应 *_FEED_ID 或 LIST_ID 即可自动生效
-    news: { name: '新闻', sources: [NewsAggregatorDataSource, FoloMultiFeedsDataSource, AibaseDataSource, JiqizhixinDataSource, QbitDataSource, XinzhiyuanDataSource, XiaohuDataSource] },
+    news: { name: '新闻', sources: [RssNewsDataSource, NewsAggregatorDataSource, FoloMultiFeedsDataSource, AibaseDataSource, JiqizhixinDataSource, QbitDataSource, XinzhiyuanDataSource, XiaohuDataSource] },
     project: { name: '项目', sources: [GithubTrendingDataSource] },
     paper: { name: '论文', sources: [PapersDataSource, HuggingfacePapersDataSource] },
     socialMedia: { name: '社交平台', sources: [TwitterDataSource, RedditDataSource] },
