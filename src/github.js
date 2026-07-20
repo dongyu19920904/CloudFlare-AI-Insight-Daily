@@ -1,5 +1,29 @@
 // src/github.js
 
+const TRANSIENT_GITHUB_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+function getRetryNumber(value, fallback, maximum) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+    return Math.min(parsed, maximum);
+}
+
+function getRetryAfterMs(response) {
+    const value = response.headers?.get?.('retry-after');
+    if (!value) return null;
+
+    const seconds = Number.parseInt(value, 10);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+
+    const date = Date.parse(value);
+    if (!Number.isFinite(date)) return null;
+    return Math.max(0, date - Date.now());
+}
+
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Generic wrapper for calling the GitHub API.
  */
@@ -24,11 +48,45 @@ export async function callGitHubApi(env, path, method = 'GET', body = null) {
         headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(url, {
-        method: method,
-        headers: headers,
-        body: body ? JSON.stringify(body) : null
-    });
+    const maxRetries = getRetryNumber(env.GITHUB_API_RETRY_MAX, 3, 5);
+    const baseDelayMs = getRetryNumber(env.GITHUB_API_RETRY_BASE_MS, 1000, 10000);
+    const requestBody = body ? JSON.stringify(body) : null;
+    let response;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        try {
+            response = await fetch(url, {
+                method: method,
+                headers: headers,
+                body: requestBody
+            });
+        } catch (error) {
+            if (attempt >= maxRetries) {
+                throw new Error(`GitHub API request to ${path} failed after a network error: ${error.message}`);
+            }
+
+            const delayMs = baseDelayMs * Math.pow(2, attempt);
+            console.warn(`GitHub API network error for ${method} ${path}; retrying in ${delayMs}ms.`);
+            await wait(delayMs);
+            continue;
+        }
+
+        if (response.ok || !TRANSIENT_GITHUB_STATUSES.has(response.status) || attempt >= maxRetries) {
+            break;
+        }
+
+        const delayMs = Math.min(
+            getRetryAfterMs(response) ?? (baseDelayMs * Math.pow(2, attempt)),
+            15000
+        );
+        console.warn(`GitHub API returned ${response.status} for ${method} ${path}; retrying in ${delayMs}ms.`);
+        try {
+            await response.body?.cancel?.();
+        } catch (error) {
+            // Best-effort response cleanup before retrying.
+        }
+        await wait(delayMs);
+    }
 
     if (!response.ok) {
         const errorText = await response.text();

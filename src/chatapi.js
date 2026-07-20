@@ -14,7 +14,7 @@ function getAnthropicBackupModelName(env) {
     return env.DEFAULT_ANTHROPIC_BACKUP_MODEL || env.ANTHROPIC_BACKUP_MODEL || getAnthropicModelName(env);
 }
 
-function getAnthropicRoutes(env) {
+function getAnthropicRoutes(env, modelName = getAnthropicModelName(env)) {
     const primaryBaseUrl = normalizeBaseUrl(env.ANTHROPIC_API_URL || env.ANTHROPIC_BASE_URL);
     const backupBaseUrl = normalizeBaseUrl(env.ANTHROPIC_BASE_URL || env.ANTHROPIC_API_URL);
     const routes = [];
@@ -23,7 +23,7 @@ function getAnthropicRoutes(env) {
         routes.push({
             baseUrl: primaryBaseUrl,
             apiKey: env.ANTHROPIC_API_KEY,
-            modelName: getAnthropicModelName(env),
+            modelName,
             role: "primary"
         });
     }
@@ -32,7 +32,7 @@ function getAnthropicRoutes(env) {
         routes.push({
             baseUrl: backupBaseUrl,
             apiKey: env.ANTHROPIC_BACKUP_API_KEY,
-            modelName: getAnthropicBackupModelName(env),
+            modelName,
             role: "backup"
         });
     }
@@ -219,11 +219,17 @@ function canUseAnthropicFallback(env) {
     return Boolean(getAnthropicBaseUrl(env) && env.ANTHROPIC_API_KEY);
 }
 
+function canUseAnthropicBackupModel(env) {
+    return canUseAnthropicFallback(env) && getAnthropicBackupModelName(env) !== getAnthropicModelName(env);
+}
+
 function canUseOpenAIFallback(env) {
     return Boolean(getOpenAIBaseUrl(env) && env.OPENAI_API_KEY);
 }
 
 function canUseGeminiFallback(env) {
+    const enabled = String(env.GEMINI_FALLBACK_ENABLED ?? "true").trim().toLowerCase();
+    if (["0", "false", "no", "off"].includes(enabled)) return false;
     return Boolean(env.GEMINI_API_URL && getGeminiApiKey(env) && getGeminiModelName(env));
 }
 
@@ -233,7 +239,7 @@ function getAnthropicRetryConfig(env) {
     return {
         maxRetries: Number.isFinite(maxRetries) && maxRetries >= 0 ? maxRetries : 2,
         baseDelayMs: Number.isFinite(baseDelayMs) && baseDelayMs >= 0 ? baseDelayMs : 3000,
-        retryStatuses: new Set([429, 524])
+        retryStatuses: new Set([408, 429, 500, 502, 503, 504, 524])
     };
 }
 
@@ -1236,7 +1242,7 @@ async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, pro
 }
 
 async function fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText = null, stream = false) {
-    const routes = getAnthropicRoutes(env);
+    const routes = getAnthropicRoutes(env, modelName);
     if (routes.length === 0) {
         throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
     }
@@ -1265,13 +1271,11 @@ async function fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPr
     throw lastError || new Error("Anthropic request failed.");
 }
 
-async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
+async function callAnthropicChatAPI(env, promptText, systemPromptText = null, modelName = getAnthropicModelName(env)) {
     const baseUrl = getAnthropicBaseUrl(env);
     if (!baseUrl || !env.ANTHROPIC_API_KEY) {
         throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
     }
-    const modelName = getAnthropicModelName(env);
-
     /* Legacy merged-user path retained in fetchAnthropicWithSystemFallback.
         // Anthropic 中转不支持 system 参数，将其融入 user 消息
         payload.messages[0].content = `${systemPromptText}\n\n${promptText}`;
@@ -1309,13 +1313,11 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null) {
  * @returns {AsyncGenerator<string, void, undefined>} An async generator yielding text chunks.
  * @throws {Error} If API call fails.
  */
-async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = null) {
+async function* callAnthropicChatAPIStream(env, promptText, systemPromptText = null, modelName = getAnthropicModelName(env)) {
     const baseUrl = getAnthropicBaseUrl(env);
     if (!baseUrl || !env.ANTHROPIC_API_KEY) {
         throw new Error("ANTHROPIC_BASE_URL (or ANTHROPIC_API_URL) or ANTHROPIC_API_KEY not set.");
     }
-    const modelName = getAnthropicModelName(env);
-
     /* Legacy merged-user path retained in fetchAnthropicWithSystemFallback.
         payload.messages[0].content = `${systemPromptText}\n\n${promptText}`;
     */
@@ -1400,22 +1402,33 @@ export async function callChatAPI(env, promptText, systemPromptText = null) {
             return await callAnthropicChatAPI(env, promptText, systemPromptText);
         } catch (error) {
             if (shouldFailoverFromAnthropic(error)) {
+                let fallbackError = error;
                 if (canUseOpenAIFallback(env)) {
                     console.warn("Anthropic route failed; falling back to OpenAI.");
                     try {
                         return await callOpenAIChatAPI(env, promptText, systemPromptText);
                     } catch (openAIError) {
-                        if (isRateLimitError(openAIError) && canUseGeminiFallback(env)) {
-                            console.warn("OpenAI fallback quota/rate limit encountered; falling back to Gemini.");
-                            return await callGeminiChatAPI(env, promptText, systemPromptText);
-                        }
-                        throw openAIError;
+                        fallbackError = openAIError;
+                        console.warn("OpenAI fallback failed; trying the Anthropic backup model.");
+                    }
+                }
+                if (canUseAnthropicBackupModel(env)) {
+                    try {
+                        return await callAnthropicChatAPI(
+                            env,
+                            promptText,
+                            systemPromptText,
+                            getAnthropicBackupModelName(env)
+                        );
+                    } catch (backupModelError) {
+                        fallbackError = backupModelError;
                     }
                 }
                 if (canUseGeminiFallback(env)) {
-                    console.warn("Anthropic route failed; falling back to Gemini.");
+                    console.warn("Configured fallbacks failed; falling back to Gemini.");
                     return await callGeminiChatAPI(env, promptText, systemPromptText);
                 }
+                throw fallbackError;
             }
             throw error;
         }
@@ -1465,27 +1478,37 @@ export async function* callChatAPIStream(env, promptText, systemPromptText = nul
             yield* callAnthropicChatAPIStream(env, promptText, systemPromptText);
         } catch (error) {
             if (shouldFailoverFromAnthropic(error)) {
+                let fallbackError = error;
                 if (canUseOpenAIFallback(env)) {
                     console.warn("Anthropic route failed; falling back to OpenAI stream.");
                     try {
                         yield* callOpenAIChatAPIStream(env, promptText, systemPromptText);
                         return;
                     } catch (openAIError) {
-                        if (isRateLimitError(openAIError) && canUseGeminiFallback(env)) {
-                            console.warn("OpenAI fallback quota/rate limit encountered; falling back to Gemini.");
-                            const text = await callGeminiChatAPI(env, promptText, systemPromptText);
-                            yield text;
-                            return;
-                        }
-                        throw openAIError;
+                        fallbackError = openAIError;
+                        console.warn("OpenAI stream fallback failed; trying the Anthropic backup model.");
+                    }
+                }
+                if (canUseAnthropicBackupModel(env)) {
+                    try {
+                        yield* callAnthropicChatAPIStream(
+                            env,
+                            promptText,
+                            systemPromptText,
+                            getAnthropicBackupModelName(env)
+                        );
+                        return;
+                    } catch (backupModelError) {
+                        fallbackError = backupModelError;
                     }
                 }
                 if (canUseGeminiFallback(env)) {
-                    console.warn("Anthropic route failed; falling back to Gemini.");
+                    console.warn("Configured stream fallbacks failed; falling back to Gemini.");
                     const text = await callGeminiChatAPI(env, promptText, systemPromptText);
                     yield text;
                     return;
                 }
+                throw fallbackError;
             }
             throw error;
         }

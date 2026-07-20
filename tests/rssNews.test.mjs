@@ -8,6 +8,7 @@ const originalFetch = globalThis.fetch;
 const originalFetchDate = getISODate();
 
 test("SuperTechFans HackerNews RSS is split into story-level news items", async () => {
+  const publishedAt = new Date().toUTCString();
   globalThis.fetch = async () => ({
     ok: true,
     text: async () => `<?xml version="1.0" encoding="UTF-8"?>
@@ -16,7 +17,7 @@ test("SuperTechFans HackerNews RSS is split into story-level news items", async 
     <item>
       <title>2026 07 08 HackerNews</title>
       <link>https://supertechfans.com/cn/post/2026-07-08-HackerNews/</link>
-      <pubDate>Wed, 08 Jul 2026 07:00:12 +0800</pubDate>
+      <pubDate>${publishedAt}</pubDate>
       <description><![CDATA[
         <h2 id="1-router">1. OpenWrt One – 开源硬件路由器</h2>
         <p><a href="https://openwrt.org/toh/openwrt/one">https://openwrt.org/toh/openwrt/one</a></p>
