@@ -20,6 +20,9 @@ const DAILY_META_PATTERNS = [
 
 const DAILY_WATCH_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDCCC|\uD83C\uDFAF|值得关注|关注).*\*\*/im;
 const DAILY_FUN_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDE04|\uD83D\uDE06|AI\s*趣闻|趣闻).*\*\*/im;
+const DAILY_BRIEFING_V2_HEADING_PATTERN = /^##\s*\*{0,2}\s*⏱(?:️)?\s*3\s*分钟读懂今天\s*\*{0,2}\s*$/im;
+const DAILY_LEGACY_SUMMARY_HEADING_PATTERN = /^##\s*\*{0,2}\s*今日摘要\s*\*{0,2}\s*$/im;
+const DAILY_LEGACY_NAV_HEADING_PATTERN = /^##\s*⚡\s*快速导航\s*$/im;
 
 function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
@@ -530,6 +533,31 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   return issues;
 }
 
+function collectDailyBriefingIssues(pageMarkdown) {
+  const markdown = String(pageMarkdown || "");
+  const requiredLabels = ["发生了什么", "为什么重要", "今天可以做"];
+  const missingV2Labels = requiredLabels.filter(
+    (label) => !new RegExp(`(?:\\*\\*)?${label}(?:\\*\\*)?\\s*[：:]`).test(markdown),
+  );
+
+  if (DAILY_BRIEFING_V2_HEADING_PATTERN.test(markdown) && missingV2Labels.length === 0) {
+    return [];
+  }
+
+  if (
+    DAILY_LEGACY_SUMMARY_HEADING_PATTERN.test(markdown) &&
+    DAILY_LEGACY_NAV_HEADING_PATTERN.test(markdown)
+  ) {
+    return [];
+  }
+
+  if (DAILY_BRIEFING_V2_HEADING_PATTERN.test(markdown)) {
+    return missingV2Labels.map((label) => `日报 3 分钟导读缺少字段: ${label}`);
+  }
+
+  return ["日报页面缺少可用导读结构: 3分钟读懂今天或旧版今日摘要"];
+}
+
 function isSoftDailyPublicationIssue(issue) {
   return (
     issue === "Daily TOP reuses the same source URL" ||
@@ -555,14 +583,10 @@ export function validateDailyPublication({
     ...collectMarkdownIssues(pageMarkdown, {
       label: "日报页面",
       minChars: 300,
-      requiredPhrases: [
-        "## **今日摘要**",
-        "## ⚡ 快速导航",
-        "## **今日AI资讯**",
-        "aivora.cn",
-      ],
+      requiredPhrases: ["aivora.cn"],
       forbiddenPatterns: DAILY_META_PATTERNS,
     }),
+    ...collectDailyBriefingIssues(pageMarkdown),
     ...collectDailyStructureIssues(pageMarkdown, {
       minimumTopItems,
       allowedTopGithubProjectUrls,

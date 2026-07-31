@@ -79,11 +79,18 @@ test("daily prompt relaxes Top 10 backfill window for early-morning reports", ()
   assert.match(prompt, /逐步放宽到 70 分|放宽到 70 分/);
 });
 
-test("daily prompt sharpens one-liner, watchlist, trend, and FAQ sections without changing structure", () => {
+test("daily prompt opens with a concise facts-impact-action briefing", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-03-27");
 
-  assert.match(prompt, /今天最该记住的判断/);
-  assert.match(prompt, /趋势词、冲突词、变化词/);
+  assert.match(prompt, /## \*\*⏱ 3分钟读懂今天\*\*/);
+  assert.match(prompt, /发生了什么/);
+  assert.match(prompt, /为什么重要/);
+  assert.match(prompt, /今天可以做/);
+  assert.match(prompt, /事实 -> 影响 -> 行动/);
+  assert.match(prompt, /总长控制在 160-240 个中文字符/);
+  assert.doesNotMatch(prompt, /## \*\*今日AI资讯\*\*/);
+  assert.doesNotMatch(prompt, /### \*\*👀 只有一句话\*\*/);
+  assert.doesNotMatch(prompt, /### \*\*🔑 3 个关键词\*\*/);
   assert.match(prompt, /这条真正的新意是什么/);
   assert.match(prompt, /为什么值得多看一眼/);
   assert.match(prompt, /基于今天信号做近未来推演/);

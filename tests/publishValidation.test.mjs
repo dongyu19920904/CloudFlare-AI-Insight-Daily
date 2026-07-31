@@ -81,6 +81,40 @@ test("validateDailyPublication accepts a structured daily page", () => {
   assert.deepEqual(result.warnings, []);
 });
 
+test("validateDailyPublication accepts the V2 three-minute briefing without legacy wrappers", () => {
+  const pageMarkdown = `## **⏱ 3分钟读懂今天**
+
+- **发生了什么**：一家主流 AI 公司发布了新的编程助手能力，开发者可以直接在仓库里分派并检查任务。
+- **为什么重要**：这把一次性问答推进到可追踪的工作流，团队能更快看见成本、质量与失败位置。
+- **今天可以做**：挑一个十分钟能完成的小任务交给它，记录修改量和返工时间，再决定是否接入正式项目。
+
+## **🔥 重磅 TOP 1**
+
+### 1. [AI 编程助手增加任务工作流](https://example.com/news-v2)
+过去开发者要在聊天窗口和代码仓库之间来回搬运上下文。新能力把任务、修改和审查放进同一条链路，今天就能用一个小修复验证它是否真的减少返工，而不是只看演示视频下结论。
+
+## **📌 值得关注**
+
+- **[产品]** [另一个开发工具更新](https://example.com/watch-v2) - 新增清晰的成本记录，适合先做小规模对比。
+
+## **❓ 相关问题**
+
+### 国内用户如何体验这类 AI 编程工具？
+
+先确认工具支持的账号、支付方式和区域，再用一个非敏感的小项目测试效果，避免一开始就迁移正式代码。
+
+**解决方案**：访问 **[爱窝啦 Aivora](https://aivora.cn)** 获取所需账号，先跑通再决定是否长期使用。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天 AI 编程助手开始进入可追踪任务流，适合先用一个小任务验证返工成本。",
+    pageMarkdown,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.issues, []);
+  assert.deepEqual(result.warnings, []);
+});
+
 test("validateDailyPublication rejects missing watch heading but allows missing AI fun", () => {
   const result = validateDailyPublication({
     summaryText: "今天新闻足够多，日报必须保留完整栏目标题，否则重复内容会漏过校验。",

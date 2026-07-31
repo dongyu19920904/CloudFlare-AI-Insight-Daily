@@ -21,8 +21,7 @@ import {
     formatOpportunityCandidatesForPrompt,
     inferOpportunityReplaySignals,
 } from "../opportunityScoring.js";
-import { insertFoot } from '../foot.js';
-import { insertAd, insertMidAd } from '../ad.js';
+import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
@@ -596,19 +595,6 @@ async function generateContentWithTransportFallback(env, userPrompt, systemPromp
     }
 }
 
-function assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env) {
-    const contentWithMidAd = insertMidAd(outputOfCall2);
-    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
-    dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
-    dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
-    dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
-
-    if (env.INSERT_AD == 'true') dailySummaryMarkdownContent += insertAd() + `\n`;
-    if (env.INSERT_FOOT == 'true') dailySummaryMarkdownContent += insertFoot() + `\n\n`;
-
-    return dailySummaryMarkdownContent;
-}
-
 function getStandaloneDailyFunSystemPrompt() {
     return [
         "你是 AI日报的中文编辑，只写真实来源驱动的 AI趣闻栏目。",
@@ -636,8 +622,9 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
         "请严格遵守以下规则：",
-        "- 只输出从 `## **今日AI资讯**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
-        "- 必须包含这些结构：`### **👀 只有一句话**` / `### **🔑 3 个关键词**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **❓ 相关问题**`",
+        "- 只输出从 `## **⏱ 3分钟读懂今天**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
+        "- 导读必须依次包含 `发生了什么` / `为什么重要` / `今天可以做` 3 条，并按事实 -> 影响 -> 行动推进",
+        "- 必须包含这些结构：`## **⏱ 3分钟读懂今天**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **❓ 相关问题**`",
         ...dailyFunRepairRules,
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里保留 1 条短提醒",
@@ -951,18 +938,11 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         debugInfo.opportunityGenerated = true;
 
         // 6. Assemble Markdown
-        const contentWithMidAd = insertMidAd(outputOfCall2);
-        let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${outputOfCall3}\n\`\`\`\n\n`;
-        dailySummaryMarkdownContent += '\n\n## ⚡ 快速导航\n\n';
-        dailySummaryMarkdownContent += '- [📰 今日 AI 资讯](#今日ai资讯) - 最新动态速览\n\n';
-        dailySummaryMarkdownContent += `\n\n${contentWithMidAd}`;
+        let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
         dailySummaryMarkdownContent = insertOpportunityLinkIntoDailyNavigation(
             dailySummaryMarkdownContent,
             opportunityPaths.publicPath,
         );
-        
-        if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
-        if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
 
         // 7. Commit to GitHub
         console.log(`[Scheduled] Committing to GitHub...`);
