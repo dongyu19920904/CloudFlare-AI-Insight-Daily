@@ -14,7 +14,12 @@ import { handleLogin, isAuthenticated, handleLogout } from './auth.js';
 import { getFromKV } from './kv.js';
 import { getISODate } from './helpers.js';
 import { resolveScheduledModeFromEvent } from './scheduleRouting.js';
-import { getScheduledStatusKey, storeScheduledRunStatus } from './scheduledStatus.js';
+import {
+    buildScheduledProgressStatus,
+    getScheduledStatusKey,
+    inferScheduledOutcome,
+    storeScheduledRunStatus,
+} from './scheduledStatus.js';
 import { repairDailyHomePointer } from './dailyHomeRepair.js';
 import { repairAccountOpportunityHomePointer, repairOpportunityHomePointer } from './opportunityHomeRepair.js';
 import { fetchAndStoreSourceCategory } from './dailySourcePrefetch.js';
@@ -127,6 +132,13 @@ async function tryStoreScheduledRunStatus(kvNamespace, mode, dateOrAlias, status
     }
 }
 
+function createScheduledProgressReporter(kvNamespace, mode, dateOrAlias, baseStatus, storeOptions = {}) {
+    return async (phase, details = {}) => {
+        const status = buildScheduledProgressStatus(baseStatus, phase, details);
+        await tryStoreScheduledRunStatus(kvNamespace, mode, dateOrAlias, status, storeOptions);
+    };
+}
+
 async function runScheduledEventWithStatus(event, env, ctx) {
     const mode = resolveScheduledModeFromEvent(event, env);
     const date = getScheduledEventDate(event);
@@ -142,34 +154,41 @@ async function runScheduledEventWithStatus(event, env, ctx) {
         startedAt,
     };
 
-    await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
-        ...baseStatus,
-        state: 'running',
-    }, {
+    const storeOptions = {
         includeCurrentAlias: true,
-    });
+    };
+    const reportProgress = createScheduledProgressReporter(
+        env.DATA_KV,
+        mode,
+        date,
+        baseStatus,
+        storeOptions
+    );
+
+    await reportProgress('starting', { progress: 0 });
 
     try {
-        const debug = await handleScheduled(event, env, ctx);
+        const debug = await handleScheduled(event, env, ctx, null, 'auto', { reportProgress });
+        const outcome = inferScheduledOutcome(mode, debug);
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
             ...baseStatus,
             state: 'success',
+            phase: 'completed',
+            progress: 100,
             finishedAt: new Date().toISOString(),
+            ...outcome,
             debug: debug || null,
-        }, {
-            includeCurrentAlias: true,
-        });
+        }, storeOptions);
         return debug;
     } catch (error) {
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
             ...baseStatus,
             state: 'error',
+            phase: 'failed',
             finishedAt: new Date().toISOString(),
             error: error?.message || String(error),
             stack: error?.stack ? String(error.stack) : '',
-        }, {
-            includeCurrentAlias: true,
-        });
+        }, storeOptions);
         throw error;
     }
 }
@@ -179,22 +198,22 @@ async function runScheduledMode(mode, env, specifiedDate, options = {}) {
     const fakeCtx = { waitUntil: (promise) => promise };
 
     if (mode === 'daily-prefetch') {
-        return handleScheduledDailyPrefetch(fakeEvent, env, fakeCtx, specifiedDate);
+        return handleScheduledDailyPrefetch(fakeEvent, env, fakeCtx, specifiedDate, options);
     }
 
     if (mode === 'account-opportunity') {
-        return handleScheduledAccountOpportunity(fakeEvent, env, fakeCtx, specifiedDate);
+        return handleScheduledAccountOpportunity(fakeEvent, env, fakeCtx, specifiedDate, options);
     }
 
     if (mode === 'opportunity') {
-        return handleScheduledOpportunity(fakeEvent, env, fakeCtx, specifiedDate);
+        return handleScheduledOpportunity(fakeEvent, env, fakeCtx, specifiedDate, options);
     }
 
     if (mode === 'daily') {
         return handleScheduledDaily(fakeEvent, env, fakeCtx, specifiedDate, options);
     }
 
-    return handleScheduled(fakeEvent, env, fakeCtx, specifiedDate, 'all');
+    return handleScheduled(fakeEvent, env, fakeCtx, specifiedDate, 'all', options);
 }
 
 async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'manual', options = {}) {
@@ -209,34 +228,44 @@ async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'ma
         startedAt,
     };
 
-    await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
-        ...baseStatus,
-        state: 'running',
-    }, {
+    const storeOptions = {
         ttl: 86400,
-    });
+    };
+    const reportProgress = createScheduledProgressReporter(
+        env.DATA_KV,
+        mode,
+        statusDateOrAlias,
+        baseStatus,
+        storeOptions
+    );
+
+    await reportProgress('starting', { progress: 0 });
 
     try {
-        const debug = await runScheduledMode(mode, env, specifiedDate, options);
+        const debug = await runScheduledMode(mode, env, specifiedDate, {
+            ...options,
+            reportProgress,
+        });
+        const outcome = inferScheduledOutcome(mode, debug);
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
             ...baseStatus,
             state: 'success',
+            phase: 'completed',
+            progress: 100,
             finishedAt: new Date().toISOString(),
+            ...outcome,
             debug: debug || null,
-        }, {
-            ttl: 86400,
-        });
+        }, storeOptions);
         return debug;
     } catch (error) {
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
             ...baseStatus,
             state: 'error',
+            phase: 'failed',
             finishedAt: new Date().toISOString(),
             error: error?.message || String(error),
             stack: error?.stack ? String(error.stack) : '',
-        }, {
-            ttl: 86400,
-        });
+        }, storeOptions);
         throw error;
     }
 }

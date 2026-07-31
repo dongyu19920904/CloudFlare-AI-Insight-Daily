@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildScheduledProgressStatus,
   getScheduledStatusKey,
   getScheduledStatusKeys,
+  inferScheduledOutcome,
   storeScheduledRunStatus,
 } from "../src/scheduledStatus.js";
 
@@ -55,4 +57,69 @@ test("storeScheduledRunStatus writes all requested status keys with ttl", async 
     mode: "opportunity",
   });
   assert.deepEqual(writes[0].options, { expirationTtl: 123 });
+});
+
+test("buildScheduledProgressStatus keeps the existing schema and clamps progress", () => {
+  assert.deepEqual(
+    buildScheduledProgressStatus(
+      { mode: "daily", date: "2026-07-31", startedAt: "start" },
+      "generating",
+      { progress: 140, selectedItems: 20 },
+      "phase-time"
+    ),
+    {
+      mode: "daily",
+      date: "2026-07-31",
+      startedAt: "start",
+      progress: 100,
+      selectedItems: 20,
+      state: "running",
+      phase: "generating",
+      phaseAt: "phase-time",
+    }
+  );
+});
+
+test("inferScheduledOutcome distinguishes generated content from published content", () => {
+  assert.deepEqual(
+    inferScheduledOutcome("daily", {
+      dailyGenerated: true,
+      dailyValidationPassed: false,
+      dailyPublished: false,
+    }),
+    {
+      outcome: "not-published",
+      published: false,
+      taskOutcomes: [
+        { task: "daily", outcome: "not-published", published: false },
+      ],
+    }
+  );
+
+  assert.equal(
+    inferScheduledOutcome("opportunity", {
+      opportunityGenerated: true,
+      opportunityValidationPassed: true,
+      opportunityPublished: true,
+    }).outcome,
+    "published"
+  );
+});
+
+test("inferScheduledOutcome reports a partial combined run", () => {
+  const result = inferScheduledOutcome("all", {
+    daily: { dailyGenerated: true, dailyPublished: true },
+    opportunity: {
+      opportunityGenerated: true,
+      opportunityValidationPassed: false,
+      opportunityPublished: false,
+    },
+    accountOpportunity: {
+      accountOpportunityGenerated: true,
+      accountOpportunityPublished: true,
+    },
+  });
+
+  assert.equal(result.outcome, "partial");
+  assert.equal(result.published, true);
 });

@@ -1104,6 +1104,22 @@ function buildBaseDebugInfo(dateStr, mode) {
     };
 }
 
+async function reportScheduledProgress(options, task, phase, progress, details = {}) {
+    if (typeof options?.reportProgress !== 'function') return;
+
+    try {
+        await options.reportProgress(phase, {
+            task,
+            progress,
+            ...details,
+        });
+    } catch (error) {
+        console.warn(
+            `[Scheduled][${task}] Failed to report ${phase} progress: ${error?.message || String(error)}`
+        );
+    }
+}
+
 function countUnifiedDataItems(allUnifiedData) {
     return Object.entries(allUnifiedData || {}).reduce((counts, [sourceType, items]) => {
         counts[sourceType] = Array.isArray(items) ? items.length : 0;
@@ -2060,9 +2076,10 @@ function buildSkippedScheduledResult(dateStr, mode, reason, extra = {}) {
     };
 }
 
-async function handleScheduledDailyBackup(event, env, ctx, specifiedDate = null) {
+async function handleScheduledDailyBackup(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     const yearMonth = getYearMonth(dateStr);
+    await reportScheduledProgress(options, 'daily-backup', 'checking-output', 15);
     const health = await checkScheduledOutputHealth(env, {
         pagePath: `content/cn/${yearMonth}/${dateStr}.md`,
         homePath: 'content/cn/_index.md',
@@ -2073,12 +2090,13 @@ async function handleScheduledDailyBackup(event, env, ctx, specifiedDate = null)
         return buildSkippedScheduledResult(dateStr, 'daily-backup', 'daily-output-healthy', health);
     }
 
-    return handleScheduledDaily(event, env, ctx, dateStr);
+    return handleScheduledDaily(event, env, ctx, dateStr, options);
 }
 
-async function handleScheduledOpportunityBackup(event, env, ctx, specifiedDate = null) {
+async function handleScheduledOpportunityBackup(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     const opportunityPaths = buildOpportunityPaths(dateStr);
+    await reportScheduledProgress(options, 'opportunity-backup', 'checking-output', 15);
     const health = await checkScheduledOutputHealth(env, {
         pagePath: opportunityPaths.pagePath,
         homePath: opportunityPaths.homePath,
@@ -2089,12 +2107,13 @@ async function handleScheduledOpportunityBackup(event, env, ctx, specifiedDate =
         return buildSkippedScheduledResult(dateStr, 'opportunity-backup', 'opportunity-output-healthy', health);
     }
 
-    return handleScheduledOpportunity(event, env, ctx, dateStr);
+    return handleScheduledOpportunity(event, env, ctx, dateStr, options);
 }
 
-async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate = null) {
+async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     const accountOpportunityPaths = buildAccountOpportunityPaths(dateStr);
+    await reportScheduledProgress(options, 'account-opportunity-backup', 'checking-output', 15);
     const health = await checkScheduledOutputHealth(env, {
         pagePath: accountOpportunityPaths.pagePath,
         homePath: accountOpportunityPaths.homePath,
@@ -2105,23 +2124,24 @@ async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifie
         return buildSkippedScheduledResult(dateStr, 'account-opportunity-backup', 'account-opportunity-output-healthy', health);
     }
 
-    return handleScheduledAccountOpportunity(event, env, ctx, dateStr);
+    return handleScheduledAccountOpportunity(event, env, ctx, dateStr, options);
 }
 
-async function handleScheduledBackup(event, env, ctx, specifiedDate = null) {
-    const daily = await handleScheduledDailyBackup(event, env, ctx, specifiedDate);
-    const opportunity = await handleScheduledOpportunityBackup(event, env, ctx, specifiedDate);
-    const accountOpportunity = await handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate);
+async function handleScheduledBackup(event, env, ctx, specifiedDate = null, options = {}) {
+    const daily = await handleScheduledDailyBackup(event, env, ctx, specifiedDate, options);
+    const opportunity = await handleScheduledOpportunityBackup(event, env, ctx, specifiedDate, options);
+    const accountOpportunity = await handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate, options);
 
     return { daily, opportunity, accountOpportunity };
 }
 
-export async function handleScheduledDailyPrefetch(event, env, ctx, specifiedDate = null) {
+export async function handleScheduledDailyPrefetch(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'daily-prefetch');
     console.log(`[Scheduled][DailyPrefetch] Starting source prefetch for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
+    await reportScheduledProgress(options, 'daily-prefetch', 'fetching-sources', 20);
     const result = await prefetchDailySourceCategories(env, dateStr);
     debugInfo.dailyPrefetchAttempted = true;
     debugInfo.dailyPrefetchComplete = result.failedCategories.length === 0;
@@ -2139,6 +2159,11 @@ export async function handleScheduledDailyPrefetch(event, env, ctx, specifiedDat
         throw new Error(`Daily source prefetch failed for all categories on ${dateStr}`);
     }
 
+    await reportScheduledProgress(options, 'daily-prefetch', 'sources-ready', 95, {
+        sourceItems: result.totalItemCount,
+        successfulCategories: result.successfulCategories.length,
+        failedCategories: result.failedCategories.length,
+    });
     console.log(
         `[Scheduled][DailyPrefetch] Finished for ${dateStr}: ${result.successfulCategories.length}/${result.categories.length} categories, ${result.totalItemCount} items.`
     );
@@ -2153,6 +2178,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.dailyDryRun = dryRun;
     console.log(`[Scheduled][Daily] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 
+    await reportScheduledProgress(options, 'daily', 'loading-sources', 10);
     const {
         selectedContentItems,
         dailyFunContentItems,
@@ -2176,6 +2202,11 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
     debugInfo.dailyMinimumTopItems = minimumTopItems;
 
+    await reportScheduledProgress(options, 'daily', 'generating', 40, {
+        candidateItems: totalCandidateCount || 0,
+        selectedItems: selectedContentItems.length,
+        funCandidates: Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0,
+    });
     const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
         dateStr,
@@ -2189,6 +2220,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         }
     );
 
+    await reportScheduledProgress(options, 'daily', 'validating', 78);
     const validation = generatedValidation || validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
@@ -2200,29 +2232,36 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.dailyValidationIssues = validation.issues;
     debugInfo.dailyValidationWarnings = validation.warnings || [];
     if (!validation.ok) {
+        await reportScheduledProgress(options, 'daily', 'validation-failed', 100, {
+            issueCount: validation.issues.length,
+        });
         console.warn(`[Scheduled][Daily] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
         return debugInfo;
     }
 
     if (dryRun) {
+        await reportScheduledProgress(options, 'daily', 'dry-run-complete', 100);
         debugInfo.dailyWouldPublish = true;
         debugInfo.dailyPublished = false;
         console.log(`[Scheduled][Daily] Dry-run completed successfully for ${dateStr}; skipping GitHub publish.`);
         return debugInfo;
     }
 
+    await reportScheduledProgress(options, 'daily', 'publishing', 88);
     await commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent);
     await storePublishedDailyGithubTopProjects(env, dateStr, dailySummaryMarkdownContent, debugInfo);
     debugInfo.dailyPublished = true;
+    await reportScheduledProgress(options, 'daily', 'published', 98);
     return debugInfo;
 }
 
-export async function handleScheduledOpportunity(event, env, ctx, specifiedDate = null) {
+export async function handleScheduledOpportunity(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
     console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
+    await reportScheduledProgress(options, 'opportunity', 'loading-sources', 10);
     const {
         allUnifiedData,
         previousOpportunityReplaySignals,
@@ -2230,6 +2269,9 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: Boolean(specifiedDate),
         loadOpportunityReplay: true,
+    });
+    await reportScheduledProgress(options, 'opportunity', 'generating', 42, {
+        sourceItems: debugInfo.totalSourceItemCount,
     });
     const { opportunityPaths, opportunityMarkdownContent } = await generateOpportunityMarkdown(
         env,
@@ -2242,6 +2284,7 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
         }
     );
 
+    await reportScheduledProgress(options, 'opportunity', 'validating', 78);
     const validation = validateOpportunityPublication({
         markdown: opportunityMarkdownContent,
         bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
@@ -2249,10 +2292,14 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     debugInfo.opportunityValidationPassed = validation.ok;
     debugInfo.opportunityValidationIssues = validation.issues;
     if (!validation.ok) {
+        await reportScheduledProgress(options, 'opportunity', 'validation-failed', 100, {
+            issueCount: validation.issues.length,
+        });
         console.warn(`[Scheduled][Opportunity] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
         return debugInfo;
     }
 
+    await reportScheduledProgress(options, 'opportunity', 'publishing', 88);
     await commitOpportunityOutputs(env, dateStr, opportunityPaths, opportunityMarkdownContent);
     await storeOpportunityReplayMemoryToKv(
         env,
@@ -2264,15 +2311,17 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
         debugInfo
     );
     debugInfo.opportunityPublished = true;
+    await reportScheduledProgress(options, 'opportunity', 'published', 98);
     return debugInfo;
 }
 
-export async function handleScheduledAccountOpportunity(event, env, ctx, specifiedDate = null) {
+export async function handleScheduledAccountOpportunity(event, env, ctx, specifiedDate = null, options = {}) {
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'account-opportunity');
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
 
+    await reportScheduledProgress(options, 'account-opportunity', 'loading-sources', 10);
     const {
         allUnifiedData,
         previousOpportunityReplaySignals,
@@ -2281,6 +2330,9 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         preferCachedData: Boolean(specifiedDate),
         loadOpportunityReplay: true,
         includeCurrentOpportunityReplay: true,
+    });
+    await reportScheduledProgress(options, 'account-opportunity', 'generating', 42, {
+        sourceItems: debugInfo.totalSourceItemCount,
     });
     const { accountOpportunityPaths, accountOpportunityMarkdownContent } = await generateAccountOpportunityMarkdown(
         env,
@@ -2293,6 +2345,7 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         }
     );
 
+    await reportScheduledProgress(options, 'account-opportunity', 'validating', 78);
     const validation = validateAccountOpportunityPublication({
         markdown: accountOpportunityMarkdownContent,
         bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
@@ -2300,10 +2353,14 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     debugInfo.accountOpportunityValidationPassed = validation.ok;
     debugInfo.accountOpportunityValidationIssues = validation.issues;
     if (!validation.ok) {
+        await reportScheduledProgress(options, 'account-opportunity', 'validation-failed', 100, {
+            issueCount: validation.issues.length,
+        });
         console.warn(`[Scheduled][AccountOpportunity] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
         return debugInfo;
     }
 
+    await reportScheduledProgress(options, 'account-opportunity', 'publishing', 88);
     await commitAccountOpportunityOutputs(
         env,
         dateStr,
@@ -2320,38 +2377,39 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         debugInfo
     );
     debugInfo.accountOpportunityPublished = true;
+    await reportScheduledProgress(options, 'account-opportunity', 'published', 98);
     return debugInfo;
 }
 
-export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto') {
+export async function handleScheduled(event, env, ctx, specifiedDate = null, mode = 'auto', options = {}) {
     const resolvedMode = resolveScheduledModeFromEvent(event, env, mode);
 
     if (resolvedMode === 'backup') {
-        return handleScheduledBackup(event, env, ctx, specifiedDate);
+        return handleScheduledBackup(event, env, ctx, specifiedDate, options);
     }
 
     if (resolvedMode === 'daily-backup') {
-        return handleScheduledDailyBackup(event, env, ctx, specifiedDate);
+        return handleScheduledDailyBackup(event, env, ctx, specifiedDate, options);
     }
 
     if (resolvedMode === 'daily-prefetch') {
-        return handleScheduledDailyPrefetch(event, env, ctx, specifiedDate);
+        return handleScheduledDailyPrefetch(event, env, ctx, specifiedDate, options);
     }
 
     if (resolvedMode === 'account-opportunity') {
-        return handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
+        return handleScheduledAccountOpportunity(event, env, ctx, specifiedDate, options);
     }
 
     if (resolvedMode === 'opportunity') {
-        return handleScheduledOpportunity(event, env, ctx, specifiedDate);
+        return handleScheduledOpportunity(event, env, ctx, specifiedDate, options);
     }
 
     if (resolvedMode === 'all') {
-        const daily = await handleScheduledDaily(event, env, ctx, specifiedDate);
-        const opportunity = await handleScheduledOpportunity(event, env, ctx, specifiedDate);
-        const accountOpportunity = await handleScheduledAccountOpportunity(event, env, ctx, specifiedDate);
+        const daily = await handleScheduledDaily(event, env, ctx, specifiedDate, options);
+        const opportunity = await handleScheduledOpportunity(event, env, ctx, specifiedDate, options);
+        const accountOpportunity = await handleScheduledAccountOpportunity(event, env, ctx, specifiedDate, options);
         return { daily, opportunity, accountOpportunity };
     }
 
-    return handleScheduledDaily(event, env, ctx, specifiedDate);
+    return handleScheduledDaily(event, env, ctx, specifiedDate, options);
 }
