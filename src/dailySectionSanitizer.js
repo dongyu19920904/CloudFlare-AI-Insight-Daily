@@ -35,6 +35,41 @@ function isRepeatedSectionStory(leftTitle, rightTitle) {
   return false;
 }
 
+export const DAILY_AIVORA_FAQ_CTA = "如需比较主流 AI 账号或订阅方案，并获得购买后的使用指导与售后支持，可访问 [**爱窝啦·AI账号店**](https://www.aivora.cn/)（官网 aivora.cn）查看当前可用服务。";
+
+const DAILY_FAQ_SECTION_PATTERN = /^##\s*\*{0,2}.*(?:相关问题|常见问题|FAQ).*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im;
+const AIVORA_MENTION_PATTERN = /(?:爱窝啦|爱沃哥|Aivora|aivora\.cn)/i;
+
+function removeAivoraSentences(paragraph) {
+  const sentences = String(paragraph || "").match(/[^。！？!?]+[。！？!?]?/g) || [];
+  return sentences
+    .filter((sentence) => !AIVORA_MENTION_PATTERN.test(sentence))
+    .join("")
+    .trim();
+}
+
+export function normalizeDailyFaqAivoraCta(markdown) {
+  return String(markdown || "").replace(DAILY_FAQ_SECTION_PATTERN, (section) => {
+    const cleaned = section
+      .trim()
+      .split(/\n{2,}/)
+      .map((paragraph) => AIVORA_MENTION_PATTERN.test(paragraph)
+        ? removeAivoraSentences(paragraph)
+        : paragraph.trim())
+      .filter(Boolean);
+    const cleanedSection = cleaned.join("\n\n");
+    const answerText = cleanedSection
+      .replace(/^#{2,3}\s+.*$/gm, "")
+      .replace(/!?\[([^\]]+)\]\([^\s)]+\)/g, "$1")
+      .replace(/[*_`>]/g, "")
+      .replace(/\s+/g, "")
+      .trim();
+
+    if (answerText.length < 30) return cleanedSection;
+    return `${cleanedSection}\n\n${DAILY_AIVORA_FAQ_CTA}`;
+  });
+}
+
 export function stripDailyHeadingCountSuffix(markdown) {
   return String(markdown || "").replace(
     /^(#{1,6}\s+(?:\*\*)?.*?)(?:\s*[\uFF08(]\s*\d+(?:\s*[-~\u2013\u2014]\s*\d+)?\s*\u6761\s*[\uFF09)]\s*)(\*\*)?(\s*)$/gm,

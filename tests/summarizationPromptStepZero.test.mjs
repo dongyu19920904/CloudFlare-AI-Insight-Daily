@@ -75,13 +75,16 @@ test("AI fun remains source-driven and optional without blocking the daily", () 
   assert.match(prompt, /不靠“离谱、笑死、太抽象”充当笑点/);
 });
 
-test("daily prompt requires one current Aivora FAQ and forbids meta output", () => {
+test("daily prompt requires one search-like Aivora FAQ with accurate service boundaries", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
   assert.match(prompt, /每天必须输出 1 条/);
-  assert.match(prompt, /爱窝啦 Aivora/);
-  assert.match(prompt, /主流 AI 账号、订阅选择和使用售后支持/);
-  assert.match(prompt, /不要写成 AI 工具导航、官方体验入口或免注册聚合站/);
+  assert.match(prompt, /用户会真实搜索的具体问题/);
+  assert.match(prompt, /爱窝啦·AI账号店/);
+  assert.match(prompt, /https:\/\/www\.aivora\.cn\//);
+  assert.match(prompt, /购买后的使用指导与售后支持/);
+  assert.match(prompt, /统一访问多个模型/);
+  assert.match(prompt, /不得编造某个产品正在销售/);
   assert.match(prompt, /不要把 GPT-4o 当成默认主推模型/);
   assert.match(prompt, /不要输出“素材不足”“无法生成”“请补充素材”/);
   assert.match(prompt, /只输出最终 Markdown 正文/);

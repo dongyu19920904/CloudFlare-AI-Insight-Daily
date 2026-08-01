@@ -2,11 +2,44 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DAILY_AIVORA_FAQ_CTA,
+  normalizeDailyFaqAivoraCta,
   removeEmptyDailyFunSection,
   removeEmptyDailyTopicSections,
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
+
+test("normalizeDailyFaqAivoraCta preserves the answer and replaces misleading store copy", () => {
+  const markdown = `## **❓ 相关问题**
+
+### MiniMax H3 国内怎么用？
+
+MiniMax H3 可通过官方平台使用，具体地区与订阅要求以[官方说明](https://example.com/minimax-h3)为准。
+
+如果你想统一访问多个模型，也可以通过 **[爱窝啦 Aivora](https://aivora.cn)** 省去逐个注册。`;
+
+  const normalized = normalizeDailyFaqAivoraCta(markdown);
+
+  assert.match(normalized, /MiniMax H3 可通过官方平台使用/);
+  assert.match(normalized, /官方说明/);
+  assert.ok(normalized.includes(DAILY_AIVORA_FAQ_CTA));
+  assert.doesNotMatch(normalized, /爱窝啦 Aivora/);
+  assert.doesNotMatch(normalized, /统一访问|省去逐个注册/);
+});
+
+test("normalizeDailyFaqAivoraCta does not hide a missing factual answer", () => {
+  const markdown = `## **❓ 相关问题**
+
+### 某工具国内怎么用？
+
+访问 **[爱窝啦 Aivora](https://aivora.cn)** 即可统一体验。`;
+
+  const normalized = normalizeDailyFaqAivoraCta(markdown);
+
+  assert.doesNotMatch(normalized, /爱窝啦|Aivora|aivora\.cn/);
+  assert.doesNotMatch(normalized, /购买后的使用指导与售后支持/);
+});
 
 test("sanitizeDuplicateDailySections removes repeated stories across V3 topic sections", () => {
   const markdown = `## **🔥 今日焦点 TOP 1**
