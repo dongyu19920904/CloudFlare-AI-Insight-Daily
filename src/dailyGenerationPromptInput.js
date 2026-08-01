@@ -59,7 +59,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
       "下面这些素材是专门留给 `## **😄 AI趣闻**` 的候选。只要这里有可用素材，就必须先选 1 条写完整趣闻，不要省略。",
       "只有当这些候选全是论文/融资/政策/公司通稿，且没有人物、用户、工具动作或反常结果时，才可以省略整个 AI趣闻栏目。",
       "不要因为它们出现在这里就塞进今日焦点；今日焦点仍按主线素材和评分标准筛选。",
-      "写 AI趣闻时必须二次创作短标题，并按 Hook -> What -> Punchline 再开发，不要照搬原文标题、推文正文或项目名长句。",
+      "写 AI趣闻时必须二次创作纯文本短标题，把原始来源链接放在正文真实细节附近，并按 Hook -> What -> Punchline 再开发，不要照搬原文标题、推文正文或项目名长句。",
       "",
       funOnlyItems
         .map((item, index) => [`趣闻候选 ${index + 1}:`, item].join("\n"))

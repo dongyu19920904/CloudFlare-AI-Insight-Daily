@@ -63,6 +63,94 @@ test("validateDailyPublication accepts the V3 topic structure", () => {
   assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
+test("validateDailyPublication accepts plain TOP headings with source links in item bodies", () => {
+  const pageMarkdown = `## **今日摘要**
+
+\`\`\`
+今天模型价格和编程工具都出现值得验证的变化。
+读者可以先确认官方能力，再用一个小任务测试。
+\`\`\`
+
+## **🔥 今日焦点 TOP 2**
+
+### 1. 模型降价让调用成本再松一截
+
+这次调整覆盖 **三款模型**。[模型价格调整详情](https://example.com/model-price) 显示最高降幅达到 **80%**，开发者可以重新核算现有任务成本。
+
+### 2. 编码工具把审阅带进日常流程
+
+新版增加 **自动审阅**。[编码工具更新说明](https://example.com/code-review) 列出了支持范围，适合先在 **小仓库** 验证再扩大使用。
+
+## **⚡ 产品与功能更新**
+
+### 语音模型开放实时接口
+
+官方开放 **实时语音** 接口，[语音 API 使用说明](https://example.com/voice-api) 给出了延迟和地区要求，开发者可以先做小流量测试。
+
+## **⌘ 开源 TOP 项目**
+
+### example/agent-kit 补齐本地智能体组件
+
+[example/agent-kit 项目仓库](https://github.com/example/agent-kit) 今日新增 **120 Stars**，适合需要本地工作流组件的开发者试用。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的模型？
+
+先从官方入口确认地区、支付和账号要求，再用一个低风险任务测试输出质量与成本。国内用户需要更省事的入口时，可以访问 **[爱窝啦 Aivora](https://aivora.cn)** 查看可用方案。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天模型价格和编程工具都出现值得验证的变化，读者可以先确认官方能力，再用一个小任务测试。",
+    pageMarkdown,
+    minimumTopItems: 2,
+    allowedTopGithubProjectUrls: ["https://github.com/example/agent-kit"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("validateDailyPublication rejects a plain TOP item without a source link", () => {
+  const pageMarkdown = `## **今日摘要**
+
+\`\`\`
+今天有一条模型更新值得验证，正文必须保留可核验来源。
+\`\`\`
+
+## **🔥 今日焦点 TOP 1**
+
+### 1. 模型开放新的任务能力
+
+这段正文有足够长度，但没有任何原始来源链接，因此不能作为完整的 TOP 条目发布。它还会继续补充一些说明文字，确保页面长度不是唯一失败原因。
+
+## **⚡ 产品与功能更新**
+
+### 语音模型开放新接口
+
+[语音模型官方说明](https://example.com/voice-api) 给出了完整的接口范围，适合开发者先做小流量测试。
+
+## **🧪 前沿研究与行业影响**
+
+### 编码代理实验公布结果
+
+[编码代理实验论文](https://example.com/coding-study) 记录了交付速度与代码理解之间的变化，使用代理时仍需要人工复核。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的模型？
+
+先确认官方入口和地区要求，再使用一个低风险任务测试。国内用户也可以访问 **[爱窝啦 Aivora](https://aivora.cn)** 查看可用方案。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天有一条模型更新值得验证，正文必须保留可核验来源，读者可以先做小范围测试。",
+    pageMarkdown,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /TOP items must contain an original source link/i);
+});
+
 test("validateDailyPublication rejects non-daily GitHub projects in the V3 open-source section", () => {
   const pageMarkdown = `## **今日摘要**
 

@@ -61,6 +61,7 @@ import {
     pruneOpportunityReplayMemory,
 } from '../opportunityReplayDedupe.js';
 import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
+import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
     countDailyTopEligiblePromptItems,
@@ -233,11 +234,10 @@ function extractPreviousTopItems(markdown) {
 
     const items = [];
     const seen = new Set();
-    const itemRegex = /^###\s+\d+\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gm;
 
-    for (const match of topSection.matchAll(itemRegex)) {
-        const title = match[1]?.trim();
-        const url = match[2]?.trim();
+    for (const item of extractNumberedDailyItems(topSection)) {
+        const title = item.title?.trim();
+        const url = item.url?.trim();
         const urlKey = normalizeReplayUrl(url);
         const titleKey = normalizeReplayTitle(title);
         const dedupeKey = `${urlKey}::${titleKey}`;
@@ -609,6 +609,9 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 产品与功能更新 / 前沿研究与行业影响 / 开源 TOP 项目 / 社媒精选中，至少输出两个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
         "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
+        "- 所有新闻、项目和趣闻的 `###` 标题都必须是纯文本，不得包含 Markdown 链接",
+        "- 每条正文必须在关键事实附近放置 1 个原始来源链接；链接文案要说明点开能验证什么，不能写“原文链接”“点击查看”“了解更多”",
+        "- 每条正文用 `**...**` 标出 2-4 个产品名、关键能力、精确数字、结果或限制；每处 2-12 个字符，不能整句加粗",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
         "- 今日焦点最多 1 个 GitHub 项目；开源 TOP 项目里的仓库必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint",
@@ -762,19 +765,22 @@ function removeMismatchedTopItemImages(markdown, mediaCandidates) {
     }
 
     let removedCount = 0;
-    const cleanedMarkdown = String(markdown).replace(
-        /^###\s+\d+\.\s+\[[^\]]+\]\((https?:\/\/[^\s)]+)\)[\s\S]*?(?=^###\s+\d+\.|\n##\s+|$)/gm,
-        (itemBlock, sourceUrl) => {
-            const allowed = allowedBySource.get(normalizeReplayUrl(sourceUrl));
-            if (!allowed || allowed.size === 0) return itemBlock;
+    let cleanedMarkdown = String(markdown);
 
-            return itemBlock.replace(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g, (imageMarkdown, imageUrl) => {
+    for (const item of extractNumberedDailyItems(markdown)) {
+        const allowed = allowedBySource.get(normalizeReplayUrl(item.url));
+        if (!allowed || allowed.size === 0) continue;
+
+        const cleanedBlock = item.block.replace(
+            /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g,
+            (imageMarkdown, imageUrl) => {
                 if (allowed.has(normalizeMediaUrl(imageUrl))) return imageMarkdown;
                 removedCount += 1;
                 return '';
-            });
-        },
-    );
+            },
+        );
+        cleanedMarkdown = cleanedMarkdown.replace(item.block, cleanedBlock);
+    }
 
     return { markdown: cleanedMarkdown, removedCount };
 }

@@ -1,3 +1,5 @@
+import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
+
 export const RECENT_GITHUB_TOP_PROJECTS_KEY = "daily-top-github-projects:recent";
 export const DEFAULT_GITHUB_TOP_PROJECT_LOOKBACK_DAYS = 7;
 
@@ -99,11 +101,13 @@ export function extractGithubTopProjectsFromMarkdown(markdown, dateStr) {
 
   const items = [];
   const seen = new Set();
-  const itemRegex = /^###\s+\d+\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gm;
 
-  for (const match of topSection.matchAll(itemRegex)) {
-    const title = match[1]?.trim() || "";
-    const url = match[2]?.trim() || "";
+  for (const item of extractNumberedDailyItems(topSection)) {
+    const projectLink = [...item.bodyLinks, item.headingLink]
+      .filter(Boolean)
+      .find((link) => normalizeGithubProjectUrl(link.url));
+    const title = item.title?.trim() || "";
+    const url = projectLink?.url || "";
     const urlKey = normalizeGithubProjectUrl(url);
     if (!urlKey || seen.has(urlKey)) continue;
     seen.add(urlKey);

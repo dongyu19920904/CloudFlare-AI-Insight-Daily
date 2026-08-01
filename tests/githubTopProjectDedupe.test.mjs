@@ -69,6 +69,37 @@ test("extractGithubTopProjectsFromMarkdown reads GitHub links from TOP only", ()
   ]);
 });
 
+test("extractGithubTopProjectsFromMarkdown reads a GitHub source link from the item body", () => {
+  const markdown = `
+## **🔥 今日焦点 TOP 2**
+
+### 1. Claude Code 插件市场继续扩张
+
+[Claude Code 项目仓库](https://github.com/anthropics/claude-code) 展示了最新插件能力。
+
+### 2. OpenRouter 完成新融资
+
+[OpenRouter 融资报道](https://example.com/openrouter) 说明了本轮融资规模。
+
+## **⌘ 开源 TOP 项目**
+
+### Watch Only
+
+[不应写入 TOP 去重的仓库](https://github.com/example/watch-only)
+`;
+
+  const projects = extractGithubTopProjectsFromMarkdown(markdown, "2026-08-01");
+
+  assert.deepEqual(projects, [
+    {
+      date: "2026-08-01",
+      title: "Claude Code 插件市场继续扩张",
+      url: "https://github.com/anthropics/claude-code",
+      urlKey: "github.com/anthropics/claude-code",
+    },
+  ]);
+});
+
 test("mergeRecentGithubTopProjects prunes records outside the window", () => {
   const merged = mergeRecentGithubTopProjects(
     [

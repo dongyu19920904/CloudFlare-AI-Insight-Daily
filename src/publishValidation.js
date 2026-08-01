@@ -9,6 +9,7 @@ const COMMON_FAILURE_PATTERNS = [
 ];
 
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
 
 const DAILY_META_PATTERNS = [
   /AI思考:?/i,
@@ -244,21 +245,10 @@ function extractPrimarySectionLinks(markdown) {
 }
 
 function extractNumberedTopItems(markdown) {
-  const content = String(markdown || "");
-  const items = [];
-  const itemRegex = /^###\s+(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)([\s\S]*?)(?=^###\s+\d+\.|\n##\s+|(?![\s\S]))/gm;
-
-  for (const match of content.matchAll(itemRegex)) {
-    items.push({
-      number: Number.parseInt(match[1], 10),
-      title: match[2],
-      url: canonicalizeUrl(match[3]),
-      body: match[4] || "",
-      context: `${match[2] || ""}\n${match[4] || ""}`,
-    });
-  }
-
-  return items;
+  return extractNumberedDailyItems(markdown).map((item) => ({
+    ...item,
+    url: canonicalizeUrl(item.url),
+  }));
 }
 
 function extractLinkContexts(markdown) {
@@ -403,13 +393,14 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     return issues;
   }
 
-  const numberedTopItems = [
-    ...topSection.matchAll(/^###\s+\d+\.\s+\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/gm),
-  ];
   const topItems = extractNumberedTopItems(topSection);
 
-  if (numberedTopItems.length === 0) {
+  if (topItems.length === 0) {
     issues.push("Daily top items must use numbered headings");
+  }
+
+  if (topItems.some((item) => !item.url)) {
+    issues.push("Daily TOP items must contain an original source link");
   }
 
   topItems.forEach((item, index) => {
@@ -418,7 +409,7 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     }
   });
 
-  if (minimumTopItems > 0 && numberedTopItems.length < minimumTopItems) {
+  if (minimumTopItems > 0 && topItems.length < minimumTopItems) {
     issues.push(`Daily top items are insufficient: expected at least ${minimumTopItems}`);
   }
 

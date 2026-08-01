@@ -36,6 +36,10 @@ test("buildStandaloneDailyFunPromptInput asks only for the AI fun section", () =
   assert.match(prompt, /## \*\*😄 AI趣闻\*\*/);
   assert.match(prompt, /不要输出日报其它栏目/);
   assert.match(prompt, /Hook -> What -> Punchline/);
+  assert.match(prompt, /标题.*纯文本/);
+  assert.match(prompt, /原始来源链接必须放在正文/);
+  assert.match(prompt, /### 二次创作短标题/);
+  assert.match(prompt, /标出 2-4 个产品名、真实动作、关键数字或反常结果/);
   assert.match(prompt, /https:\/\/x\.com\/dev\/status\/2/);
 });
 
@@ -67,8 +71,8 @@ test("insertDailyFunSection places valid section before trend prediction", () =>
   const funSection = [
     "## **😄 AI趣闻**",
     "",
-    "### [AI 今天负责把锅端稳](https://x.com/dev/status/2)",
-    "半夜改脚本最怕两件事：一个是需求变了，另一个是 AI 说它理解了。今天有人把小工具交给 AI 改，结果代码跑起来了，报错也更客气了。以前是人看不懂机器，现在是机器先写一段安慰话，让人慢慢看不懂。",
+    "### AI 今天负责把锅端稳",
+    "半夜改脚本最怕两件事：一个是需求变了，另一个是 AI 说它理解了。[开发者改脚本的实测原帖](https://x.com/dev/status/2) 里，代码跑起来了，报错也更客气了。以前是人看不懂机器，现在是机器先写一段安慰话，让人慢慢看不懂。",
   ].join("\n");
 
   const result = insertDailyFunSection(markdown, funSection);

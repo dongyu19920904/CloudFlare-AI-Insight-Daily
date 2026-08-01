@@ -34,8 +34,9 @@ export function buildStandaloneDailyFunPromptInput(dateStr, candidateItems = [])
   return [
     `你只负责为 ${dateStr} 的 AI日报生成一个栏目：\`## **😄 AI趣闻**\`。`,
     "这是一次独立生成，不要输出日报其它栏目，不要输出解释。",
-    "必须从下面候选里选 1 条，保留原始来源链接，标题二次创作，不能照搬来源标题。",
+    "必须从下面候选里选 1 条。标题要二次创作并使用纯文本，不能照搬来源标题，也不能加入链接；原始来源链接必须放在正文的真实细节附近。",
     "正文写 100-180 个中文字符，按 Hook -> What -> Punchline 写：先给具体场景，再交代真实细节，最后一句轻轻一抖。",
+    "正文用 `**...**` 标出 2-4 个产品名、真实动作、关键数字或反常结果；每处 2-12 个字符，不能整句加粗。",
     "语境要像 2026 年中文互联网，面向 90 后、00 后 AI 爱好者和程序员；可以借鉴马三立相声的铺垫、错位和冷面包袱结构，但不要模仿口音、台词或固定段子。",
     "不要编造来源没有的事实，不要写成行业分析，不要写“这说明了”“值得关注”“未来可期”。",
     "如果所有候选都写不出完整、有来源链接的趣闻，就输出空字符串，不要解释。",
@@ -43,8 +44,8 @@ export function buildStandaloneDailyFunPromptInput(dateStr, candidateItems = [])
     "输出格式必须是：",
     "## **😄 AI趣闻**",
     "",
-    "### [二次创作短标题](原始URL)",
-    "正文...",
+    "### 二次创作短标题",
+    "正文中用 [能说明来源内容的核心短句](原始URL) 自然承接真实细节...",
     "",
     "候选素材：",
     candidates
@@ -62,7 +63,7 @@ export function normalizeStandaloneDailyFunSection(markdown) {
   );
   let section = sectionMatch?.[0]?.trim() || "";
 
-  if (!section && /^###\s+\[[^\]]+\]\(https?:\/\/[^)]+\)/im.test(content)) {
+  if (!section && /^###\s+[^\r\n]+/im.test(content)) {
     section = `## **😄 AI趣闻**\n\n${content}`;
   }
 
