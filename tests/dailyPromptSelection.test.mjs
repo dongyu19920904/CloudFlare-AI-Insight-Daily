@@ -79,7 +79,7 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   ]);
 });
 
-test("buildDailyPromptSelection keeps default project candidates from flooding the prompt", () => {
+test("buildDailyPromptSelection keeps default project candidates capped for the open-source section", () => {
   const result = buildDailyPromptSelection({
     news: Array.from({ length: 4 }, (_, index) => buildNewsItem(index + 1)),
     project: Array.from({ length: 10 }, (_, index) => buildProjectItem(index + 1)),
@@ -87,7 +87,7 @@ test("buildDailyPromptSelection keeps default project candidates from flooding t
     paper: [],
   });
 
-  assert.equal(result.selectedCounts.project, 1);
+  assert.equal(result.selectedCounts.project, 2);
 });
 
 test("buildDailyPromptSelection treats project-like news as part of the project cap", () => {

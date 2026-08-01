@@ -73,8 +73,6 @@ import {
     selectStandaloneDailyFunCandidates,
 } from '../dailyFunSection.js';
 
-const DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE = 'Daily AI fun section missing despite dedicated candidates';
-
 function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     if (!html) return [];
 
@@ -88,16 +86,11 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
         placeholders.push(placeholder);
     };
 
-    for (const match of str.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*alt="([^"]*)"[^>]*>/gi)) {
-        const src = match[1]?.trim();
-        const alt = match[2]?.trim();
+    for (const match of str.matchAll(/<img\b[^>]*>/gi)) {
+        const tag = match[0];
+        const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
+        const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
         if (src) addPlaceholder(`![${alt || 'image'}](${src})`);
-        if (placeholders.length >= limit) return placeholders;
-    }
-
-    for (const match of str.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*>/gi)) {
-        const src = match[1]?.trim();
-        if (src) addPlaceholder(`![image](${src})`);
         if (placeholders.length >= limit) return placeholders;
     }
 
@@ -604,17 +597,6 @@ function getStandaloneDailyFunSystemPrompt() {
 }
 
 function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssues, dateStr) {
-    const mustRepairMissingDailyFun = (validationIssues || []).includes(DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE);
-    const dailyFunRepairRules = mustRepairMissingDailyFun
-        ? [
-            `- 本次必须输出 \`## **😄 AI趣闻**\`，因为输入里已经有【AI趣闻专用候选素材】，上一次省略了这个栏目`,
-            "- 必须从【AI趣闻专用候选素材】里选 1 条，标题用 Markdown 原始来源链接，正文按 Hook -> What -> Punchline 写完整 100-180 字",
-            "- 如果候选不是天然爆笑，也要写成“人物/用户视角的小观察”；不要再省略 AI趣闻，不要只输出空标题",
-        ]
-        : [
-            "- `## **😄 AI趣闻` 是可选栏目；如果能从【AI趣闻专用候选素材】里写出完整趣闻，就输出 1 条；如果写不出完整、有来源链接的趣闻，就省略整个 AI趣闻栏目，不要只输出空标题",
-        ];
-
     return [
         "你上一次输出的日报正文不合格，请立即重写，不要解释原因，不要道歉，不要拒答。",
         `这次重写的目标日期是 ${dateStr}。`,
@@ -622,14 +604,14 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
         "请严格遵守以下规则：",
-        "- 只输出从 `## **⏱ 3分钟读懂今天**` 开始的 Markdown 正文，不要输出前言、备注、AI思考、规则说明或额外解释",
-        "- 导读必须依次包含 `发生了什么` / `为什么重要` / `今天可以做` 3 条，并按事实 -> 影响 -> 行动推进",
-        "- 必须包含这些结构：`## **⏱ 3分钟读懂今天**` / `## **🔥 重磅 TOP` / `## **📌 值得关注` / `## **❓ 相关问题**`",
-        ...dailyFunRepairRules,
+        "- 只输出从 `## **🔥 今日焦点 TOP 6**` 开始的 Markdown 正文，不要生成今日摘要、快速导航、前言、备注、AI思考或规则说明",
+        "- 必须包含 `## **🔥 今日焦点 TOP 6**` 和 `## **❓ 相关问题**`",
+        "- 产品与功能更新 / 前沿研究与行业影响 / 开源 TOP 项目 / 社媒精选中，至少输出两个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
+        "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
-        "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入 TOP；最多只能在 `## **📌 值得关注**` 里保留 1 条短提醒",
+        "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
-        "- 任何 GitHub 仓库链接如果要进入 TOP，必须来自素材里的 `Source: GitHub Trending Daily` 或 `Placement Hint: This project is from today's GitHub daily trending list`；来自 GitHub Search、普通新闻、社交帖的仓库链接不能进 TOP",
+        "- 今日焦点最多 1 个 GitHub 项目；开源 TOP 项目里的仓库必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint",
         "- FAQ 每天必须有 1 条，并且必须包含指向 https://aivora.cn 的链接",
         "- 允许从最近 2 天内补位，但不要解释日期过滤过程，也不要解释为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
@@ -1388,18 +1370,6 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     const initialDailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
     debugInfo.dailyFunCandidatesInPrompt = hasDedicatedDailyFunCandidates;
     debugInfo.dailyFunSectionPresentBeforeRepair = initialDailyFunStats.present;
-
-    if (validation.ok && hasDedicatedDailyFunCandidates && !initialDailyFunStats.present) {
-        validation = {
-            ...validation,
-            ok: false,
-            issues: [
-                ...(validation.issues || []),
-                DAILY_FUN_MISSING_WITH_CANDIDATES_ISSUE,
-            ],
-        };
-        debugInfo.dailyRepairMissingFun = true;
-    }
 
     if (!validation.ok) {
         console.warn(
@@ -2178,7 +2148,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.promptSelectedCounts = selectedCounts || {};
     debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
     const dailyTopEligiblePromptItems = countDailyTopEligiblePromptItems(selectedContentItems);
-    const minimumTopItems = dailyTopEligiblePromptItems >= 10 ? 10 : Math.min(dailyTopEligiblePromptItems, 9);
+    const minimumTopItems = Math.min(dailyTopEligiblePromptItems, 6);
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
     debugInfo.dailyMinimumTopItems = minimumTopItems;
 

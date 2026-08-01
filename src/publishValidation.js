@@ -22,7 +22,17 @@ const DAILY_WATCH_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDCCC|\uD83C\uDFAF|�
 const DAILY_FUN_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDE04|\uD83D\uDE06|AI\s*趣闻|趣闻).*\*\*/im;
 const DAILY_BRIEFING_V2_HEADING_PATTERN = /^##\s*\*{0,2}\s*⏱(?:️)?\s*3\s*分钟读懂今天\s*\*{0,2}\s*$/im;
 const DAILY_LEGACY_SUMMARY_HEADING_PATTERN = /^##\s*\*{0,2}\s*今日摘要\s*\*{0,2}\s*$/im;
-const DAILY_LEGACY_NAV_HEADING_PATTERN = /^##\s*⚡\s*快速导航\s*$/im;
+const DAILY_PRODUCT_HEADING_PATTERN = /^##\s*\*{0,2}.*产品与功能更新.*\*{0,2}\s*$/im;
+const DAILY_RESEARCH_HEADING_PATTERN = /^##\s*\*{0,2}.*前沿研究与行业影响.*\*{0,2}\s*$/im;
+const DAILY_OPEN_SOURCE_HEADING_PATTERN = /^##\s*\*{0,2}.*开源\s*TOP\s*项目.*\*{0,2}\s*$/im;
+const DAILY_SOCIAL_HEADING_PATTERN = /^##\s*\*{0,2}.*社媒精选.*\*{0,2}\s*$/im;
+
+const DAILY_V3_SECTION_SPECS = [
+  { name: "product", label: "产品与功能更新", pattern: DAILY_PRODUCT_HEADING_PATTERN },
+  { name: "research", label: "前沿研究与行业影响", pattern: DAILY_RESEARCH_HEADING_PATTERN },
+  { name: "openSource", label: "开源 TOP 项目", pattern: DAILY_OPEN_SOURCE_HEADING_PATTERN },
+  { name: "social", label: "社媒精选", pattern: DAILY_SOCIAL_HEADING_PATTERN },
+];
 
 function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
@@ -379,7 +389,10 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
       .filter(Boolean)
   );
   const faqHeadingPattern = /^##\s*\*\*❓\s*相关问题(?:（仅1条）)?\*\*/im;
-  const topSection = extractSection(pageMarkdown, /^##\s*\*\*.*TOP.*\*\*/im);
+  const topSection = extractSection(
+    pageMarkdown,
+    /^##\s*\*{0,2}.*(?:今日焦点|重磅).*TOP.*\*{0,2}\s*$/im,
+  );
 
   if (!faqHeadingPattern.test(String(pageMarkdown || ""))) {
     issues.push("日报页面缺少必需片段: ## **❓ 相关问题**");
@@ -457,10 +470,22 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   const watchSection = extractSection(pageMarkdown, DAILY_WATCH_HEADING_PATTERN);
   const funSection = extractSection(pageMarkdown, DAILY_FUN_HEADING_PATTERN);
-  if (!watchSection) {
-    issues.push("Daily page must contain a watch section heading");
-  } else if (countContentSourceLinks(watchSection) === 0) {
+  const v3Sections = DAILY_V3_SECTION_SPECS
+    .map((spec) => ({ ...spec, section: extractSection(pageMarkdown, spec.pattern) }))
+    .filter((spec) => Boolean(spec.section));
+
+  if (!watchSection && v3Sections.length === 0) {
+    issues.push("Daily page must contain a watch section heading or V3 topic sections");
+  } else if (watchSection && countContentSourceLinks(watchSection) === 0) {
     issues.push("Daily watch section must contain at least one source item");
+  }
+  for (const spec of v3Sections) {
+    if (countContentSourceLinks(spec.section) === 0) {
+      issues.push(`Daily ${spec.label} section must contain at least one source item`);
+    }
+  }
+  if (v3Sections.length > 0 && v3Sections.length < 2) {
+    issues.push("Daily V3 should contain at least two topic sections");
   }
   if (funSection && countContentSourceLinks(funSection) === 0) {
     issues.push("Daily AI fun section must contain at least one source item");
@@ -468,7 +493,13 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   const primarySectionLinks = {
     TOP: extractSectionLinks(topSection).filter((link) => !isNoiseSectionLink(link)),
-    watch: extractSectionLinks(watchSection).filter((link) => !isNoiseSectionLink(link)),
+    ...(watchSection
+      ? { watch: extractSectionLinks(watchSection).filter((link) => !isNoiseSectionLink(link)) }
+      : {}),
+    ...Object.fromEntries(v3Sections.map((spec) => [
+      spec.name,
+      extractSectionLinks(spec.section).filter((link) => !isNoiseSectionLink(link)),
+    ])),
     fun: extractSectionLinks(funSection).filter((link) => !isNoiseSectionLink(link)),
   };
   if (collectDuplicateUrlsBySection(primarySectionLinks).length > 0) {
@@ -487,6 +518,21 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily watch section must contain at most two GitHub/open-source project items");
   }
 
+  const openSourceSection = v3Sections.find((spec) => spec.name === "openSource")?.section || "";
+  const openSourceLinks = extractSectionLinks(openSourceSection).filter((link) => !isNoiseSectionLink(link));
+  if (openSourceLinks.length > 3) {
+    issues.push("Daily open-source section must contain at most three source items");
+  }
+  if (enforceTopGithubProjectAllowlist) {
+    const disallowedOpenSourceProject = openSourceLinks.some((link) => {
+      const urlKey = normalizeGithubProjectUrl(link.url);
+      return urlKey && !allowedTopGithubProjectKeys.has(urlKey);
+    });
+    if (disallowedOpenSourceProject) {
+      issues.push("Daily open-source projects must come from today's GitHub Trending Daily candidates");
+    }
+  }
+
   const watchWelfareCount = extractLinkContexts(watchSection).reduce(
     (count, item) => count + item.links.filter((link) => isWelfareContext(item.chunk, link.url)).length,
     0,
@@ -500,6 +546,15 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   );
   if (watchKnownNonAiTopic) {
     issues.push("Daily watch section contains a known non-AI topic");
+  }
+
+  const v3KnownNonAiTopic = v3Sections.some((spec) =>
+    extractLinkContexts(spec.section).some((item) =>
+      item.links.some((link) => isKnownNonAiLinkTopic(link.title)),
+    ),
+  );
+  if (v3KnownNonAiTopic) {
+    issues.push("Daily V3 topic sections contain a known non-AI topic");
   }
 
   const funKnownNonAiTopic = extractLinkContexts(funSection).some((item) =>
@@ -544,10 +599,7 @@ function collectDailyBriefingIssues(pageMarkdown) {
     return [];
   }
 
-  if (
-    DAILY_LEGACY_SUMMARY_HEADING_PATTERN.test(markdown) &&
-    DAILY_LEGACY_NAV_HEADING_PATTERN.test(markdown)
-  ) {
+  if (DAILY_LEGACY_SUMMARY_HEADING_PATTERN.test(markdown)) {
     return [];
   }
 
@@ -555,13 +607,14 @@ function collectDailyBriefingIssues(pageMarkdown) {
     return missingV2Labels.map((label) => `日报 3 分钟导读缺少字段: ${label}`);
   }
 
-  return ["日报页面缺少可用导读结构: 3分钟读懂今天或旧版今日摘要"];
+  return ["日报页面缺少可用导读结构: 今日摘要或旧版3分钟读懂今天"];
 }
 
 function isSoftDailyPublicationIssue(issue) {
   return (
     issue === "Daily TOP reuses the same source URL" ||
     issue === "Daily TOP must contain at most one GitHub/open-source project item" ||
+    issue === "Daily V3 should contain at least two topic sections" ||
     issue === "Daily AI fun section must contain at least one source item" ||
     issue === "Daily AI fun section contains a known non-AI topic" ||
     issue === "Daily AI fun section uses a paper/arXiv source"

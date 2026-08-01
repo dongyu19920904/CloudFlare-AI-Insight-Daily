@@ -7,6 +7,36 @@ import {
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
 
+test("sanitizeDuplicateDailySections removes repeated stories across V3 topic sections", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. [模型开放新接口](https://example.com/model-api)
+
+今日焦点正文。
+
+## **⚡ 产品与功能更新**
+
+### [模型开放新接口的产品解读](https://example.com/model-api)
+
+重复内容不应该保留。
+
+### [另一款工具加入批处理](https://example.com/batch-tool)
+
+这是不同事件，应该保留。
+
+## **🧪 前沿研究与行业影响**
+
+### [研究团队公布代理实验](https://example.com/agent-study)
+
+这是研究栏目里的独立事件。`;
+
+  const sanitized = sanitizeDuplicateDailySections(markdown);
+
+  assert.doesNotMatch(sanitized, /重复内容不应该保留/);
+  assert.match(sanitized, /另一款工具加入批处理/);
+  assert.match(sanitized, /研究团队公布代理实验/);
+});
+
 test("stripDailyHeadingCountSuffix removes stale item counts from daily headings", () => {
   const markdown = [
     "## **\uD83D\uDD25 TOP 1**",

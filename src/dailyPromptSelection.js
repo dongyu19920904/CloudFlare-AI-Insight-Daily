@@ -16,16 +16,11 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     placeholders.push(placeholder);
   };
 
-  for (const match of str.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*alt="([^"]*)"[^>]*>/gi)) {
-    const src = match[1]?.trim();
-    const alt = match[2]?.trim();
+  for (const match of str.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = match[0];
+    const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
+    const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
     if (src) addPlaceholder(`![${alt || "image"}](${src})`);
-    if (placeholders.length >= limit) return placeholders;
-  }
-
-  for (const match of str.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*>/gi)) {
-    const src = match[1]?.trim();
-    if (src) addPlaceholder(`![image](${src})`);
     if (placeholders.length >= limit) return placeholders;
   }
 
@@ -495,16 +490,16 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const entityHardCap = parsePositiveInt(env.DAILY_PROMPT_ENTITY_HARD_CAP, 1);
   const quotas = {
     news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 12),
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 1),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 2),
     socialMedia: parsePositiveInt(env.DAILY_PROMPT_SOCIAL_ITEMS, 3),
     paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 2),
   };
   const hardCaps = {
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 1),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 2),
   };
   const projectLikeHardCap = parsePositiveInt(
     env.DAILY_PROMPT_PROJECT_LIKE_HARD_CAP,
-    hardCaps.project || 1
+    hardCaps.project || 2
   );
   const preferredSourceOrder = ["project", "news", "socialMedia", "paper"];
   const buckets = new Map();

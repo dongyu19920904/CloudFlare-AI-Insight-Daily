@@ -8,49 +8,56 @@ const env = {
   INSERT_FOOT: "false",
 };
 
-test("daily assembly publishes the V2 briefing without duplicate legacy intro sections", () => {
-  const body = `## **⏱ 3分钟读懂今天**
+test("daily assembly always publishes the generated three-line summary", () => {
+  const body = `## **🔥 今日焦点 TOP 1**
 
-- **发生了什么**：主流 AI 工具今天更新了任务工作流。
-- **为什么重要**：开发者可以更清楚地检查修改和返工。
-- **今天可以做**：选一个小任务测试十分钟并记录结果。
+### 1. [产品更新](https://example.com/update)
 
-## **🔥 重磅 TOP 1**`;
+这是正文。`;
+  const summary = [
+    "第一句说明今天最重要的事实。",
+    "第二句指出产品与开源背后的变化。",
+    "第三句告诉读者今天先看什么。",
+  ].join("\n");
 
-  const markdown = assembleDailySummaryMarkdown(body, "旧版三行摘要不应显示在新版页面。", env);
+  const markdown = assembleDailySummaryMarkdown(body, summary, env);
 
-  assert.match(markdown, /^## \*\*⏱ 3分钟读懂今天\*\*/);
-  assert.match(markdown, /3分钟读懂今天/);
-  assert.match(markdown, /重磅 TOP 1/);
-  assert.ok(markdown.indexOf("3分钟读懂今天") < markdown.indexOf("utm_medium=mid_ad"));
-  assert.doesNotMatch(markdown, /## \*\*今日摘要\*\*/);
-  assert.doesNotMatch(markdown, /## ⚡ 快速导航/);
-  assert.doesNotMatch(markdown, /旧版三行摘要不应显示/);
+  assert.match(markdown, /^## \*\*今日摘要\*\*/);
+  assert.match(markdown, /第一句说明今天最重要的事实。\n第二句指出产品与开源背后的变化。\n第三句告诉读者今天先看什么。/);
+  assert.match(markdown, /## \*\*🔥 今日焦点 TOP 1\*\*/);
+  assert.ok(markdown.indexOf("今日摘要") < markdown.indexOf("utm_medium=mid_ad"));
+  assert.ok(markdown.indexOf("utm_medium=mid_ad") < markdown.indexOf("今日焦点 TOP 1"));
 });
 
-test("daily assembly keeps the legacy summary wrapper when the model misses the V2 briefing", () => {
-  const body = `## **今日AI资讯**
-
-## **🔥 重磅 TOP 1**`;
-
-  const markdown = assembleDailySummaryMarkdown(body, "今天的有效三行摘要用于稳定发布。", env);
-
-  assert.match(markdown, /## \*\*今日摘要\*\*/);
-  assert.match(markdown, /## ⚡ 快速导航/);
-  assert.match(markdown, /今天的有效三行摘要用于稳定发布/);
-  assert.match(markdown, /## \*\*今日AI资讯\*\*/);
-});
-
-test("daily assembly falls back safely when the V2 briefing is incomplete", () => {
+test("daily assembly strips obsolete model-generated intros before the TOP section", () => {
   const body = `## **⏱ 3分钟读懂今天**
 
-- **发生了什么**：模型只写了一半导读。
+- **发生了什么**：旧导读。
 
-## **🔥 重磅 TOP 1**`;
+## **今日AI资讯**
 
-  const markdown = assembleDailySummaryMarkdown(body, "完整日报仍使用真实生成摘要发布。", env);
+### **👀 只有一句话**
+旧开场。
+
+## **🔥 今日焦点 TOP 1**
+
+### 1. [真实正文](https://example.com/story)`;
+
+  const markdown = assembleDailySummaryMarkdown(body, "今天恢复三句话摘要，并保留真实正文。", env);
 
   assert.match(markdown, /## \*\*今日摘要\*\*/);
-  assert.match(markdown, /完整日报仍使用真实生成摘要发布/);
-  assert.match(markdown, /重磅 TOP 1/);
+  assert.doesNotMatch(markdown, /3分钟读懂今天/);
+  assert.doesNotMatch(markdown, /今日AI资讯/);
+  assert.doesNotMatch(markdown, /只有一句话/);
+  assert.match(markdown, /真实正文/);
+});
+
+test("daily assembly normalizes numbered summary text to at most three lines", () => {
+  const body = `## **🔥 今日焦点 TOP 1**`;
+  const summary = `1. 第一句。\n2. 第二句。\n3. 第三句。\n4. 不应出现。`;
+
+  const markdown = assembleDailySummaryMarkdown(body, summary, env);
+
+  assert.match(markdown, /第一句。\n第二句。\n第三句。/);
+  assert.doesNotMatch(markdown, /不应出现/);
 });

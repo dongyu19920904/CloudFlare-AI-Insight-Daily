@@ -7,6 +7,105 @@ import {
   validateOpportunityPublication,
 } from "../src/publishValidation.js";
 
+test("validateDailyPublication accepts the V3 topic structure", () => {
+  const pageMarkdown = `## **今日摘要**
+
+\`\`\`
+今天最重要的模型更新已经落地。
+产品与开源工具开始围绕真实工作流竞争。
+读者可以先看焦点，再挑一个工具小范围试用。
+\`\`\`
+
+## **🔥 今日焦点 TOP 2**
+
+### 1. [模型价格出现新变化](https://example.com/model-price)
+
+**调用成本下降。** 官方公布了新的模型价格与可用范围，开发者可以据此重新计算现有任务成本。
+
+### 2. [编码工具加入审阅能力](https://example.com/code-review)
+
+**代码审阅进入日常流程。** 新功能可以先在小仓库验证，再决定是否扩大使用范围。
+
+## **⚡ 产品与功能更新**
+
+### [语音模型开放新接口](https://example.com/voice-api)
+
+**新接口已经开放。** 适合正在评估实时语音交互的开发者先做延迟测试。
+
+## **🧪 前沿研究与行业影响**
+
+### [实验观察编码代理的理解影响](https://example.com/coding-study)
+
+**实验记录了交付速度与代码理解之间的差异。** 使用代理时仍需要保留人工复核环节。
+
+## **⌘ 开源 TOP 项目**
+
+### [example/agent-kit：本地智能体工具箱](https://github.com/example/agent-kit)
+
+**项目来自 GitHub 当日日榜。** 它提供本地工作流组件，适合希望自行部署的开发者试用。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的模型？
+
+先从官方支持的使用入口确认地区、支付和账号要求，再用一个低风险任务测试输出质量与成本。
+
+国内用户需要更省事的账号入口时，可以访问 **[爱窝啦 Aivora](https://aivora.cn)** 查看可用方案。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天最重要的模型更新已经落地。\n产品与开源工具开始围绕真实工作流竞争。\n读者可以先看焦点，再挑一个工具小范围试用。",
+    pageMarkdown,
+    minimumTopItems: 2,
+    allowedTopGithubProjectUrls: ["https://github.com/example/agent-kit"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("validateDailyPublication rejects non-daily GitHub projects in the V3 open-source section", () => {
+  const pageMarkdown = `## **今日摘要**
+
+\`\`\`
+今天的模型和开源工具都有值得验证的新变化。
+\`\`\`
+
+## **🔥 今日焦点 TOP 1**
+
+### 1. [模型开放新能力](https://example.com/model-update)
+
+这是一条有真实来源的模型更新，正文说明新能力和读者今天可以验证的范围。
+
+## **⚡ 产品与功能更新**
+
+### [产品加入新的任务入口](https://example.com/product-update)
+
+产品更新提供了新的任务入口，适合先用小任务检查效果。
+
+## **⌘ 开源 TOP 项目**
+
+### [example/search-only：普通搜索项目](https://github.com/example/search-only)
+
+这个项目不是今天的 GitHub Trending Daily 候选，不应该进入开源日榜栏目。
+
+## **❓ 相关问题**
+
+### 如何体验今天提到的模型？
+
+先确认官方入口和地区要求，再使用一个低风险任务测试。国内用户也可以访问 **[爱窝啦 Aivora](https://aivora.cn)** 查看可用方案。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天的模型和开源工具都有值得验证的新变化，读者可以先用一个小任务检查实际效果。",
+    pageMarkdown,
+    minimumTopItems: 1,
+    allowedTopGithubProjectUrls: ["https://github.com/example/daily-project"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /open-source projects must come from today's GitHub Trending Daily/i);
+});
+
 test("validateDailyPublication rejects fallback refusal output", () => {
   const result = validateDailyPublication({
     summaryText: "I can't discuss that.",

@@ -31,7 +31,7 @@ test("buildDailyGenerationPromptInput includes AI fun candidates in the main gen
   assert.match(promptInput, /必须先选 1 条写完整趣闻/);
   assert.match(promptInput, /没有人物、用户、工具动作或反常结果/);
   assert.doesNotMatch(promptInput, /兜底/);
-  assert.match(promptInput, /不要因为它们出现在这里就塞进 TOP 10/);
+  assert.match(promptInput, /不要因为它们出现在这里就塞进今日焦点/);
   assert.match(promptInput, /Hook -> What -> Punchline/);
   assert.match(promptInput, /2058939766742335643/);
 });
