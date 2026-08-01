@@ -42,6 +42,16 @@ test("daily prompt rejects low-evidence promotions and requires factual media ca
   assert.match(prompt, /所有事实、数字、功能、价格和判断依据必须来自输入素材/);
 });
 
+test("daily prompt gives linked cyan conclusions and restrained yellow highlights distinct roles", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
+
+  assert.match(prompt, /蓝色标题必须是一句简短、完整的关键结论/);
+  assert.match(prompt, /二次创作的关键结论句/);
+  assert.match(prompt, /2-12 个字符的关键词、数字或产品名/);
+  assert.match(prompt, /不能把整句话加粗/);
+  assert.match(prompt, /\[模型降价让开发者调用成本再松一截\]\(URL\)/);
+});
+
 test("AI fun remains source-driven and optional without blocking the daily", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
