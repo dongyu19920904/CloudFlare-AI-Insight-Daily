@@ -118,7 +118,7 @@ export function sanitizeDuplicateDailySections(markdown) {
 export function removeEmptyDailyFunSection(markdown) {
   return String(markdown || "")
     .replace(
-      /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|$)/im,
+      /^##\s*\*\*.*(?:😄|😆|AI\s*趣闻|趣闻).*\*\*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
       (section) => {
         const sourceLinks = [...section.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
           .filter((match) => match.index == null || section[match.index - 1] !== "!");
@@ -127,4 +127,25 @@ export function removeEmptyDailyFunSection(markdown) {
     )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+const OPTIONAL_DAILY_TOPIC_SECTION_PATTERNS = [
+  /^##\s*\*{0,2}.*产品与功能更新.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
+  /^##\s*\*{0,2}.*前沿研究与行业影响.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
+  /^##\s*\*{0,2}.*开源\s*TOP\s*项目.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
+  /^##\s*\*{0,2}.*社媒精选.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
+];
+
+export function removeEmptyDailyTopicSections(markdown) {
+  let content = String(markdown || "");
+
+  for (const pattern of OPTIONAL_DAILY_TOPIC_SECTION_PATTERNS) {
+    content = content.replace(pattern, (section) => {
+      const sourceLinks = [...section.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)]
+        .filter((match) => match.index == null || section[match.index - 1] !== "!");
+      return sourceLinks.length === 0 ? "" : section;
+    });
+  }
+
+  return content.replace(/\n{3,}/g, "\n\n").trim();
 }

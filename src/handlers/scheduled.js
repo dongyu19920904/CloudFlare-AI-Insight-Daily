@@ -60,7 +60,11 @@ import {
     mergeOpportunityReplayMemories,
     pruneOpportunityReplayMemory,
 } from '../opportunityReplayDedupe.js';
-import { removeEmptyDailyFunSection, sanitizeDuplicateDailySections } from '../dailySectionSanitizer.js';
+import {
+    removeEmptyDailyFunSection,
+    removeEmptyDailyTopicSections,
+    sanitizeDuplicateDailySections,
+} from '../dailySectionSanitizer.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -1364,6 +1368,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = removeEmptyDailyTopicSections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyFunSection(dailySummaryMarkdownContent);
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
@@ -1410,6 +1415,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
+        repairedDailySummaryMarkdownContent = removeEmptyDailyTopicSections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyFunSection(repairedDailySummaryMarkdownContent);
         const repairedValidation = validateDailyPublication({
             summaryText: repairedOutputOfCall3,

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   removeEmptyDailyFunSection,
+  removeEmptyDailyTopicSections,
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
@@ -152,6 +153,37 @@ test("removeEmptyDailyFunSection removes empty or source-less AI fun section", (
   const sanitized = removeEmptyDailyFunSection(markdown);
 
   assert.doesNotMatch(sanitized, /AI趣闻/);
+  assert.doesNotMatch(sanitized, /今天没有自然好笑的素材/);
   assert.match(sanitized, /值得关注/);
+  assert.match(sanitized, /相关问题/);
+});
+
+test("removeEmptyDailyTopicSections removes a source-less optional topic section", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 模型开放新接口
+
+正文包含[接口发布详情](https://example.com/model-api)。
+
+## **⚡ 产品与功能更新**
+
+### 新接口降低调用成本
+
+正文包含[价格与能力说明](https://example.com/pricing)。
+
+## **◉ 社媒精选**
+
+今天没有可核实的社媒素材。
+
+## **❓ 相关问题**
+
+### 如何体验？
+
+访问 [Aivora](https://aivora.cn)。`;
+
+  const sanitized = removeEmptyDailyTopicSections(markdown);
+
+  assert.match(sanitized, /产品与功能更新/);
+  assert.doesNotMatch(sanitized, /社媒精选/);
   assert.match(sanitized, /相关问题/);
 });
