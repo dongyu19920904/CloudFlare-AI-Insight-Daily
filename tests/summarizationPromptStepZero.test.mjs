@@ -45,15 +45,19 @@ test("daily prompt rejects low-evidence promotions and requires factual media ca
 test("daily prompt gives plain yellow conclusions and contextual cyan source links distinct roles", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /三级标题必须是一句简短、完整的关键结论/);
-  assert.match(prompt, /标题不得加入链接/);
-  assert.match(prompt, /关键事实附近放置 1 个.*描述性.*链接/);
+  assert.match(prompt, /普通新闻、研究和社媒的三级标题必须是一句 14-30 个显示字符的关键结论/);
+  assert.match(prompt, /开源标题保留 `owner\/repo`/);
+  assert.match(prompt, /用途说明控制在 8-16 个显示字符/);
+  assert.match(prompt, /不得包含 Markdown 链接/);
+  assert.match(prompt, /正文不得以 Markdown 链接开头/);
+  assert.match(prompt, /第二句或首段中部/);
+  assert.match(prompt, /优先链接官方来源/);
   assert.match(prompt, /二次创作的关键结论句/);
-  assert.match(prompt, /2-12 个字符的产品名、关键能力、精确数字、结果或限制/);
-  assert.match(prompt, /标出 2-4 处/);
-  assert.match(prompt, /不能把整句话加粗/);
+  assert.match(prompt, /6-18 字的.*黄色短结论/);
+  assert.match(prompt, /合计必须有 2-4 处黄色重点/);
   assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
-  assert.match(prompt, /\[模型降价范围与价格详情\]\(URL\)/);
+  assert.match(prompt, /调用成本再降一截/);
+  assert.match(prompt, /\[官方价格表列出的三款模型新费率\]\(URL\)/);
   assert.doesNotMatch(prompt, /### 1\. \[模型降价让开发者调用成本再松一截\]/);
 });
 
@@ -74,6 +78,8 @@ test("daily prompt requires one current Aivora FAQ and forbids meta output", () 
 
   assert.match(prompt, /每天必须输出 1 条/);
   assert.match(prompt, /爱窝啦 Aivora/);
+  assert.match(prompt, /主流 AI 账号、订阅选择和使用售后支持/);
+  assert.match(prompt, /不要写成 AI 工具导航、官方体验入口或免注册聚合站/);
   assert.match(prompt, /不要把 GPT-4o 当成默认主推模型/);
   assert.match(prompt, /不要输出“素材不足”“无法生成”“请补充素材”/);
   assert.match(prompt, /只输出最终 Markdown 正文/);
