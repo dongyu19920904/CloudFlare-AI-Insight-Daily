@@ -29,6 +29,8 @@ test("daily prompt preserves date tolerance, dedupe, AI relevance, and GitHub sa
   assert.match(prompt, /最近 7 天/);
   assert.match(prompt, /GitHub Search/);
   assert.match(prompt, /今日焦点最多放 1 个 GitHub 项目/);
+  assert.match(prompt, /今日焦点和开源栏目中只要链接到 GitHub 仓库/);
+  assert.match(prompt, /非日榜仓库即使当天被报道，也不能进入今日焦点/);
 });
 
 test("daily prompt rejects low-evidence promotions and requires factual media captions", () => {
