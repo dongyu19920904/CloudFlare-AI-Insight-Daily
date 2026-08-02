@@ -60,7 +60,7 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   const social = (index) => [
     `socialMedia Post by user-${index}`,
     `Url: https://x.com/user-${index}/status/${index}`,
-    "Content: AI 编程实测。",
+    `Content: AI 编程实测 ${index}，包含不同的操作过程与结果。`,
   ].join("\n");
   const news = (index) => [
     `News Title: AI news ${index}`,
@@ -74,13 +74,13 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
       social(1), social(2), social(3), social(4),
       ...Array.from({ length: 9 }, (_, index) => news(index + 1)),
     ],
-    []
+    [social(5)]
   );
 
   assert.match(promptInput, /栏目候选预算/);
   assert.match(promptInput, /GitHub 当日日榜项目 3 个、社媒原帖 4 条/);
   assert.match(promptInput, /为开源 TOP 项目单独预留 2 个/);
-  assert.match(promptInput, /为社媒精选单独预留 2 条/);
+  assert.match(promptInput, /为社媒精选单独预留 3 条/);
   assert.match(promptInput, /今日焦点最多使用 2 条社媒/);
   assert.match(promptInput, /开源 TOP 项目专用候选素材/);
   assert.match(promptInput, /社媒精选专用候选素材/);
@@ -92,13 +92,15 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
     ...Array.from({ length: 9 }, (_, index) => news(index + 1)),
   ];
   assert.equal(countDailyTopEligiblePromptItems(selectedItems), 10);
-  assert.deepEqual(getDailyPromptAllocationStats(selectedItems), {
+  assert.deepEqual(getDailyPromptAllocationStats(selectedItems, [social(5)]), {
     topItems: 10,
     reservedProjectItems: 2,
-    reservedSocialItems: 2,
+    reservedSocialItems: 3,
     reservedPaperItems: 0,
     reservedNewsItems: 2,
   });
+  assert.equal(promptInput.match(/user-5\/status\/5/g)?.length, 1);
+  assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
 });
 
 test("daily prompt allocation preserves TOP capacity when source volume is low", () => {

@@ -1,6 +1,7 @@
 import {
   DAILY_OPEN_SOURCE_MIN,
   DAILY_SOCIAL_MIN,
+  DAILY_SOCIAL_TARGET,
   DAILY_TOP_TARGET,
 } from "./dailyContentRules.js";
 
@@ -86,17 +87,70 @@ function allocateDailyPromptItems(items = []) {
   };
 }
 
-export function getDailyPromptAllocationStats(selectedContentItems = []) {
+function getDailyPromptItemUrl(item) {
+  return String(item || "").match(/^Url:\s*(https?:\/\/\S+)/im)?.[1]?.trim().toLowerCase() || "";
+}
+
+function getDailySocialFingerprint(item) {
+  const content = String(item || "").match(/^Content:\s*(.+)$/im)?.[1] || "";
+  return content
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "")
+    .slice(0, 120);
+}
+
+function selectSupplementalDailySocialItems(
+  selectedContentItems,
+  dailyFunContentItems,
+  reservedSocialItems
+) {
+  const needed = Math.max(0, DAILY_SOCIAL_TARGET - reservedSocialItems.length);
+  if (needed === 0) return [];
+
+  const selectedKeys = new Set(
+    (selectedContentItems || []).map((item) => String(item).trim()).filter(Boolean)
+  );
+  const seenUrls = new Set(reservedSocialItems.map(getDailyPromptItemUrl).filter(Boolean));
+  const seenFingerprints = new Set(
+    reservedSocialItems.map(getDailySocialFingerprint).filter(Boolean)
+  );
+  const supplementalItems = [];
+
+  for (const item of dailyFunContentItems || []) {
+    const normalizedItem = String(item || "").trim();
+    if (!normalizedItem || selectedKeys.has(normalizedItem) || isDailyPromptHiddenItem(normalizedItem)) continue;
+    if (classifyDailyPromptItem(normalizedItem) !== "socialMedia") continue;
+
+    const url = getDailyPromptItemUrl(normalizedItem);
+    const fingerprint = getDailySocialFingerprint(normalizedItem);
+    if ((url && seenUrls.has(url)) || (fingerprint && seenFingerprints.has(fingerprint))) continue;
+
+    supplementalItems.push(normalizedItem);
+    if (url) seenUrls.add(url);
+    if (fingerprint) seenFingerprints.add(fingerprint);
+    if (supplementalItems.length >= needed) break;
+  }
+
+  return supplementalItems;
+}
+
+export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFunContentItems = []) {
   const primaryItems = (selectedContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyWatchOnlyPromptItem(item))
     .filter((item) => !isDailyPromptHiddenItem(item));
   const allocation = allocateDailyPromptItems(primaryItems);
+  const supplementalSocialItems = selectSupplementalDailySocialItems(
+    selectedContentItems,
+    dailyFunContentItems,
+    allocation.reserved.socialMedia
+  );
 
   return {
     topItems: allocation.topItems.length,
     reservedProjectItems: allocation.reserved.project.length,
-    reservedSocialItems: allocation.reserved.socialMedia.length,
+    reservedSocialItems: allocation.reserved.socialMedia.length + supplementalSocialItems.length,
     reservedPaperItems: allocation.reserved.paper.length,
     reservedNewsItems: allocation.reserved.news.length,
   };
@@ -112,10 +166,16 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const watchOnlyItems = allPrimaryItems.filter((item) => isDailyWatchOnlyPromptItem(item));
   const primaryItems = allPrimaryItems.filter((item) => !isDailyWatchOnlyPromptItem(item));
   const allocation = allocateDailyPromptItems(primaryItems);
+  const supplementalSocialItems = selectSupplementalDailySocialItems(
+    allSelectedItems,
+    dailyFunContentItems,
+    allocation.reserved.socialMedia
+  );
+  const socialSectionItems = [...allocation.reserved.socialMedia, ...supplementalSocialItems];
   const { project: projectCount, socialMedia: socialCount, paper: paperCount, news: newsCount } = allocation.counts;
   const openSourceReserve = allocation.reserved.project.length;
-  const socialReserve = allocation.reserved.socialMedia.length;
-  const socialTopLimit = Math.max(0, socialCount - socialReserve);
+  const socialReserve = socialSectionItems.length;
+  const socialTopLimit = Math.max(0, socialCount - allocation.reserved.socialMedia.length);
   const sectionBudget = [
     "【栏目候选预算】",
     `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
@@ -126,10 +186,12 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   ].join("\n");
   const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面素材可用于今日焦点；也可把未进入 TOP 的新闻用于产品或行业栏目。\n\n${allocation.topItems.join("\n\n------\n\n")}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
+  const supplementalSocialKeys = new Set(supplementalSocialItems);
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyPromptHiddenItem(item))
-    .filter((item) => !selectedItemKeys.has(String(item).trim()));
+    .filter((item) => !selectedItemKeys.has(String(item).trim()))
+    .filter((item) => !supplementalSocialKeys.has(String(item).trim()));
 
   const promptParts = [primaryPrompt];
 
@@ -146,13 +208,13 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     ].join("\n"));
   }
 
-  if (allocation.reserved.socialMedia.length > 0) {
+  if (socialSectionItems.length > 0) {
     promptParts.push([
       "【社媒精选专用候选素材】",
-      `下面 ${allocation.reserved.socialMedia.length} 条原帖已从今日焦点候选中移出，只能写进 \`## **◉ 社媒精选**\`。`,
+      `下面 ${socialSectionItems.length} 条原帖已从今日焦点或趣闻候选中移出，只能写进 \`## **◉ 社媒精选**\`。`,
       "每条候选各写一条，提炼实测、观点或现场信号；不得省略，也不得挪回今日焦点。",
       "",
-      allocation.reserved.socialMedia
+      socialSectionItems
         .map((item, index) => [`社媒候选 ${index + 1}:`, item].join("\n"))
         .join("\n\n------\n\n"),
       "\n------\n\n",
