@@ -380,6 +380,8 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const minimumOpenSourceItems = Math.max(0, Number(options.minimumOpenSourceItems) || 0);
   const minimumSocialItems = Math.max(0, Number(options.minimumSocialItems) || 0);
   const minimumResearchItems = Math.max(0, Number(options.minimumResearchItems) || 0);
+  const minimumIndustryItems = Math.max(0, Number(options.minimumIndustryItems) || 0);
+  const minimumTopicSections = Math.max(0, Number(options.minimumTopicSections) || 0);
   const enforceTopGithubProjectAllowlist = Boolean(options.enforceTopGithubProjectAllowlist);
   const allowedTopGithubProjectKeys = new Set(
     (options.allowedTopGithubProjectUrls || [])
@@ -488,6 +490,9 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   if (v3Sections.length > 0 && v3Sections.length < 2) {
     issues.push("Daily V3 should contain at least two topic sections");
   }
+  if (minimumTopicSections > 0 && v3Sections.length < minimumTopicSections) {
+    issues.push(`Daily professional sections are below target: expected ${minimumTopicSections}, got ${v3Sections.length}`);
+  }
   if (funSection && countContentSourceLinks(funSection) === 0) {
     issues.push("Daily AI fun section must contain at least one source item");
   }
@@ -525,6 +530,8 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const socialLinks = extractSectionLinks(socialSection).filter((link) => !isNoiseSectionLink(link));
   const researchSection = v3Sections.find((spec) => spec.name === "research")?.section || "";
   const researchLinks = extractSectionLinks(researchSection).filter((link) => !isNoiseSectionLink(link));
+  const industrySection = v3Sections.find((spec) => spec.name === "industry")?.section || "";
+  const industryLinks = extractSectionLinks(industrySection).filter((link) => !isNoiseSectionLink(link));
   if (openSourceLinks.length > 3) {
     issues.push("Daily open-source section must contain at most three source items");
   }
@@ -536,6 +543,9 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
   }
   if (minimumResearchItems > 0 && researchLinks.length < minimumResearchItems) {
     issues.push(`Daily research section is below target: expected ${minimumResearchItems}, got ${researchLinks.length}`);
+  }
+  if (minimumIndustryItems > 0 && industryLinks.length < minimumIndustryItems) {
+    issues.push(`Daily industry section is below target: expected ${minimumIndustryItems}, got ${industryLinks.length}`);
   }
   if (enforceTopGithubProjectAllowlist) {
     const disallowedOpenSourceProject = openSourceLinks.some((link) => {
@@ -632,7 +642,7 @@ function isSoftDailyPublicationIssue(issue) {
     issue === "Daily AI fun section must contain at least one source item" ||
     issue === "Daily AI fun section contains a known non-AI topic" ||
     issue === "Daily AI fun section uses a paper/arXiv source" ||
-    /^Daily (?:TOP|open-source section|social section|research section) is below target:/.test(issue)
+    /^Daily (?:TOP|open-source section|social section|research section|industry section|professional sections) (?:is|are) below target:/.test(issue)
   );
 }
 
@@ -644,6 +654,8 @@ export function validateDailyPublication({
   minimumOpenSourceItems = 0,
   minimumSocialItems = 0,
   minimumResearchItems = 0,
+  minimumIndustryItems = 0,
+  minimumTopicSections = 0,
   allowedTopGithubProjectUrls = [],
   enforceTopGithubProjectAllowlist = false,
 }) {
@@ -665,6 +677,8 @@ export function validateDailyPublication({
       minimumOpenSourceItems,
       minimumSocialItems,
       minimumResearchItems,
+      minimumIndustryItems,
+      minimumTopicSections,
       allowedTopGithubProjectUrls,
       enforceTopGithubProjectAllowlist,
     }),

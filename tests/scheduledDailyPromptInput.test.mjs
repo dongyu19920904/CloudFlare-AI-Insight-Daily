@@ -50,6 +50,36 @@ test("buildDailyGenerationPromptInput does not duplicate fun candidates already 
   assert.equal(promptInput.match(/2058786114882900133/g)?.length, 1);
 });
 
+test("buildDailyGenerationPromptInput reserves rich project and social candidates for their sections", () => {
+  const project = (index) => [
+    `Project Name: project-${index}`,
+    "Source: GitHub Trending Daily",
+    `Url: https://github.com/example/project-${index}`,
+  ].join("\n");
+  const social = (index) => [
+    `socialMedia Post by user-${index}`,
+    `Url: https://x.com/user-${index}/status/${index}`,
+    "Content: AI 编程实测。",
+  ].join("\n");
+  const news = (index) => [
+    `News Title: AI news ${index}`,
+    `Url: https://example.com/news-${index}`,
+    "Content Summary: AI 产品和行业变化。",
+  ].join("\n");
+
+  const promptInput = buildDailyGenerationPromptInput(
+    [project(1), project(2), project(3), social(1), social(2), social(3), social(4), news(1), news(2)],
+    []
+  );
+
+  assert.match(promptInput, /栏目候选预算/);
+  assert.match(promptInput, /GitHub 当日日榜项目 3 个、社媒原帖 4 条/);
+  assert.match(promptInput, /为开源 TOP 项目预留 2 个/);
+  assert.match(promptInput, /为社媒精选预留 2 条/);
+  assert.match(promptInput, /今日焦点最多使用 2 条社媒/);
+  assert.match(promptInput, /产品与功能更新、行业变化与个人影响/);
+});
+
 test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code 更新计划模式",

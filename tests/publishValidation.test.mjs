@@ -742,6 +742,8 @@ ${topItems}
     minimumOpenSourceItems: 2,
     minimumSocialItems: 2,
     minimumResearchItems: 1,
+    minimumIndustryItems: 1,
+    minimumTopicSections: 3,
     allowedTopGithubProjectUrls: ["https://github.com/example/agent-kit"],
     enforceTopGithubProjectAllowlist: true,
   });
@@ -751,6 +753,8 @@ ${topItems}
   assert.match(result.warnings.join("\n"), /open-source section is below target/);
   assert.match(result.warnings.join("\n"), /social section is below target/);
   assert.match(result.warnings.join("\n"), /research section is below target/);
+  assert.match(result.warnings.join("\n"), /industry section is below target/);
+  assert.match(result.warnings.join("\n"), /professional sections are below target/);
 });
 
 test("validateDailyPublication rejects repeated stories across primary sections", () => {

@@ -618,6 +618,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 和 \`## **❓ 相关问题**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条`,
         "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
         `- 输入有 ${DAILY_OPEN_SOURCE_MIN} 个以上合格 GitHub 日榜项目或 ${DAILY_SOCIAL_MIN} 条以上合格社媒原帖时，对应栏目至少输出 ${DAILY_OPEN_SOURCE_MIN} 条；不能只挑 1 条敷衍`,
+        "- 修复清单出现 below target 时必须解决：先按栏目候选预算预留素材，必要时把低优先级项目/社媒移出今日焦点，再用尚未使用的新闻补足 TOP；不能原样保留警告",
         "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
@@ -1391,6 +1392,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         minimumOpenSourceItems: options.minimumOpenSourceItems || 0,
         minimumSocialItems: options.minimumSocialItems || 0,
         minimumResearchItems: options.minimumResearchItems || 0,
+        minimumIndustryItems: options.minimumIndustryItems || 0,
+        minimumTopicSections: options.minimumTopicSections || 0,
         allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
         enforceTopGithubProjectAllowlist: true,
     };
@@ -2207,12 +2210,21 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         DAILY_SOCIAL_MIN
     );
     const minimumResearchItems = Math.min(Number(selectedCounts?.paper) || 0, 1);
+    const minimumIndustryItems = Number(selectedCounts?.news) >= 4 ? 1 : 0;
+    const potentialTopicSections =
+        (Number(selectedCounts?.news) > 0 ? 2 : 0) +
+        (Number(selectedCounts?.paper) > 0 ? 1 : 0) +
+        (Number(selectedCounts?.project) > 0 ? 1 : 0) +
+        (Number(selectedCounts?.socialMedia) > 0 ? 1 : 0);
+    const minimumTopicSections = Math.min(potentialTopicSections, 3);
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
     debugInfo.dailyTopTargetItems = minimumTopItems;
     debugInfo.dailyMinimumTopItems = hardMinimumTopItems;
     debugInfo.dailyOpenSourceTargetItems = minimumOpenSourceItems;
     debugInfo.dailySocialTargetItems = minimumSocialItems;
     debugInfo.dailyResearchTargetItems = minimumResearchItems;
+    debugInfo.dailyIndustryTargetItems = minimumIndustryItems;
+    debugInfo.dailyTopicSectionTarget = minimumTopicSections;
 
     await reportScheduledProgress(options, 'daily', 'generating', 40, {
         candidateItems: totalCandidateCount || 0,
@@ -2231,6 +2243,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
             minimumOpenSourceItems,
             minimumSocialItems,
             minimumResearchItems,
+            minimumIndustryItems,
+            minimumTopicSections,
             dailyFunContentItems,
             allowedTopGithubProjectUrls,
         }
@@ -2245,6 +2259,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         minimumOpenSourceItems,
         minimumSocialItems,
         minimumResearchItems,
+        minimumIndustryItems,
+        minimumTopicSections,
         allowedTopGithubProjectUrls,
         enforceTopGithubProjectAllowlist: true,
     });

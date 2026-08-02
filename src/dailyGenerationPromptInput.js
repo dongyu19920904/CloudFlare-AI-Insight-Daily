@@ -1,4 +1,8 @@
-import { DAILY_TOP_TARGET } from "./dailyContentRules.js";
+import {
+  DAILY_OPEN_SOURCE_MIN,
+  DAILY_SOCIAL_MIN,
+  DAILY_TOP_TARGET,
+} from "./dailyContentRules.js";
 
 function isDailyWelfarePromptItem(item) {
   const text = String(item || "");
@@ -31,7 +35,22 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const allPrimaryItems = allSelectedItems.filter((item) => !isDailyPromptHiddenItem(item));
   const watchOnlyItems = allPrimaryItems.filter((item) => isDailyWatchOnlyPromptItem(item));
   const primaryItems = allPrimaryItems.filter((item) => !isDailyWatchOnlyPromptItem(item));
-  const primaryPrompt = `\n\n------\n\n${primaryItems.join("\n\n------\n\n")}\n\n------\n\n`;
+  const projectCount = primaryItems.filter((item) => /^Project Name:/m.test(item)).length;
+  const socialCount = primaryItems.filter((item) => /^socialMedia Post/m.test(item)).length;
+  const paperCount = primaryItems.filter((item) => /^Papers Title:/m.test(item)).length;
+  const newsCount = primaryItems.filter((item) => /^News Title:/m.test(item)).length;
+  const openSourceReserve = Math.min(projectCount, DAILY_OPEN_SOURCE_MIN);
+  const socialReserve = Math.min(socialCount, DAILY_SOCIAL_MIN);
+  const socialTopLimit = Math.max(0, socialCount - socialReserve);
+  const sectionBudget = [
+    "【栏目候选预算】",
+    `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
+    `先为开源 TOP 项目预留 ${openSourceReserve} 个 GitHub 候选；项目不足 ${DAILY_OPEN_SOURCE_MIN} 个时才按实际数量输出。`,
+    `先为社媒精选预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒，不能把社媒素材全部提前用掉。`,
+    "新闻素材充足时，至少各留 1 条给产品与功能更新、行业变化与个人影响；论文候选存在时至少留 1 篇给前沿研究。",
+    `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
+  ].join("\n");
+  const primaryPrompt = `\n\n${sectionBudget}\n\n------\n\n${primaryItems.join("\n\n------\n\n")}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
