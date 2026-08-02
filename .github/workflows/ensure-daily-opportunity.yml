@@ -83,7 +83,8 @@ jobs:
           match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
           actual = (match.group(1) if match else "").rstrip("/")
           expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
-          print("true" if actual == expected else "false")
+          shortcode_current = "{{< latest-opportunity >}}" in content
+          print("true" if shortcode_current or actual == expected else "false")
           PY
           )
           fi
@@ -220,7 +221,8 @@ jobs:
           match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
           actual = (match.group(1) if match else "").rstrip("/")
           expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
-          print("true" if actual == expected else "false")
+          shortcode_current = "{{< latest-opportunity >}}" in content
+          print("true" if shortcode_current or actual == expected else "false")
           PY
               )
 
@@ -285,7 +287,7 @@ jobs:
           match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
           actual = (match.group(1) if match else "").rstrip("/")
           expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
-          if actual != expected:
+          if "{{< latest-opportunity >}}" not in content and actual != expected:
               raise SystemExit(f"Opportunity home next is stale: {actual!r}, expected {expected!r}")
           PY
           echo "ok=true" >> "$GITHUB_OUTPUT"
