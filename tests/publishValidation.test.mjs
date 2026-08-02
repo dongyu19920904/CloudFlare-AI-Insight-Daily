@@ -302,7 +302,7 @@ test("validateDailyPublication accepts the V2 three-minute briefing without lega
   assert.deepEqual(result.warnings, []);
 });
 
-test("validateDailyPublication rejects missing watch heading but allows missing AI fun", () => {
+test("validateDailyPublication warns on missing optional topic headings without blocking the main daily", () => {
   const result = validateDailyPublication({
     summaryText: "今天新闻足够多，日报必须保留完整栏目标题，否则重复内容会漏过校验。",
     pageMarkdown: `## **今日摘要**
@@ -344,8 +344,8 @@ test("validateDailyPublication rejects missing watch heading but allows missing 
     minimumTopItems: 1,
   });
 
-  assert.equal(result.ok, false);
-  assert.match(result.issues.join("\n"), /watch section heading/i);
+  assert.equal(result.ok, true, result.issues.join("\n"));
+  assert.match(result.warnings.join("\n"), /watch section heading/i);
   assert.doesNotMatch(result.issues.join("\n"), /AI fun section heading/i);
 });
 
@@ -728,6 +728,10 @@ ${topItems}
 
 [开发者发布的完整实测](https://x.com/example/status/100) 展示了具体操作与结果。
 
+## **⚡ 产品与功能更新**
+
+今天没有可核验的产品条目。
+
 ## **❓ 相关问题**
 
 ### 今天提到的 AI 工具怎么试？
@@ -754,7 +758,7 @@ ${topItems}
   assert.match(result.warnings.join("\n"), /social section is below target/);
   assert.match(result.warnings.join("\n"), /research section is below target/);
   assert.match(result.warnings.join("\n"), /industry section is below target/);
-  assert.match(result.warnings.join("\n"), /professional sections are below target/);
+  assert.match(result.warnings.join("\n"), /产品与功能更新 section must contain at least one source item/);
 });
 
 test("validateDailyPublication rejects repeated stories across primary sections", () => {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildDailyGenerationPromptInput,
   countDailyTopEligiblePromptItems,
+  getDailyPromptAllocationStats,
 } from "../src/dailyGenerationPromptInput.js";
 
 test("buildDailyGenerationPromptInput includes AI fun candidates in the main generation prompt", () => {
@@ -68,16 +69,51 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   ].join("\n");
 
   const promptInput = buildDailyGenerationPromptInput(
-    [project(1), project(2), project(3), social(1), social(2), social(3), social(4), news(1), news(2)],
+    [
+      project(1), project(2), project(3),
+      social(1), social(2), social(3), social(4),
+      ...Array.from({ length: 9 }, (_, index) => news(index + 1)),
+    ],
     []
   );
 
   assert.match(promptInput, /栏目候选预算/);
   assert.match(promptInput, /GitHub 当日日榜项目 3 个、社媒原帖 4 条/);
-  assert.match(promptInput, /为开源 TOP 项目预留 2 个/);
-  assert.match(promptInput, /为社媒精选预留 2 条/);
+  assert.match(promptInput, /为开源 TOP 项目单独预留 2 个/);
+  assert.match(promptInput, /为社媒精选单独预留 2 条/);
   assert.match(promptInput, /今日焦点最多使用 2 条社媒/);
-  assert.match(promptInput, /产品与功能更新、行业变化与个人影响/);
+  assert.match(promptInput, /开源 TOP 项目专用候选素材/);
+  assert.match(promptInput, /社媒精选专用候选素材/);
+  assert.match(promptInput, /产品与行业栏目专用候选素材/);
+  assert.match(promptInput, /只准写入后面的开源专用区/);
+  const selectedItems = [
+    project(1), project(2), project(3),
+    social(1), social(2), social(3), social(4),
+    ...Array.from({ length: 9 }, (_, index) => news(index + 1)),
+  ];
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems), 10);
+  assert.deepEqual(getDailyPromptAllocationStats(selectedItems), {
+    topItems: 10,
+    reservedProjectItems: 2,
+    reservedSocialItems: 2,
+    reservedPaperItems: 0,
+    reservedNewsItems: 2,
+  });
+});
+
+test("daily prompt allocation preserves TOP capacity when source volume is low", () => {
+  const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
+  const social = (index) => `socialMedia Post by user-${index}\nUrl: https://x.com/user/status/${index}`;
+  const news = (index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`;
+  const selectedItems = [project(1), project(2), social(1), social(2), news(1), news(2), news(3), news(4)];
+
+  assert.deepEqual(getDailyPromptAllocationStats(selectedItems), {
+    topItems: 8,
+    reservedProjectItems: 0,
+    reservedSocialItems: 0,
+    reservedPaperItems: 0,
+    reservedNewsItems: 0,
+  });
 });
 
 test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {

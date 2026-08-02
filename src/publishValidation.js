@@ -638,10 +638,12 @@ function isSoftDailyPublicationIssue(issue) {
   return (
     issue === "Daily TOP reuses the same source URL" ||
     issue === "Daily TOP must contain at most one GitHub/open-source project item" ||
+    issue === "Daily page must contain a watch section heading or V3 topic sections" ||
     issue === "Daily V3 should contain at least two topic sections" ||
     issue === "Daily AI fun section must contain at least one source item" ||
     issue === "Daily AI fun section contains a known non-AI topic" ||
     issue === "Daily AI fun section uses a paper/arXiv source" ||
+    /^Daily (?:产品与功能更新|前沿研究|行业变化与个人影响|开源 TOP 项目|社媒精选) section must contain at least one source item$/.test(issue) ||
     /^Daily (?:TOP|open-source section|social section|research section|industry section|professional sections) (?:is|are) below target:/.test(issue)
   );
 }

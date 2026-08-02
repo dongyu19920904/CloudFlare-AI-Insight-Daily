@@ -22,12 +22,88 @@ function isDailyPromptHiddenItem(item) {
   return isDailyWelfarePromptItem(item) || isDailyLowEvidenceWorkflowPromptItem(item);
 }
 
-export function countDailyTopEligiblePromptItems(selectedContentItems = []) {
-  return (selectedContentItems || [])
+function classifyDailyPromptItem(item) {
+  const text = String(item || "");
+  if (/^Project Name:/m.test(text)) return "project";
+  if (/^socialMedia Post/m.test(text)) return "socialMedia";
+  if (/^Papers Title:/m.test(text)) return "paper";
+  if (/^News Title:/m.test(text)) return "news";
+  return "other";
+}
+
+function allocateDailyPromptItems(items = []) {
+  const primaryItems = (items || []).filter(Boolean);
+  const buckets = {
+    project: primaryItems.filter((item) => classifyDailyPromptItem(item) === "project"),
+    socialMedia: primaryItems.filter((item) => classifyDailyPromptItem(item) === "socialMedia"),
+    paper: primaryItems.filter((item) => classifyDailyPromptItem(item) === "paper"),
+    news: primaryItems.filter((item) => classifyDailyPromptItem(item) === "news"),
+  };
+  let reserveBudget = Math.max(0, primaryItems.length - DAILY_TOP_TARGET);
+  const reserveCounts = {
+    project: 0,
+    socialMedia: 0,
+    paper: 0,
+    news: 0,
+  };
+  const reserveOne = (sourceType, limit) => {
+    if (reserveBudget <= 0 || reserveCounts[sourceType] >= Math.min(buckets[sourceType].length, limit)) {
+      return;
+    }
+    reserveCounts[sourceType] += 1;
+    reserveBudget -= 1;
+  };
+
+  // First create distinct sections, then use any remaining surplus to make them richer.
+  reserveOne("project", DAILY_OPEN_SOURCE_MIN);
+  reserveOne("socialMedia", DAILY_SOCIAL_MIN);
+  if (buckets.paper.length > 0) {
+    reserveOne("paper", 1);
+  } else {
+    reserveOne("news", 2);
+  }
+  reserveOne("project", DAILY_OPEN_SOURCE_MIN);
+  reserveOne("socialMedia", DAILY_SOCIAL_MIN);
+  reserveOne("news", 2);
+
+  const reserved = {
+    project: buckets.project.slice(0, reserveCounts.project),
+    socialMedia: buckets.socialMedia.slice(0, reserveCounts.socialMedia),
+    paper: buckets.paper.slice(0, reserveCounts.paper),
+    news: reserveCounts.news > 0 ? buckets.news.slice(-reserveCounts.news) : [],
+  };
+  const reservedItems = new Set(Object.values(reserved).flat());
+
+  return {
+    topItems: primaryItems.filter((item) => !reservedItems.has(item)),
+    reserved,
+    counts: {
+      project: buckets.project.length,
+      socialMedia: buckets.socialMedia.length,
+      paper: buckets.paper.length,
+      news: buckets.news.length,
+    },
+  };
+}
+
+export function getDailyPromptAllocationStats(selectedContentItems = []) {
+  const primaryItems = (selectedContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyWatchOnlyPromptItem(item))
-    .filter((item) => !isDailyPromptHiddenItem(item))
-    .length;
+    .filter((item) => !isDailyPromptHiddenItem(item));
+  const allocation = allocateDailyPromptItems(primaryItems);
+
+  return {
+    topItems: allocation.topItems.length,
+    reservedProjectItems: allocation.reserved.project.length,
+    reservedSocialItems: allocation.reserved.socialMedia.length,
+    reservedPaperItems: allocation.reserved.paper.length,
+    reservedNewsItems: allocation.reserved.news.length,
+  };
+}
+
+export function countDailyTopEligiblePromptItems(selectedContentItems = []) {
+  return getDailyPromptAllocationStats(selectedContentItems).topItems;
 }
 
 export function buildDailyGenerationPromptInput(selectedContentItems = [], dailyFunContentItems = []) {
@@ -35,22 +111,20 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const allPrimaryItems = allSelectedItems.filter((item) => !isDailyPromptHiddenItem(item));
   const watchOnlyItems = allPrimaryItems.filter((item) => isDailyWatchOnlyPromptItem(item));
   const primaryItems = allPrimaryItems.filter((item) => !isDailyWatchOnlyPromptItem(item));
-  const projectCount = primaryItems.filter((item) => /^Project Name:/m.test(item)).length;
-  const socialCount = primaryItems.filter((item) => /^socialMedia Post/m.test(item)).length;
-  const paperCount = primaryItems.filter((item) => /^Papers Title:/m.test(item)).length;
-  const newsCount = primaryItems.filter((item) => /^News Title:/m.test(item)).length;
-  const openSourceReserve = Math.min(projectCount, DAILY_OPEN_SOURCE_MIN);
-  const socialReserve = Math.min(socialCount, DAILY_SOCIAL_MIN);
+  const allocation = allocateDailyPromptItems(primaryItems);
+  const { project: projectCount, socialMedia: socialCount, paper: paperCount, news: newsCount } = allocation.counts;
+  const openSourceReserve = allocation.reserved.project.length;
+  const socialReserve = allocation.reserved.socialMedia.length;
   const socialTopLimit = Math.max(0, socialCount - socialReserve);
   const sectionBudget = [
     "【栏目候选预算】",
     `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
-    `先为开源 TOP 项目预留 ${openSourceReserve} 个 GitHub 候选；项目不足 ${DAILY_OPEN_SOURCE_MIN} 个时才按实际数量输出。`,
-    `先为社媒精选预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒，不能把社媒素材全部提前用掉。`,
-    "新闻素材充足时，至少各留 1 条给产品与功能更新、行业变化与个人影响；论文候选存在时至少留 1 篇给前沿研究。",
+    `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
+    `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
+    `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
   ].join("\n");
-  const primaryPrompt = `\n\n${sectionBudget}\n\n------\n\n${primaryItems.join("\n\n------\n\n")}\n\n------\n\n`;
+  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面素材可用于今日焦点；也可把未进入 TOP 的新闻用于产品或行业栏目。\n\n${allocation.topItems.join("\n\n------\n\n")}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
@@ -58,6 +132,56 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     .filter((item) => !selectedItemKeys.has(String(item).trim()));
 
   const promptParts = [primaryPrompt];
+
+  if (allocation.reserved.project.length > 0) {
+    promptParts.push([
+      "【开源 TOP 项目专用候选素材】",
+      `下面 ${allocation.reserved.project.length} 个项目已从今日焦点候选中移出，只能写进 \`## **⌘ 开源 TOP 项目**\`。`,
+      "每个候选各写一条，标题保留 owner/repo，正文说明用途、当日热度和适用人群；不得省略，也不得挪回今日焦点。",
+      "",
+      allocation.reserved.project
+        .map((item, index) => [`开源候选 ${index + 1}:`, item].join("\n"))
+        .join("\n\n------\n\n"),
+      "\n------\n\n",
+    ].join("\n"));
+  }
+
+  if (allocation.reserved.socialMedia.length > 0) {
+    promptParts.push([
+      "【社媒精选专用候选素材】",
+      `下面 ${allocation.reserved.socialMedia.length} 条原帖已从今日焦点候选中移出，只能写进 \`## **◉ 社媒精选**\`。`,
+      "每条候选各写一条，提炼实测、观点或现场信号；不得省略，也不得挪回今日焦点。",
+      "",
+      allocation.reserved.socialMedia
+        .map((item, index) => [`社媒候选 ${index + 1}:`, item].join("\n"))
+        .join("\n\n------\n\n"),
+      "\n------\n\n",
+    ].join("\n"));
+  }
+
+  if (allocation.reserved.news.length > 0) {
+    promptParts.push([
+      "【产品与行业栏目专用候选素材】",
+      "下面新闻已从今日焦点候选中移出。按内容分别写进产品与功能更新或行业变化与个人影响，每条素材只能使用一次。",
+      "",
+      allocation.reserved.news
+        .map((item, index) => [`栏目新闻候选 ${index + 1}:`, item].join("\n"))
+        .join("\n\n------\n\n"),
+      "\n------\n\n",
+    ].join("\n"));
+  }
+
+  if (allocation.reserved.paper.length > 0) {
+    promptParts.push([
+      "【前沿研究专用候选素材】",
+      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`，说明结论、证据边界和实际影响。",
+      "",
+      allocation.reserved.paper
+        .map((item, index) => [`研究候选 ${index + 1}:`, item].join("\n"))
+        .join("\n\n------\n\n"),
+      "\n------\n\n",
+    ].join("\n"));
+  }
 
   if (watchOnlyItems.length > 0) {
     promptParts.push([

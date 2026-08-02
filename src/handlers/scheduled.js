@@ -69,6 +69,7 @@ import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
     countDailyTopEligiblePromptItems,
+    getDailyPromptAllocationStats,
 } from '../dailyGenerationPromptInput.js';
 import {
     DAILY_OPEN_SOURCE_MIN,
@@ -76,6 +77,7 @@ import {
     DAILY_TOP_EMERGENCY_MIN,
     DAILY_TOP_TARGET,
 } from '../dailyContentRules.js';
+import { shouldAdoptDailyRepair } from '../dailyRepairPolicy.js';
 import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
 import {
     buildStandaloneDailyFunPromptInput,
@@ -1457,10 +1459,12 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedDailySummaryMarkdownContent
         );
         const repairedQualityTargetWarnings = getQualityTargetWarnings(repairedValidation);
-        const adoptRepair = !initialValidation.ok || (
-            repairedValidation.ok &&
-            repairedQualityTargetWarnings.length < initialQualityTargetWarnings.length
-        );
+        const adoptRepair = shouldAdoptDailyRepair({
+            initialPassed: initialValidation.ok,
+            repairedPassed: repairedValidation.ok,
+            initialQualityWarningCount: initialQualityTargetWarnings.length,
+            repairedQualityWarningCount: repairedQualityTargetWarnings.length,
+        });
 
         if (adoptRepair) {
             outputOfCall2 = repairedOutputOfCall2;
@@ -2198,25 +2202,27 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
     debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
+    const dailyPromptAllocation = getDailyPromptAllocationStats(selectedContentItems);
     const dailyTopEligiblePromptItems = countDailyTopEligiblePromptItems(selectedContentItems);
     const minimumTopItems = Math.min(dailyTopEligiblePromptItems, DAILY_TOP_TARGET);
     const hardMinimumTopItems = Math.min(minimumTopItems, DAILY_TOP_EMERGENCY_MIN);
     const minimumOpenSourceItems = Math.min(
-        Number(selectedCounts?.project) || 0,
+        dailyPromptAllocation.reservedProjectItems,
         DAILY_OPEN_SOURCE_MIN
     );
     const minimumSocialItems = Math.min(
-        Number(selectedCounts?.socialMedia) || 0,
+        dailyPromptAllocation.reservedSocialItems,
         DAILY_SOCIAL_MIN
     );
-    const minimumResearchItems = Math.min(Number(selectedCounts?.paper) || 0, 1);
-    const minimumIndustryItems = Number(selectedCounts?.news) >= 4 ? 1 : 0;
+    const minimumResearchItems = Math.min(dailyPromptAllocation.reservedPaperItems, 1);
+    const minimumIndustryItems = dailyPromptAllocation.reservedNewsItems >= 2 ? 1 : 0;
     const potentialTopicSections =
-        (Number(selectedCounts?.news) > 0 ? 2 : 0) +
-        (Number(selectedCounts?.paper) > 0 ? 1 : 0) +
-        (Number(selectedCounts?.project) > 0 ? 1 : 0) +
-        (Number(selectedCounts?.socialMedia) > 0 ? 1 : 0);
+        Math.min(dailyPromptAllocation.reservedNewsItems, 2) +
+        (dailyPromptAllocation.reservedPaperItems > 0 ? 1 : 0) +
+        (dailyPromptAllocation.reservedProjectItems > 0 ? 1 : 0) +
+        (dailyPromptAllocation.reservedSocialItems > 0 ? 1 : 0);
     const minimumTopicSections = Math.min(potentialTopicSections, 3);
+    debugInfo.dailyPromptAllocation = dailyPromptAllocation;
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
     debugInfo.dailyTopTargetItems = minimumTopItems;
     debugInfo.dailyMinimumTopItems = hardMinimumTopItems;
