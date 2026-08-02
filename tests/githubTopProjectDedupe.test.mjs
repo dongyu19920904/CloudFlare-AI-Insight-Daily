@@ -42,7 +42,32 @@ test("filterGithubProjectsAgainstRecentTop filters projects used in the last 7 d
   assert.deepEqual(result.filteredItems.map((item) => item.title), ["New MCP Tool"]);
 });
 
-test("extractGithubTopProjectsFromMarkdown reads GitHub links from TOP only", () => {
+test("filterGithubProjectsAgainstRecentTop filters a same-owner project family", () => {
+  const result = filterGithubProjectsAgainstRecentTop(
+    [
+      {
+        title: "Generative AI for Beginners",
+        url: "https://github.com/microsoft/generative-ai-for-beginners",
+      },
+      { title: "GraphRAG", url: "https://github.com/microsoft/graphrag" },
+    ],
+    [
+      {
+        date: "2026-08-01",
+        title: "AI for Beginners",
+        url: "https://github.com/microsoft/AI-For-Beginners",
+      },
+    ],
+    "2026-08-02",
+    7
+  );
+
+  assert.equal(result.filteredCount, 1);
+  assert.equal(result.filteredFamilyCount, 1);
+  assert.deepEqual(result.filteredItems.map((item) => item.title), ["GraphRAG"]);
+});
+
+test("extractGithubTopProjectsFromMarkdown reads GitHub links from focus and open-source TOP sections", () => {
   const markdown = `
 ## **🔥 重磅 TOP 2**
 
@@ -55,6 +80,12 @@ test("extractGithubTopProjectsFromMarkdown reads GitHub links from TOP only", ()
 ## **📌 值得关注**
 
 - **[开源]** [Watch Only](https://github.com/example/watch-only) - 不应写入 TOP 去重。
+
+## **⌘ 开源 TOP 项目**
+
+### example/open-daily：日榜 AI 工具
+
+[example/open-daily 项目仓库](https://github.com/example/open-daily) 展示当天趋势。
 `;
 
   const projects = extractGithubTopProjectsFromMarkdown(markdown, "2026-05-28");
@@ -65,6 +96,12 @@ test("extractGithubTopProjectsFromMarkdown reads GitHub links from TOP only", ()
       title: "Claude Code 插件市场",
       url: "https://github.com/anthropics/claude-code",
       urlKey: "github.com/anthropics/claude-code",
+    },
+    {
+      date: "2026-05-28",
+      title: "example/open-daily 项目仓库",
+      url: "https://github.com/example/open-daily",
+      urlKey: "github.com/example/open-daily",
     },
   ]);
 });
@@ -83,9 +120,9 @@ test("extractGithubTopProjectsFromMarkdown reads a GitHub source link from the i
 
 ## **⌘ 开源 TOP 项目**
 
-### Watch Only
+### example/watch-only：当天日榜项目
 
-[不应写入 TOP 去重的仓库](https://github.com/example/watch-only)
+[example/watch-only 项目仓库](https://github.com/example/watch-only)
 `;
 
   const projects = extractGithubTopProjectsFromMarkdown(markdown, "2026-08-01");
@@ -93,9 +130,15 @@ test("extractGithubTopProjectsFromMarkdown reads a GitHub source link from the i
   assert.deepEqual(projects, [
     {
       date: "2026-08-01",
-      title: "Claude Code 插件市场继续扩张",
+      title: "Claude Code 项目仓库",
       url: "https://github.com/anthropics/claude-code",
       urlKey: "github.com/anthropics/claude-code",
+    },
+    {
+      date: "2026-08-01",
+      title: "example/watch-only 项目仓库",
+      url: "https://github.com/example/watch-only",
+      urlKey: "github.com/example/watch-only",
     },
   ]);
 });

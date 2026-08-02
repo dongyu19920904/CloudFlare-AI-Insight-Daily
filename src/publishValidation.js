@@ -24,13 +24,15 @@ const DAILY_FUN_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDE04|\uD83D\uDE06|AI\s
 const DAILY_BRIEFING_V2_HEADING_PATTERN = /^##\s*\*{0,2}\s*⏱(?:️)?\s*3\s*分钟读懂今天\s*\*{0,2}\s*$/im;
 const DAILY_LEGACY_SUMMARY_HEADING_PATTERN = /^##\s*\*{0,2}\s*今日摘要\s*\*{0,2}\s*$/im;
 const DAILY_PRODUCT_HEADING_PATTERN = /^##\s*\*{0,2}.*产品与功能更新.*\*{0,2}\s*$/im;
-const DAILY_RESEARCH_HEADING_PATTERN = /^##\s*\*{0,2}.*前沿研究与行业影响.*\*{0,2}\s*$/im;
+const DAILY_RESEARCH_HEADING_PATTERN = /^##\s*\*{0,2}.*前沿研究(?:与行业影响)?.*\*{0,2}\s*$/im;
+const DAILY_INDUSTRY_HEADING_PATTERN = /^##\s*\*{0,2}.*行业(?:变化与个人影响|展望与社会影响).*\*{0,2}\s*$/im;
 const DAILY_OPEN_SOURCE_HEADING_PATTERN = /^##\s*\*{0,2}.*开源\s*TOP\s*项目.*\*{0,2}\s*$/im;
 const DAILY_SOCIAL_HEADING_PATTERN = /^##\s*\*{0,2}.*社媒精选.*\*{0,2}\s*$/im;
 
 const DAILY_V3_SECTION_SPECS = [
   { name: "product", label: "产品与功能更新", pattern: DAILY_PRODUCT_HEADING_PATTERN },
-  { name: "research", label: "前沿研究与行业影响", pattern: DAILY_RESEARCH_HEADING_PATTERN },
+  { name: "research", label: "前沿研究", pattern: DAILY_RESEARCH_HEADING_PATTERN },
+  { name: "industry", label: "行业变化与个人影响", pattern: DAILY_INDUSTRY_HEADING_PATTERN },
   { name: "openSource", label: "开源 TOP 项目", pattern: DAILY_OPEN_SOURCE_HEADING_PATTERN },
   { name: "social", label: "社媒精选", pattern: DAILY_SOCIAL_HEADING_PATTERN },
 ];
@@ -372,6 +374,12 @@ function collectDuplicateTopicsBySection(sectionMap) {
 function collectDailyStructureIssues(pageMarkdown, options = {}) {
   const issues = [];
   const minimumTopItems = Math.max(0, Number(options.minimumTopItems) || 0);
+  const hardMinimumTopItems = options.hardMinimumTopItems == null
+    ? minimumTopItems
+    : Math.max(0, Number(options.hardMinimumTopItems) || 0);
+  const minimumOpenSourceItems = Math.max(0, Number(options.minimumOpenSourceItems) || 0);
+  const minimumSocialItems = Math.max(0, Number(options.minimumSocialItems) || 0);
+  const minimumResearchItems = Math.max(0, Number(options.minimumResearchItems) || 0);
   const enforceTopGithubProjectAllowlist = Boolean(options.enforceTopGithubProjectAllowlist);
   const allowedTopGithubProjectKeys = new Set(
     (options.allowedTopGithubProjectUrls || [])
@@ -409,8 +417,10 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     }
   });
 
-  if (minimumTopItems > 0 && topItems.length < minimumTopItems) {
-    issues.push(`Daily top items are insufficient: expected at least ${minimumTopItems}`);
+  if (hardMinimumTopItems > 0 && topItems.length < hardMinimumTopItems) {
+    issues.push(`Daily top items are insufficient: expected at least ${hardMinimumTopItems}`);
+  } else if (minimumTopItems > 0 && topItems.length < minimumTopItems) {
+    issues.push(`Daily TOP is below target: expected ${minimumTopItems}, got ${topItems.length}`);
   }
 
   if (/已合并处理|同一来源|见第\s*\d+\s*条|此条与第\s*\d+\s*条/i.test(topSection)) {
@@ -511,8 +521,21 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
 
   const openSourceSection = v3Sections.find((spec) => spec.name === "openSource")?.section || "";
   const openSourceLinks = extractSectionLinks(openSourceSection).filter((link) => !isNoiseSectionLink(link));
+  const socialSection = v3Sections.find((spec) => spec.name === "social")?.section || "";
+  const socialLinks = extractSectionLinks(socialSection).filter((link) => !isNoiseSectionLink(link));
+  const researchSection = v3Sections.find((spec) => spec.name === "research")?.section || "";
+  const researchLinks = extractSectionLinks(researchSection).filter((link) => !isNoiseSectionLink(link));
   if (openSourceLinks.length > 3) {
     issues.push("Daily open-source section must contain at most three source items");
+  }
+  if (minimumOpenSourceItems > 0 && openSourceLinks.length < minimumOpenSourceItems) {
+    issues.push(`Daily open-source section is below target: expected ${minimumOpenSourceItems}, got ${openSourceLinks.length}`);
+  }
+  if (minimumSocialItems > 0 && socialLinks.length < minimumSocialItems) {
+    issues.push(`Daily social section is below target: expected ${minimumSocialItems}, got ${socialLinks.length}`);
+  }
+  if (minimumResearchItems > 0 && researchLinks.length < minimumResearchItems) {
+    issues.push(`Daily research section is below target: expected ${minimumResearchItems}, got ${researchLinks.length}`);
   }
   if (enforceTopGithubProjectAllowlist) {
     const disallowedOpenSourceProject = openSourceLinks.some((link) => {
@@ -608,7 +631,8 @@ function isSoftDailyPublicationIssue(issue) {
     issue === "Daily V3 should contain at least two topic sections" ||
     issue === "Daily AI fun section must contain at least one source item" ||
     issue === "Daily AI fun section contains a known non-AI topic" ||
-    issue === "Daily AI fun section uses a paper/arXiv source"
+    issue === "Daily AI fun section uses a paper/arXiv source" ||
+    /^Daily (?:TOP|open-source section|social section|research section) is below target:/.test(issue)
   );
 }
 
@@ -616,6 +640,10 @@ export function validateDailyPublication({
   summaryText,
   pageMarkdown,
   minimumTopItems = 0,
+  hardMinimumTopItems,
+  minimumOpenSourceItems = 0,
+  minimumSocialItems = 0,
+  minimumResearchItems = 0,
   allowedTopGithubProjectUrls = [],
   enforceTopGithubProjectAllowlist = false,
 }) {
@@ -633,6 +661,10 @@ export function validateDailyPublication({
     ...collectDailyBriefingIssues(pageMarkdown),
     ...collectDailyStructureIssues(pageMarkdown, {
       minimumTopItems,
+      hardMinimumTopItems,
+      minimumOpenSourceItems,
+      minimumSocialItems,
+      minimumResearchItems,
       allowedTopGithubProjectUrls,
       enforceTopGithubProjectAllowlist,
     }),

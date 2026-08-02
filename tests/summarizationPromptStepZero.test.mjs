@@ -7,12 +7,15 @@ import { getSystemPromptSummarizationStepThree } from "../src/prompt/summarizati
 test("daily prompt uses the V3 topic structure without duplicating the summary", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /## \*\*🔥 今日焦点 TOP 6\*\*/);
+  assert.match(prompt, /## \*\*🔥 今日焦点 TOP 10\*\*/);
   assert.match(prompt, /## \*\*⚡ 产品与功能更新\*\*/);
-  assert.match(prompt, /## \*\*🧪 前沿研究与行业影响\*\*/);
+  assert.match(prompt, /## \*\*🧪 前沿研究\*\*/);
+  assert.match(prompt, /## \*\*◎ 行业变化与个人影响\*\*/);
   assert.match(prompt, /## \*\*⌘ 开源 TOP 项目\*\*/);
   assert.match(prompt, /## \*\*◉ 社媒精选\*\*/);
-  assert.match(prompt, /至少输出上面四个专业栏目中的两个/);
+  assert.match(prompt, /至少输出上面五个专业栏目中的三个/);
+  assert.match(prompt, /对应栏目不得只写 1 条/);
+  assert.match(prompt, /约 2000-2800 个中文字符/);
   assert.match(prompt, /不要生成“今日摘要”“3分钟读懂今天”/);
   assert.doesNotMatch(prompt, /## \*\*📌 值得关注\*\*/);
   assert.doesNotMatch(prompt, /## \*\*🔮 AI趋势预测/);

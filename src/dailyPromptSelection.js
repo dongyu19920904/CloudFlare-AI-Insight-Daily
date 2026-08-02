@@ -48,6 +48,28 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function isDirectSocialPostUrl(url) {
+  if (!url) return false;
+
+  try {
+    const hostname = new URL(String(url).trim()).hostname
+      .toLowerCase()
+      .replace(/^www\./, "")
+      .replace(/^mobile\./, "");
+    return hostname === "x.com" || hostname === "twitter.com" || hostname === "reddit.com";
+  } catch {
+    return false;
+  }
+}
+
+export function inferDailyPromptSourceType(item) {
+  const sourceType = item?.type || "";
+  if (sourceType === "news" && isDirectSocialPostUrl(item?.url)) {
+    return "socialMedia";
+  }
+  return sourceType;
+}
+
 function normalizeReplayUrl(url) {
   if (!url) return "";
 
@@ -387,12 +409,13 @@ function extractMatchTokens(item) {
 function buildDailyPromptCandidate(item) {
   if (!item || typeof item !== "object") return null;
 
+  const sourceType = inferDailyPromptSourceType(item);
   const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
   const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
   const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
   let itemText = "";
 
-  switch (item.type) {
+  switch (sourceType) {
     case "news":
       itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
       break;
@@ -442,7 +465,7 @@ function buildDailyPromptCandidate(item) {
   }
 
   return {
-    sourceType: item.type,
+    sourceType,
     itemText,
     itemHasMedia,
     title: item.title,
@@ -454,7 +477,7 @@ function buildDailyPromptCandidate(item) {
     isWelfare,
     isLowEvidenceAiWorkflowPitch: isLowEvidenceWorkflowPitch,
     isDailyTrendingProject:
-      item.type === "project" &&
+      sourceType === "project" &&
       (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) &&
       !/GitHub\s+Search/i.test(String(item.source || "")),
     searchText: [item.title, item.description, item.source, plainTextContent].filter(Boolean).join(" "),
@@ -486,16 +509,16 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
 }
 
 export function buildDailyPromptSelection(allUnifiedData, env = {}) {
-  const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 18);
+  const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 24);
   const entityHardCap = parsePositiveInt(env.DAILY_PROMPT_ENTITY_HARD_CAP, 1);
   const quotas = {
-    news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 12),
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 2),
+    news: parsePositiveInt(env.DAILY_PROMPT_NEWS_ITEMS, 14),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_ITEMS, 4),
     socialMedia: parsePositiveInt(env.DAILY_PROMPT_SOCIAL_ITEMS, 3),
-    paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 2),
+    paper: parsePositiveInt(env.DAILY_PROMPT_PAPER_ITEMS, 3),
   };
   const hardCaps = {
-    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 2),
+    project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 4),
   };
   const projectLikeHardCap = parsePositiveInt(
     env.DAILY_PROMPT_PROJECT_LIKE_HARD_CAP,
@@ -508,18 +531,21 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   let itemsWithoutMedia = 0;
   let rejectedNonAiCount = 0;
 
-  for (const [sourceType, items] of Object.entries(allUnifiedData || {})) {
-    const bucket = [];
+  for (const items of Object.values(allUnifiedData || {})) {
     for (const item of items || []) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
+      if (candidate.sourceType === "project" && !candidate.isDailyTrendingProject) continue;
       if (!isAiRelevantDailyPromptCandidate(candidate)) {
         rejectedNonAiCount += 1;
         continue;
       }
       candidate.score = scoreDailyPromptCandidate(candidate);
 
-      bucket.push(candidate);
+      if (!buckets.has(candidate.sourceType)) {
+        buckets.set(candidate.sourceType, []);
+      }
+      buckets.get(candidate.sourceType).push(candidate);
 
       if (candidate.itemHasMedia) {
         itemsWithMedia += 1;
@@ -537,7 +563,6 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
         itemsWithoutMedia += 1;
       }
     }
-    buckets.set(sourceType, bucket);
   }
 
   const orderedSourceTypes = [

@@ -79,7 +79,7 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   ]);
 });
 
-test("buildDailyPromptSelection keeps default project candidates capped for the open-source section", () => {
+test("buildDailyPromptSelection keeps four default project candidates for the open-source section", () => {
   const result = buildDailyPromptSelection({
     news: Array.from({ length: 4 }, (_, index) => buildNewsItem(index + 1)),
     project: Array.from({ length: 10 }, (_, index) => buildProjectItem(index + 1)),
@@ -87,7 +87,40 @@ test("buildDailyPromptSelection keeps default project candidates capped for the 
     paper: [],
   });
 
-  assert.equal(result.selectedCounts.project, 2);
+  assert.equal(result.selectedCounts.project, 4);
+});
+
+test("buildDailyPromptSelection classifies direct X links from Folo feeds as social posts", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          type: "news",
+          title: "开发者分享 Claude Code 的上下文压缩实测",
+          description: "一条来自 Folo 聚合源的 AI 编程实测。",
+          source: "Folo Multi Feed",
+          url: "https://x.com/example/status/123456789",
+          published_date: "2026-08-02",
+          authors: "example",
+          details: {
+            content_html: "<p>开发者展示 Claude Code 如何压缩上下文并减少重复读取。</p>",
+          },
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 1,
+      DAILY_PROMPT_SOCIAL_ITEMS: 1,
+    }
+  );
+
+  assert.equal(result.selectedCounts.news, 0);
+  assert.equal(result.selectedCounts.socialMedia, 1);
+  assert.match(result.selectedContentItems[0], /socialMedia Post by example/);
+  assert.match(result.selectedContentItems[0], /x\.com\/example\/status/);
 });
 
 test("buildDailyPromptSelection treats project-like news as part of the project cap", () => {

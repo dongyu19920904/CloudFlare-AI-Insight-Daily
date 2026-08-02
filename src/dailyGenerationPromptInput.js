@@ -1,3 +1,5 @@
+import { DAILY_TOP_TARGET } from "./dailyContentRules.js";
+
 function isDailyWelfarePromptItem(item) {
   const text = String(item || "");
   return /Placement Hint:\s*This is a welfare\/freebie item/i.test(text);
@@ -43,7 +45,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
       "【值得关注专用候选素材】",
       "下面这些素材带有福利/羊毛/免费额度/优惠属性，只能作为 `## **📌 值得关注**` 里的提醒，最多选 1 条。",
       "Some candidates may be AI workflow pitches without official, tutorial, course, repo, or reproducible evidence rather than freebies; they are also watch-only and must not enter TOP.",
-      "严禁把这些素材写进 `## **🔥 重磅 TOP 10**`，即使它们有图片、热度或 AI 关键词也不例外。",
+      `严禁把这些素材写进 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\`，即使它们有图片、热度或 AI 关键词也不例外。`,
       "如果你无法把它写成一条简短提醒，就直接不用它，不要为了凑数放进 TOP。",
       "",
       watchOnlyItems

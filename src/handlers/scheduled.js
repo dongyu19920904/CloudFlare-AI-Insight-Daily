@@ -70,6 +70,12 @@ import {
     buildDailyGenerationPromptInput,
     countDailyTopEligiblePromptItems,
 } from '../dailyGenerationPromptInput.js';
+import {
+    DAILY_OPEN_SOURCE_MIN,
+    DAILY_SOCIAL_MIN,
+    DAILY_TOP_EMERGENCY_MIN,
+    DAILY_TOP_TARGET,
+} from '../dailyContentRules.js';
 import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
 import {
     buildStandaloneDailyFunPromptInput,
@@ -608,9 +614,10 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
         "请严格遵守以下规则：",
-        "- 只输出从 `## **🔥 今日焦点 TOP 6**` 开始的 Markdown 正文，不要生成今日摘要、快速导航、前言、备注、AI思考或规则说明",
-        "- 必须包含 `## **🔥 今日焦点 TOP 6**` 和 `## **❓ 相关问题**`",
-        "- 产品与功能更新 / 前沿研究与行业影响 / 开源 TOP 项目 / 社媒精选中，至少输出两个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
+        `- 只输出从 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 开始的 Markdown 正文，不要生成今日摘要、快速导航、前言、备注、AI思考或规则说明`,
+        `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 和 \`## **❓ 相关问题**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条`,
+        "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
+        `- 输入有 ${DAILY_OPEN_SOURCE_MIN} 个以上合格 GitHub 日榜项目或 ${DAILY_SOCIAL_MIN} 条以上合格社媒原帖时，对应栏目至少输出 ${DAILY_OPEN_SOURCE_MIN} 条；不能只挑 1 条敷衍`,
         "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
@@ -1309,7 +1316,12 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
 
     if (options.applyGithubTopProjectDedupe && Array.isArray(allUnifiedData.project)) {
         const recentGithubTopProjects = await loadRecentGithubTopProjects(env.DATA_KV);
-        const { filteredItems, filteredCount } = filterGithubProjectsAgainstRecentTop(
+        const {
+            filteredItems,
+            filteredCount,
+            filteredExactCount,
+            filteredFamilyCount,
+        } = filterGithubProjectsAgainstRecentTop(
             allUnifiedData.project,
             recentGithubTopProjects,
             dateStr,
@@ -1318,6 +1330,8 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         allUnifiedData.project = filteredItems;
         debugInfo.recentGithubTopProjectCount = recentGithubTopProjects.length;
         debugInfo.recentGithubTopProjectFiltered = filteredCount;
+        debugInfo.recentGithubTopProjectExactFiltered = filteredExactCount;
+        debugInfo.recentGithubTopProjectFamilyFiltered = filteredFamilyCount;
     }
 
     if (!options.skipSourceCacheWrite && (!options.preferCachedData || !debugInfo.usedCachedDailySourceData)) {
@@ -1371,25 +1385,42 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyTopicSections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyFunSection(dailySummaryMarkdownContent);
+    const dailyValidationOptions = {
+        minimumTopItems: options.minimumTopItems || 0,
+        hardMinimumTopItems: options.hardMinimumTopItems,
+        minimumOpenSourceItems: options.minimumOpenSourceItems || 0,
+        minimumSocialItems: options.minimumSocialItems || 0,
+        minimumResearchItems: options.minimumResearchItems || 0,
+        allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
+        enforceTopGithubProjectAllowlist: true,
+    };
+    const validateGeneratedDaily = (summaryText, pageMarkdown) => validateDailyPublication({
+        summaryText,
+        pageMarkdown,
+        ...dailyValidationOptions,
+    });
+    const getQualityTargetWarnings = (result) => (result?.warnings || [])
+        .filter((warning) => /below target/i.test(warning));
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
-        minimumTopItems: options.minimumTopItems || 0,
-        allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
-        enforceTopGithubProjectAllowlist: true,
+        ...dailyValidationOptions,
     });
     const hasDedicatedDailyFunCandidates = outputOfCall2User.includes('【AI趣闻专用候选素材】');
     const initialDailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
     debugInfo.dailyFunCandidatesInPrompt = hasDedicatedDailyFunCandidates;
     debugInfo.dailyFunSectionPresentBeforeRepair = initialDailyFunStats.present;
 
-    if (!validation.ok) {
+    const initialQualityTargetWarnings = getQualityTargetWarnings(validation);
+    if (!validation.ok || initialQualityTargetWarnings.length > 0) {
+        const initialValidation = validation;
+        const repairIssues = [...validation.issues, ...initialQualityTargetWarnings];
         console.warn(
-            `[Scheduled][Daily] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
+            `[Scheduled][Daily] First draft needs repair, retrying: ${repairIssues.join(' | ')}`
         );
         let repairedOutputOfCall2 = await generateContentWithTransportFallback(
             env,
-            buildDailyRepairPrompt(outputOfCall2User, outputOfCall2, validation.issues, dateStr),
+            buildDailyRepairPrompt(outputOfCall2User, outputOfCall2, repairIssues, dateStr),
             outputOfCall2System
         );
         repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
@@ -1418,21 +1449,28 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyTopicSections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyFunSection(repairedDailySummaryMarkdownContent);
-        const repairedValidation = validateDailyPublication({
-            summaryText: repairedOutputOfCall3,
-            pageMarkdown: repairedDailySummaryMarkdownContent,
-            minimumTopItems: options.minimumTopItems || 0,
-            allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
-            enforceTopGithubProjectAllowlist: true,
-        });
+        const repairedValidation = validateGeneratedDaily(
+            repairedOutputOfCall3,
+            repairedDailySummaryMarkdownContent
+        );
+        const repairedQualityTargetWarnings = getQualityTargetWarnings(repairedValidation);
+        const adoptRepair = !initialValidation.ok || (
+            repairedValidation.ok &&
+            repairedQualityTargetWarnings.length < initialQualityTargetWarnings.length
+        );
 
-        outputOfCall2 = repairedOutputOfCall2;
-        outputOfCall3 = repairedOutputOfCall3;
-        dailySummaryMarkdownContent = repairedDailySummaryMarkdownContent;
-        validation = repairedValidation;
+        if (adoptRepair) {
+            outputOfCall2 = repairedOutputOfCall2;
+            outputOfCall3 = repairedOutputOfCall3;
+            dailySummaryMarkdownContent = repairedDailySummaryMarkdownContent;
+            validation = repairedValidation;
+        }
         debugInfo.dailyRepairAttempted = true;
         debugInfo.dailyRepairPassed = repairedValidation.ok;
+        debugInfo.dailyRepairAdopted = adoptRepair;
+        debugInfo.dailyRepairMetQualityTargets = repairedQualityTargetWarnings.length === 0;
         debugInfo.dailyRepairIssues = repairedValidation.issues;
+        debugInfo.dailyRepairWarnings = repairedValidation.warnings || [];
     }
 
     const funStatsBeforeStandaloneGeneration = getDailyFunSectionStats(dailySummaryMarkdownContent);
@@ -1464,13 +1502,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                         dailySummaryMarkdownContent,
                         standaloneDailyFunSection
                     );
-                    const validationWithStandaloneFun = validateDailyPublication({
-                        summaryText: outputOfCall3,
-                        pageMarkdown: markdownWithStandaloneFun,
-                        minimumTopItems: options.minimumTopItems || 0,
-                        allowedTopGithubProjectUrls: options.allowedTopGithubProjectUrls || [],
-                        enforceTopGithubProjectAllowlist: true,
-                    });
+                    const validationWithStandaloneFun = validateGeneratedDaily(
+                        outputOfCall3,
+                        markdownWithStandaloneFun
+                    );
 
                     if (validationWithStandaloneFun.ok) {
                         dailySummaryMarkdownContent = markdownWithStandaloneFun;
@@ -2161,9 +2196,23 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.promptSelectedCounts = selectedCounts || {};
     debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
     const dailyTopEligiblePromptItems = countDailyTopEligiblePromptItems(selectedContentItems);
-    const minimumTopItems = Math.min(dailyTopEligiblePromptItems, 6);
+    const minimumTopItems = Math.min(dailyTopEligiblePromptItems, DAILY_TOP_TARGET);
+    const hardMinimumTopItems = Math.min(minimumTopItems, DAILY_TOP_EMERGENCY_MIN);
+    const minimumOpenSourceItems = Math.min(
+        Number(selectedCounts?.project) || 0,
+        DAILY_OPEN_SOURCE_MIN
+    );
+    const minimumSocialItems = Math.min(
+        Number(selectedCounts?.socialMedia) || 0,
+        DAILY_SOCIAL_MIN
+    );
+    const minimumResearchItems = Math.min(Number(selectedCounts?.paper) || 0, 1);
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
-    debugInfo.dailyMinimumTopItems = minimumTopItems;
+    debugInfo.dailyTopTargetItems = minimumTopItems;
+    debugInfo.dailyMinimumTopItems = hardMinimumTopItems;
+    debugInfo.dailyOpenSourceTargetItems = minimumOpenSourceItems;
+    debugInfo.dailySocialTargetItems = minimumSocialItems;
+    debugInfo.dailyResearchTargetItems = minimumResearchItems;
 
     await reportScheduledProgress(options, 'daily', 'generating', 40, {
         candidateItems: totalCandidateCount || 0,
@@ -2178,6 +2227,10 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         debugInfo,
         {
             minimumTopItems,
+            hardMinimumTopItems,
+            minimumOpenSourceItems,
+            minimumSocialItems,
+            minimumResearchItems,
             dailyFunContentItems,
             allowedTopGithubProjectUrls,
         }
@@ -2188,6 +2241,10 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
         minimumTopItems,
+        hardMinimumTopItems,
+        minimumOpenSourceItems,
+        minimumSocialItems,
+        minimumResearchItems,
         allowedTopGithubProjectUrls,
         enforceTopGithubProjectAllowlist: true,
     });

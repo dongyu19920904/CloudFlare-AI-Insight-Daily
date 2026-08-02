@@ -701,6 +701,58 @@ OpenAI、Google 和 GitHub 项目更新很多，今天的候选素材明显够�
   assert.match(result.issues.join("\n"), /expected at least 10/i);
 });
 
+test("validateDailyPublication warns below quality targets without blocking an otherwise safe daily", () => {
+  const topItems = Array.from({ length: 7 }, (_, index) => [
+    `### ${index + 1}. [AI 新闻 ${index + 1}](https://example.com/quality-news-${index + 1})`,
+    "这条内容提供了可核验的 AI 产品或行业变化，并说明读者今天可以据此调整什么判断或动作。",
+  ].join("\n")).join("\n\n");
+  const pageMarkdown = `## **今日摘要**
+
+\`\`\`
+今天的主体日报已经达到安全发布线，但仍值得尝试补足栏目丰富度。
+\`\`\`
+
+## **🔥 今日焦点 TOP 7**
+
+${topItems}
+
+## **⌘ 开源 TOP 项目**
+
+### example/agent-kit：本地工作流组件
+
+[example/agent-kit 项目仓库](https://github.com/example/agent-kit) 来自当日 GitHub 趋势榜。
+
+## **◉ 社媒精选**
+
+### 开发者实测新的上下文压缩方式
+
+[开发者发布的完整实测](https://x.com/example/status/100) 展示了具体操作与结果。
+
+## **❓ 相关问题**
+
+### 今天提到的 AI 工具怎么试？
+
+先通过官方入口确认账号、地区和订阅要求，再用一个低风险任务验证。可访问 [爱窝啦·AI账号店](https://www.aivora.cn/) 查看当前服务。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天的主体日报已经达到安全发布线，但仍值得尝试补足栏目丰富度和不同信息类型。",
+    pageMarkdown,
+    minimumTopItems: 10,
+    hardMinimumTopItems: 6,
+    minimumOpenSourceItems: 2,
+    minimumSocialItems: 2,
+    minimumResearchItems: 1,
+    allowedTopGithubProjectUrls: ["https://github.com/example/agent-kit"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+  assert.match(result.warnings.join("\n"), /Daily TOP is below target: expected 10, got 7/);
+  assert.match(result.warnings.join("\n"), /open-source section is below target/);
+  assert.match(result.warnings.join("\n"), /social section is below target/);
+  assert.match(result.warnings.join("\n"), /research section is below target/);
+});
+
 test("validateDailyPublication rejects repeated stories across primary sections", () => {
   const result = validateDailyPublication({
     summaryText: "同一件 OpenAI 融资新闻如果生成时没排重，可能会在多个栏目里换链接复读，但发布不应因为跨栏目重复直接失败。",

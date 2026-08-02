@@ -1,4 +1,4 @@
-import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
+import { extractDailyMarkdownLinks } from "./dailyMarkdownItems.js";
 
 export const RECENT_GITHUB_TOP_PROJECTS_KEY = "daily-top-github-projects:recent";
 export const DEFAULT_GITHUB_TOP_PROJECT_LOOKBACK_DAYS = 7;
@@ -40,6 +40,47 @@ export function isGithubProjectUrl(url) {
   return Boolean(normalizeGithubProjectUrl(url));
 }
 
+const GITHUB_PROJECT_FAMILY_STOP_WORDS = new Set([
+  "ai",
+  "artificial",
+  "intelligence",
+  "generative",
+  "genai",
+  "llm",
+  "gpt",
+  "mcp",
+  "agent",
+  "agents",
+  "tool",
+  "tools",
+  "project",
+  "projects",
+  "framework",
+  "for",
+  "with",
+  "the",
+  "of",
+  "and",
+]);
+
+function getGithubProjectFamily(urlOrKey) {
+  const urlKey = String(urlOrKey || "").startsWith("github.com/")
+    ? String(urlOrKey).toLowerCase()
+    : normalizeGithubProjectUrl(urlOrKey);
+  const [, owner = "", repo = ""] = urlKey.split("/");
+  if (!owner || !repo) return "";
+
+  const tokens = repo
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((token) => (token === "beginner" ? "beginners" : token))
+    .filter((token) => !GITHUB_PROJECT_FAMILY_STOP_WORDS.has(token));
+
+  return tokens.length > 0 ? `${owner}/${tokens.join("-")}` : "";
+}
+
 export function pruneRecentGithubTopProjects(
   records = [],
   currentDate,
@@ -59,59 +100,66 @@ export function pruneRecentGithubTopProjects(
 }
 
 export function filterGithubProjectsAgainstRecentTop(projects = [], recentRecords = [], currentDate, lookbackDays = DEFAULT_GITHUB_TOP_PROJECT_LOOKBACK_DAYS) {
-  const recentKeys = new Set(
-    pruneRecentGithubTopProjects(recentRecords, currentDate, lookbackDays)
-      .filter((record) => record.date !== currentDate)
-      .map((record) => record.urlKey)
+  const previousRecords = pruneRecentGithubTopProjects(recentRecords, currentDate, lookbackDays)
+    .filter((record) => record.date !== currentDate);
+  const recentKeys = new Set(previousRecords.map((record) => record.urlKey));
+  const recentFamilies = new Set(
+    previousRecords.map((record) => getGithubProjectFamily(record.urlKey)).filter(Boolean)
   );
 
   const filteredItems = [];
   let filteredCount = 0;
+  let filteredExactCount = 0;
+  let filteredFamilyCount = 0;
 
   for (const item of projects || []) {
     const urlKey = normalizeGithubProjectUrl(item?.url);
     if (urlKey && recentKeys.has(urlKey)) {
       filteredCount += 1;
+      filteredExactCount += 1;
+      continue;
+    }
+    const family = getGithubProjectFamily(urlKey);
+    if (family && recentFamilies.has(family)) {
+      filteredCount += 1;
+      filteredFamilyCount += 1;
       continue;
     }
     filteredItems.push(item);
   }
 
-  return { filteredItems, filteredCount };
+  return { filteredItems, filteredCount, filteredExactCount, filteredFamilyCount };
 }
 
-function extractTopSection(markdown) {
+function extractGithubRankingSections(markdown) {
   const content = String(markdown || "");
-  const headingMatch = content.match(/^##\s*\*\*.*TOP.*\*\*/im);
-  if (!headingMatch || headingMatch.index == null) return "";
+  const headings = [...content.matchAll(/^##\s+([^\r\n]+)$/gm)];
 
-  const startIndex = headingMatch.index;
-  const remaining = content.slice(startIndex + headingMatch[0].length);
-  const nextHeadingMatch = remaining.match(/\n##\s+/);
-  const endIndex = nextHeadingMatch
-    ? startIndex + headingMatch[0].length + nextHeadingMatch.index
-    : content.length;
-
-  return content.slice(startIndex, endIndex);
+  return headings
+    .map((heading, index) => {
+      const startIndex = heading.index ?? 0;
+      const endIndex = headings[index + 1]?.index ?? content.length;
+      const headingText = String(heading[1] || "").replace(/\*/g, "");
+      return { headingText, section: content.slice(startIndex, endIndex) };
+    })
+    .filter(({ headingText }) => /(?:今日焦点|重磅\s*TOP|开源\s*TOP)/i.test(headingText))
+    .map(({ section }) => section);
 }
 
 export function extractGithubTopProjectsFromMarkdown(markdown, dateStr) {
-  const topSection = extractTopSection(markdown);
-  if (!topSection) return [];
+  const rankingSections = extractGithubRankingSections(markdown);
+  if (rankingSections.length === 0) return [];
 
   const items = [];
   const seen = new Set();
 
-  for (const item of extractNumberedDailyItems(topSection)) {
-    const projectLink = [...item.bodyLinks, item.headingLink]
-      .filter(Boolean)
-      .find((link) => normalizeGithubProjectUrl(link.url));
-    const title = item.title?.trim() || "";
-    const url = projectLink?.url || "";
-    const urlKey = normalizeGithubProjectUrl(url);
-    if (!urlKey || seen.has(urlKey)) continue;
-    seen.add(urlKey);
-    items.push({ date: dateStr, title, url, urlKey });
+  for (const section of rankingSections) {
+    for (const link of extractDailyMarkdownLinks(section)) {
+      const urlKey = normalizeGithubProjectUrl(link.url);
+      if (!urlKey || seen.has(urlKey)) continue;
+      seen.add(urlKey);
+      items.push({ date: dateStr, title: link.title?.trim() || "", url: link.url, urlKey });
+    }
   }
 
   return items;
