@@ -835,6 +835,10 @@ function collectOpportunitySourcePolicyIssues(
 
 function collectOpportunityLengthIssues(markdown) {
   const issues = [];
+  const maxDirectChars = 420;
+  const maxMainChars = 1250;
+  const maxSmallChars = 760;
+  const maxActionChars = 720;
   const directSection = extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im);
   const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
   const smallSection = extractSection(markdown, /^##\s+本周小试(?:\s|$).*$/im);
@@ -842,21 +846,25 @@ function collectOpportunityLengthIssues(markdown) {
   const mainBlocks = extractLevel3Blocks(mainSection);
   const smallBlocks = extractLevel3Blocks(smallSection);
 
-  if (normalizeText(getSectionBody(directSection)).length > 420) {
-    issues.push("AI 商机“直接结论”过长，应让读者在 20 秒内完成判断");
+  const directLength = normalizeText(getSectionBody(directSection)).length;
+  if (directLength > maxDirectChars) {
+    issues.push(`AI 商机“直接结论”过长（${directLength}/${maxDirectChars}），应让读者在 20 秒内完成判断`);
   }
   for (const block of mainBlocks) {
-    if (normalizeText(block).length > 1250) {
-      issues.push("AI 商机“今日主推”单条过长，应压缩重复背景和项目说明");
+    const blockLength = normalizeText(block).length;
+    if (blockLength > maxMainChars) {
+      issues.push(`AI 商机“今日主推”单条过长（${blockLength}/${maxMainChars}），应压缩重复背景和项目说明`);
     }
   }
   for (const block of smallBlocks) {
-    if (normalizeText(block).length > 700) {
-      issues.push("AI 商机“本周小试”单条过长，应只保留验证所需信息");
+    const blockLength = normalizeText(block).length;
+    if (blockLength > maxSmallChars) {
+      issues.push(`AI 商机“本周小试”单条过长（${blockLength}/${maxSmallChars}），应只保留验证所需信息`);
     }
   }
-  if (normalizeText(getSectionBody(actionSection)).length > 600) {
-    issues.push("AI 商机“今日三步”过长，应只保留动作、对象和可观察结果");
+  const actionLength = normalizeText(getSectionBody(actionSection)).length;
+  if (actionLength > maxActionChars) {
+    issues.push(`AI 商机“今日三步”过长（${actionLength}/${maxActionChars}），应只保留动作、对象和可观察结果`);
   }
 
   return issues;
