@@ -724,6 +724,22 @@ function buildEvidenceByUrl(sourceEvidence = []) {
   return evidenceByUrl;
 }
 
+function linkLabelOverstatesDestination(link) {
+  try {
+    const parsed = new URL(link?.url || "");
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    const isGithubRepositoryRoot =
+      parsed.hostname.toLowerCase() === "github.com" && pathParts.length === 2;
+    const labelClaimsSpecificPage =
+      /(?:(?:license|许可证?|许可)\s*(?:文件|页)|定价页|价格页|pricing\s*page|教程(?:直达|页|链接)|安装文档(?:页|链接)|文档页)/i.test(
+        link?.title || ""
+      );
+    return isGithubRepositoryRoot && labelClaimsSpecificPage;
+  } catch {
+    return false;
+  }
+}
+
 function collectOpportunitySourcePolicyIssues(
   markdown,
   {
@@ -760,6 +776,9 @@ function collectOpportunitySourcePolicyIssues(
     }
 
     const blockLinks = extractSectionLinks(block).filter((link) => !isNoiseSectionLink(link));
+    if (blockLinks.some(linkLabelOverstatesDestination)) {
+      issues.push("AI 商机来源链接文字不能把 GitHub 仓库首页描述成 LICENSE、定价页或教程直达页");
+    }
     const containsCriticalFact =
       /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|封号|下线|退役|正式上线|政策|授权|许可(?:证)?|license)/i.test(
         block
@@ -788,10 +807,22 @@ function collectOpportunitySourcePolicyIssues(
   }
 
   if (allowedRejected) {
-    for (const link of extractSectionLinks(avoidSection)) {
-      if (isNoiseSectionLink(link)) continue;
+    const avoidLinks = extractSectionLinks(avoidSection).filter(
+      (link) => !isNoiseSectionLink(link)
+    );
+    for (const link of avoidLinks) {
       if (!allowedRejected.has(link.url)) {
         issues.push(`AI 商机“今天别碰”包含被拒候选之外的来源链接: ${link.url}`);
+      }
+    }
+
+    if (Array.isArray(allowedRejectedSourceUrls)) {
+      const avoidBody = getSectionBody(avoidSection);
+      const usesDefaultAvoid = /今天没有额外需要点名的高风险方向/.test(avoidBody);
+      if (!usesDefaultAvoid && allowedRejected.size === 0) {
+        issues.push("AI 商机没有被拒候选时，“今天别碰”不得点名具体方向");
+      } else if (!usesDefaultAvoid && avoidLinks.length === 0) {
+        issues.push("AI 商机“今天别碰”点名具体方向时必须引用被拒候选来源");
       }
     }
   }
@@ -800,6 +831,31 @@ function collectOpportunitySourcePolicyIssues(
     issues,
     opportunityCount: opportunityBlocks.length,
   };
+}
+
+function collectOpportunityLengthIssues(markdown) {
+  const issues = [];
+  const directSection = extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im);
+  const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
+  const smallSection = extractSection(markdown, /^##\s+本周小试(?:\s|$).*$/im);
+  const mainBlocks = extractLevel3Blocks(mainSection);
+  const smallBlocks = extractLevel3Blocks(smallSection);
+
+  if (normalizeText(getSectionBody(directSection)).length > 520) {
+    issues.push("AI 商机“直接结论”过长，应让读者在 20 秒内完成判断");
+  }
+  for (const block of mainBlocks) {
+    if (normalizeText(block).length > 1400) {
+      issues.push("AI 商机“今日主推”单条过长，应压缩重复背景和项目说明");
+    }
+  }
+  for (const block of smallBlocks) {
+    if (normalizeText(block).length > 800) {
+      issues.push("AI 商机“本周小试”单条过长，应只保留验证所需信息");
+    }
+  }
+
+  return issues;
 }
 
 export function validateOpportunityPublication({
@@ -841,6 +897,8 @@ export function validateOpportunityPublication({
     forbiddenPatterns: [
       /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
       /先编商机|素材不够.*硬凑/i,
+      /目标用户不缺|人人都(?:需要|会)|每个.{0,24}都(?:踩过|需要|愿意|会)/i,
+      /跑(?:通|一遍).{0,20}(?:就|即可).{0,12}(?:能卖|可以卖|有东西可以卖)/i,
     ],
   });
 
@@ -850,6 +908,7 @@ export function validateOpportunityPublication({
     sourceEvidence,
   });
   issues.push(...sourcePolicy.issues);
+  issues.push(...collectOpportunityLengthIssues(markdown));
 
   if (sourcePolicy.opportunityCount < minimumOpportunityCount) {
     issues.push(`AI 商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的机会`);

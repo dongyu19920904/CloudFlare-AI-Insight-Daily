@@ -95,6 +95,90 @@ test("the avoid section may cite only a rejected candidate", () => {
   assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
+test("a named avoid item must cite its rejected source", () => {
+  const qualifiedUrl = "https://github.com/example/video-workflow";
+  const rejectedUrl = "https://t.me/example/repeated-pitch";
+  const markdown = buildOpportunityMarkdown(qualifiedUrl).replace(
+    "今天没有额外需要点名的高风险方向。",
+    "这个批量视频方向目前只有社交转述，先不要投入。"
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [qualifiedUrl],
+    allowedRejectedSourceUrls: [rejectedUrl],
+    sourceEvidence: [{ url: qualifiedUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /今天别碰.*引用被拒候选来源/);
+});
+
+test("the avoid section cannot name an item when no rejected candidate exists", () => {
+  const qualifiedUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(qualifiedUrl).replace(
+    "今天没有额外需要点名的高风险方向。",
+    "这个批量视频方向目前证据不足，先不要投入。"
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [qualifiedUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [{ url: qualifiedUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /没有被拒候选.*不得点名/);
+});
+
+test("opportunity publication rejects unsupported universal market claims", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl).replace(
+    "小内容团队仍靠多人手工传脚本和素材。",
+    "目标用户不缺，每个人都会为这项服务付费。"
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
+test("a GitHub repository root cannot be labeled as a direct license page", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl).replace(
+    "官方仓库：证明项目代码与工作流可核验",
+    "项目的 LICENSE 文件"
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /仓库首页描述成 LICENSE/);
+});
+
+test("opportunity publication rejects an overlong main item", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const repeated = "重复背景不帮助用户做决定。".repeat(90);
+  const markdown = buildOpportunityMarkdown(sourceUrl).replace(
+    "原项目已经可以复现，但付费需求还没有被证明，因此只做一次小样验证。",
+    repeated
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /今日主推.*过长/);
+});
+
 test("opportunity publication requires primary evidence for policy and license claims", () => {
   const mediaUrl = "https://www.jiqizhixin.com/articles/example";
   const result = validateOpportunityPublication({
