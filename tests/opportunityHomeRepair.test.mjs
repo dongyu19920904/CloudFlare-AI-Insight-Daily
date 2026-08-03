@@ -28,7 +28,7 @@ description: "new"
 
   const repaired = buildOpportunityHomeRepairContent(existingHomeContent, pageContent, "2026-06-22");
 
-  assert.match(repaired, /^title: AI Opportunity$/m);
+  assert.match(repaired, /^title: 爱窝啦 AI 商机$/m);
   assert.doesNotMatch(repaired, /^next:/m);
   assert.match(repaired, /\{\{< latest-opportunity >\}\}/);
   assert.doesNotMatch(repaired, /## New opportunity body/);

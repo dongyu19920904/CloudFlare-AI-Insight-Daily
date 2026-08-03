@@ -123,3 +123,22 @@ test("inferScheduledOutcome reports a partial combined run", () => {
   assert.equal(result.outcome, "partial");
   assert.equal(result.published, true);
 });
+
+test("inferScheduledOutcome reports opportunity dry-runs and intentional quality skips", () => {
+  assert.equal(
+    inferScheduledOutcome("opportunity", {
+      opportunityDryRun: true,
+      opportunityWouldPublish: true,
+      opportunityPublished: false,
+    }).outcome,
+    "dry-run"
+  );
+
+  const skipped = inferScheduledOutcome("opportunity", {
+    skipped: true,
+    skipReason: "no-qualified-opportunity-candidates",
+    opportunityQualitySkipped: true,
+  });
+  assert.equal(skipped.outcome, "skipped");
+  assert.equal(skipped.taskOutcomes[0].reason, "no-qualified-opportunity-candidates");
+});

@@ -429,6 +429,7 @@ export default {
             const runAsync = url.searchParams.get('async') === '1';
             const runStream = url.searchParams.get('stream') === '1';
             const dryRun = url.searchParams.get('dryRun') === '1';
+            const forceRun = ['1', 'true'].includes(String(url.searchParams.get('force') || '').toLowerCase());
             const mode =
                 path === '/testTriggerScheduledDaily'
                     ? 'daily'
@@ -440,10 +441,10 @@ export default {
                         ? requestedMode
                         : 'daily';
             try {
-                if (dryRun && mode !== 'daily') {
+                if (dryRun && mode !== 'daily' && mode !== 'opportunity') {
                     return jsonResponse({
                         success: false,
-                        error: 'dryRun is only supported for daily generation test triggers.',
+                        error: 'dryRun is only supported for daily and opportunity generation test triggers.',
                         mode,
                     }, 400);
                 }
@@ -481,7 +482,10 @@ export default {
                                 });
                             }, 15000);
 
-                            runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger-stream', { dryRun })
+                            runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger-stream', {
+                                dryRun,
+                                ignoreQualitySkipMarker: forceRun,
+                            })
                                 .then((debug) => {
                                     write({
                                         success: true,
@@ -537,7 +541,10 @@ export default {
                         headers: { 'Content-Type': 'application/json; charset=utf-8' }
                     });
                 }
-                const debug = await runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger', { dryRun });
+                const debug = await runScheduledModeWithStatus(mode, env, specifiedDate, 'test-trigger', {
+                    dryRun,
+                    ignoreQualitySkipMarker: forceRun,
+                });
                 return new Response(JSON.stringify({
                     success: true,
                     message: `Scheduled ${mode} task completed${specifiedDate ? ` for date: ${specifiedDate}` : ' for current date'}`,

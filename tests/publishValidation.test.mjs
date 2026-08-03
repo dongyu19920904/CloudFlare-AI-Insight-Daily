@@ -1000,7 +1000,7 @@ AI 工具正在继续进入真实工作流。
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {
   const result = validateOpportunityPublication({
-    markdown: `# 今日AI商机
+    markdown: `# 今日 AI 商机
 
 ## 今日主推
 ### 一个机会
@@ -1011,51 +1011,53 @@ test("validateOpportunityPublication rejects gray phrasing and missing required 
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止片段: 便宜 token/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: 这钱从哪来/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: 证据来源/);
 });
 
-test("validateOpportunityPublication accepts the lighter daily-style opportunity structure", () => {
+test("validateOpportunityPublication accepts an evidence-first opportunity brief", () => {
   const result = validateOpportunityPublication({
-    markdown: `# 今日AI商机
+    markdown: `# 今日 AI 商机
 
-## 先说结论
-今天最值得试的，不是追模型热词，而是卖微信跑通包。
+## 直接结论
+今天值得验证的不是卖安装教程，而是为内容团队交付一个可验收样片。
+- **做不做：** 先做一次样品验证，不先上架。
+- **先验证：** 目标用户是否愿意提供真实脚本并接受范围明确的样片。
+- **何时停：** 五位目标用户都没有试用或询价意愿就停止。
 
 ## 今日主推
-### [微信跑通包](https://example.com/openclaw-wechat)
-不是卖概念，是卖“帮别人今天就跑通”。很多人卡在配置这一步，你卖的是省时间、少踩坑和马上能用。
+### 给内容团队交付一支可验收样片
+原项目已经提供可运行的桌面工作流，但“项目能跑”不等于“有人愿意买”。先把它当生产工具，验证客户是否愿意为首支样片省时间。
 
-- 参考来源：[OpenClaw 接入微信插件](https://example.com/openclaw-wechat)
-- 适合谁：已经买了 Claude 或 OpenClaw，但不会接进微信的人
-- 这钱从哪来：买家不是不想用 AI，而是不想自己折腾配置。你把“跑通”这件事做成结果，就有成交空间
-- 最简单卖法：先卖跑通包，不要一上来卖复杂定制
-- 今天先做哪一步：录一个 3 分钟跑通视频，证明你真的能弄好
-- 今天就能发的文案：Claude 现在能接进微信了，我这边已经整理好跑通版，不想折腾配置的直接拿现成
-- 配图建议：用接入成功界面截图，证明这不是空口说法
+- **可验证信号：** 原项目公开了代码、教程和视频工作流。
+- **证据来源：** [官方仓库：证明项目代码、教程与许可说明可核验](https://github.com/HBAI-Ltd/Toonflow-app)
+- **可信度：** 中
+- **目标鱼塘与笨办法：** 小型内容团队仍在多人传脚本、素材和修改意见。
+- **最小交付：** 一支三镜头样片、实际耗时、模型成本和失败记录，不包含长期代运营。
+- **48小时验证：** 复现官方教程后，把样片给五位内容团队负责人看，询问是否愿意提供真实脚本试做。
+- **第一单：** 固定一个脚本、三镜头和一次修改，以交付可播放样片为验收标准。
+- **复购或资产：** 若同类脚本重复出现，可沉淀配置、错误库和成本表；否则只是一次性服务。
+- **证据缺口：** 尚无目标用户付费证据。
+- **售后与合规风险：** 中，需要核对素材版权和商业分发许可。
+- **停止条件：** 无法复现、成本不可控，或五位目标用户都没有试做意愿。
 
-## 本周可试
-### [技能包精选安装包](https://example.com/skill-pack)
-这不是卖“技能市场很火”，而是卖“我帮你选好最实用的 5 个”。这类更适合先做小合集，先看哪类最容易成交。
-
-- 参考来源：[技能市场更新](https://example.com/skill-pack)
-- 适合谁：已经在用 Claude 或 OpenClaw，但不会挑技能和模板的人
-- 先怎么试：先做 1 份“5 个最实用技能包合集”，别做大全
-- 为什么先别冲太猛：先看哪类技能更容易成交，是办公、内容还是开发辅助
-- 配图建议：用技能市场截图，帮助读者理解这是什么
+## 本周小试
+今天没有第二个达到证据门槛的机会，不凑数。
 
 ## 今天别碰
-### [只聊模型跑分](https://example.com/model-score)
-看着热，但小白看完还是不知道今天能卖什么，也不知道第一单从哪来。
+今天没有额外需要点名的高风险方向。
 
-## 地图感
-### [技能市场](https://example.com/skill-market)
-把它理解成 AI 世界里的小插件市场就行。以后很多商机都会从“技能包、模板包、安装包”里长出来。
-
-## 今日动作
-- 先发什么：微信跑通包
-- 先录什么：跑通录屏
-- 先卖哪一款：29 元低价引流款`,
+## 今日三步
+- **今天确认：** 核对原项目许可与商业分发边界。
+- **今天制作：** 只做一支三镜头样片并记录真实成本。
+- **今天询价：** 找五位内容团队负责人问是否愿意拿真实脚本试做。`,
     bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
+    allowedSourceUrls: ["https://github.com/HBAI-Ltd/Toonflow-app"],
+    sourceEvidence: [
+      {
+        url: "https://github.com/HBAI-Ltd/Toonflow-app",
+        isPrimary: true,
+      },
+    ],
   });
 
   assert.equal(result.ok, true);
@@ -1155,47 +1157,42 @@ test("validateDailyPublication accepts allowlisted daily trending GitHub TOP pro
   assert.equal(result.ok, true);
 });
 
-test("validateOpportunityPublication requires source-linked section titles", () => {
+test("validateOpportunityPublication keeps titles plain and source links in evidence fields", () => {
   const result = validateOpportunityPublication({
-    markdown: `# 今日AI商机
+    markdown: `# 今日 AI 商机
 
-## 先说结论
-今天先试跑通包。
+## 直接结论
+今天先验证一个内容交付样品。
 
 ## 今日主推
-### 微信跑通包
-先讲清楚能交付什么。
-- 适合谁：小白
-- 这钱从哪来：省配置时间
-- 最简单卖法：低价跑通
-- 今天先做哪一步：录屏
-- 今天就能发的文案：我帮你跑通
-- 配图建议：成功截图
+### [把视频工作流变成样片](https://github.com/example/video-workflow)
+- **可验证信号：** 项目发布。
+- **证据来源：** [官方仓库](https://github.com/example/video-workflow)
+- **可信度：** 中
+- **目标鱼塘与笨办法：** 内容团队手工协作。
+- **最小交付：** 三镜头样片。
+- **48小时验证：** 找五位用户看样片。
+- **第一单：** 固定范围样片。
+- **复购或资产：** 沉淀配置。
+- **证据缺口：** 无付费证据。
+- **售后与合规风险：** 中。
+- **停止条件：** 无人愿意试用。
 
-## 本周可试
-### [技能包精选](https://example.com/skill)
-先小范围试。
-- 适合谁：小白
-- 先怎么试：做合集
-- 为什么先别冲太猛：先测反馈
-- 配图建议：截图
+## 本周小试
+今天没有第二个达到证据门槛的机会，不凑数。
 
 ## 今天别碰
-### [模型跑分](https://example.com/bench)
-只看热闹。
+今天没有额外需要点名的高风险方向。
 
-## 地图感
-### [技能市场](https://example.com/market)
-知道就行。
-
-## 今日动作
-- 先发什么：跑通包
-- 先录什么：录屏
-- 先卖哪一款：29 元款`,
+## 今日三步
+- **今天确认：** 许可。
+- **今天制作：** 样片。
+- **今天询价：** 问五位用户。`,
+    allowedSourceUrls: ["https://github.com/example/video-workflow"],
   });
 
   assert.equal(result.ok, false);
-  assert.match(result.issues.join("\n"), /商机页面今日主推标题必须使用原始信息源链接/);
+  assert.match(result.issues.join("\n"), /标题必须是纯文本/);
 });
 
 test("validateAccountOpportunityPublication requires source links in title and evidence", () => {

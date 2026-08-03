@@ -79,3 +79,27 @@ test("updateSectionHomeIndexContent keeps the opportunity home on the latest-pag
   assert.match(output, /\{\{< latest-opportunity >\}\}/);
   assert.doesNotMatch(output, /## \*\*今日AI商机\*\*/);
 });
+
+test("updateSectionHomeIndexContent refreshes a stale section title without hardcoding next", () => {
+  const output = updateSectionHomeIndexContent(
+    `---
+linkTitle: AI商机
+title: 爱窝啦 AI 商机 2026/7/11
+next: /opportunity/2026-07/2026-07-11
+description: "旧描述"
+---
+
+旧全文`,
+    "新全文不应复制到首页",
+    "2026-08-03",
+    {
+      title: "爱窝啦 AI 商机 2026/8/3",
+      description: "从一手证据筛选低成本机会。",
+    }
+  );
+
+  assert.match(output, /title: 爱窝啦 AI 商机 2026\/8\/3/);
+  assert.doesNotMatch(output, /^next:/m);
+  assert.match(output, /\{\{< latest-opportunity >\}\}/);
+  assert.doesNotMatch(output, /旧全文|新全文不应复制/);
+});

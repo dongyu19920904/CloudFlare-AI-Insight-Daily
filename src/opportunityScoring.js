@@ -2,6 +2,12 @@ import { stripHtml } from "./helpers.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { normalizeOpportunitySourceUrl } from "./opportunityReplayDedupe.js";
 import {
+  assessOpportunityEvidence,
+  classifyOpportunityCommercialPattern,
+  classifyOpportunityEvidence,
+  deriveOpportunityEntityKey,
+} from "./opportunityEvidence.js";
+import {
   getOpportunityLaneById,
   opportunityPlaybook,
 } from "./opportunityPlaybook.js";
@@ -98,7 +104,7 @@ function toOpportunityItem(item, sourceType) {
     .join(" ")
     .toLowerCase();
 
-  return {
+  const normalizedItem = {
     type: sourceType,
     title: String(item?.title || "").trim(),
     description: truncate(item?.description || ""),
@@ -107,6 +113,24 @@ function toOpportunityItem(item, sourceType) {
     url: String(item?.url || "").trim(),
     publishedDate: String(item?.published_date || "").trim(),
     searchText,
+    lowEvidenceAiWorkflowPitch: Boolean(
+      item?.details?.lowEvidenceAiWorkflowPitch || item?.lowEvidenceAiWorkflowPitch
+    ),
+    foloSourceId: String(
+      item?.details?.foloSourceId ||
+        item?.details?.foloFeedId ||
+        item?.details?.feedId ||
+        item?.details?.sourceId ||
+        item?.foloSourceId ||
+        item?.feedId ||
+        item?.sourceId ||
+        ""
+    ).trim(),
+  };
+
+  return {
+    ...normalizedItem,
+    evidence: classifyOpportunityEvidence(normalizedItem, sourceType),
   };
 }
 
@@ -155,11 +179,22 @@ function findBestRuleForItem(item, playbook) {
   };
 }
 
-function addItemToOpportunityGroup(groups, rule, item, matchedTerms = []) {
+function addItemToOpportunityGroup(
+  groups,
+  rule,
+  item,
+  matchedTerms = [],
+  options = {}
+) {
   if (!rule) return;
 
-  const existingGroup = groups.get(rule.id) || {
+  const entityKey = deriveOpportunityEntityKey(item, rule.id);
+  const groupKey = options.entityAwareGrouping
+    ? `${rule.id}:${entityKey || rule.id}`
+    : rule.id;
+  const existingGroup = groups.get(groupKey) || {
     rule,
+    entityKey,
     items: [],
     matchedTerms: new Set(),
   };
@@ -169,7 +204,7 @@ function addItemToOpportunityGroup(groups, rule, item, matchedTerms = []) {
     existingGroup.matchedTerms.add(term);
   }
 
-  groups.set(rule.id, existingGroup);
+  groups.set(groupKey, existingGroup);
 }
 
 function getLaneDimensionScores(laneId, playbook) {
@@ -350,6 +385,7 @@ function scoreClearChange(items) {
 
 function scoreSupportingItem(item, matchedTerms) {
   const sourceSignal = SOURCE_TYPE_SIGNAL[item.type] || 0;
+  const evidenceSignal = item?.evidence?.score || 0;
   const matchedTermSignal = matchedTerms.length * 3;
   const changeSignal = CHANGE_SIGNAL_PATTERN.test(item.searchText) ? 2 : 0;
   const concreteSignal = hasConcreteSignal(item) ? 3 : 0;
@@ -359,8 +395,10 @@ function scoreSupportingItem(item, matchedTerms) {
   const repeatPurchaseSignal = hasRepeatPurchaseSignal(item) ? 2 : 0;
   const communityHeatPenalty = isCommunityHeatOnlyItem(item) ? 4 : 0;
   const noisePenalty = isNoisyItem(item) ? 6 : 0;
+  const lowEvidencePenalty = item?.lowEvidenceAiWorkflowPitch ? 20 : 0;
   return (
     sourceSignal +
+    evidenceSignal +
     matchedTermSignal +
     changeSignal +
     concreteSignal +
@@ -369,7 +407,8 @@ function scoreSupportingItem(item, matchedTerms) {
     productizedDeliverySignal +
     repeatPurchaseSignal -
     communityHeatPenalty -
-    noisePenalty
+    noisePenalty -
+    lowEvidencePenalty
   );
 }
 
@@ -517,10 +556,12 @@ function summarizeEvidenceSources(items) {
     .join("；");
 }
 
-function inferConfidence(score, supportingItems) {
+function inferConfidence(score, supportingItems, evidenceAssessment = null) {
+  if (evidenceAssessment?.strength === "high") return "高";
+  if (evidenceAssessment?.strength === "medium") return "中";
+
   const sourceDiversity = new Set((supportingItems || []).map((item) => item.type)).size;
-  if (score >= 75 && sourceDiversity >= 2) return "高";
-  if (score >= 55 || sourceDiversity >= 2) return "中";
+  if (score >= 75 && sourceDiversity >= 2) return "中";
   return "低";
 }
 
@@ -582,6 +623,19 @@ function buildOpportunityReplayLookup(memory) {
   const ruleIdCounts = countReplayRecords(memory?.ruleIds, (record) => record?.id || record?.key);
   const laneCounts = countReplayRecords(memory?.lanes, (record) => record?.id || record?.key);
   const termCounts = countReplayRecords(memory?.terms, (record) => record?.term || record?.key);
+  const entityCounts = countReplayRecords(memory?.entities, (record) => record?.entity || record?.key);
+  const businessModelCounts = countReplayRecords(
+    memory?.businessModels,
+    (record) => record?.businessModel || record?.key
+  );
+  const deliveryTypeCounts = countReplayRecords(
+    memory?.deliveryTypes,
+    (record) => record?.deliveryType || record?.key
+  );
+  const commercialSignatureCounts = countReplayRecords(
+    memory?.commercialSignatures,
+    (record) => record?.commercialSignature || record?.key
+  );
 
   return {
     sourceUrlCounts,
@@ -589,12 +643,20 @@ function buildOpportunityReplayLookup(memory) {
     ruleIdCounts,
     laneCounts,
     termCounts,
+    entityCounts,
+    businessModelCounts,
+    deliveryTypeCounts,
+    commercialSignatureCounts,
     isEmpty:
       sourceUrlCounts.size === 0 &&
       githubProjectCounts.size === 0 &&
       ruleIdCounts.size === 0 &&
       laneCounts.size === 0 &&
-      termCounts.size === 0,
+      termCounts.size === 0 &&
+      entityCounts.size === 0 &&
+      businessModelCounts.size === 0 &&
+      deliveryTypeCounts.size === 0 &&
+      commercialSignatureCounts.size === 0,
   };
 }
 
@@ -614,7 +676,7 @@ function getReplaySourceMatch(item, replayLookup) {
   return null;
 }
 
-function getWeeklyReplayPenalty(candidate, replayLookup) {
+function getWeeklyReplayPenalty(candidate, replayLookup, options = {}) {
   if (!candidate || !replayLookup || replayLookup.isEmpty) {
     return { penalty: 0, reason: "" };
   }
@@ -642,10 +704,46 @@ function getWeeklyReplayPenalty(candidate, replayLookup) {
     reasons.push("近7天关键词相近");
   }
 
+  if (options.includeCommercialDimensions) {
+    const businessModelCount =
+      replayLookup.businessModelCounts.get(
+        String(candidate.businessModel || "").toLowerCase()
+      ) || 0;
+    if (businessModelCount >= 2) {
+      penalty += Math.min(8, businessModelCount * 2);
+      reasons.push("近7天同商业模式偏多");
+    }
+
+    const deliveryTypeCount =
+      replayLookup.deliveryTypeCounts.get(
+        String(candidate.deliveryType || "").toLowerCase()
+      ) || 0;
+    if (deliveryTypeCount >= 2) {
+      penalty += Math.min(8, deliveryTypeCount * 2);
+      reasons.push("近7天同交付类型偏多");
+    }
+  }
+
   return {
-    penalty: Math.min(30, penalty),
+    penalty: Math.min(38, penalty),
     reason: reasons.join(" / "),
   };
+}
+
+function getReplayHardBlock(candidate, replayLookup) {
+  if (!candidate || !replayLookup || replayLookup.isEmpty) return "";
+
+  const entityKey = String(candidate.entityKey || "").toLowerCase();
+  if (entityKey && replayLookup.entityCounts.has(entityKey)) {
+    return "近7天已经使用同一项目或产品实体";
+  }
+
+  const signature = String(candidate.commercialSignature || "").toLowerCase();
+  if (signature && replayLookup.commercialSignatureCounts.has(signature)) {
+    return "近7天已经使用同一商业模式与交付类型组合";
+  }
+
+  return "";
 }
 
 export function inferOpportunityReplaySignals(
@@ -722,7 +820,13 @@ function getPreviousTopicPenalty(candidate, replaySignals) {
   return { penalty: 0, reason: "" };
 }
 
-function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLookup = null) {
+function buildCandidateFromGroup(
+  group,
+  playbook,
+  replaySignals = null,
+  replayLookup = null,
+  options = {}
+) {
   const laneDecision = getResolvedLaneOrder(group);
   const preferredLane = getOpportunityLaneById(
     laneDecision.preferredLaneId,
@@ -756,10 +860,19 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLo
         scoreSupportingItem(a, group.matchedTerms)
     );
   const cleanSupportingItems = rankedItems
-    .filter((item) => !isNoisyItem(item) || hasConcreteSignal(item))
+    .filter(
+      (item) =>
+        !item.lowEvidenceAiWorkflowPitch &&
+        (!isNoisyItem(item) || hasConcreteSignal(item))
+    )
     .slice(0, 3);
   const supportingItems =
     cleanSupportingItems.length > 0 ? cleanSupportingItems : rankedItems.slice(0, 3);
+  const evidenceAssessment = assessOpportunityEvidence(supportingItems);
+  const commercialPattern = classifyOpportunityCommercialPattern(
+    supportingItems,
+    laneDecision.preferredLaneId
+  );
   const replayPenalty = getPreviousTopicPenalty(
     {
       id: group.rule.id,
@@ -772,8 +885,10 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLo
       id: group.rule.id,
       matchedTerms: [...group.matchedTerms],
       preferredLane: laneDecision.preferredLaneId,
+      ...commercialPattern,
     },
-    replayLookup
+    replayLookup,
+    { includeCommercialDimensions: Boolean(options.enforceReplayDimensions) }
   );
   const totalReplayPenalty = replayPenalty.penalty + weeklyReplayPenalty.penalty;
   const replayPenaltyReasons = [
@@ -799,7 +914,7 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLo
     recommendation,
   };
   const afterSalesRisk = inferAfterSalesRisk(candidateLike, supportingItems);
-  const confidence = inferConfidence(score, supportingItems);
+  const confidence = inferConfidence(score, supportingItems, evidenceAssessment);
   const xianyuToday = inferXianyuToday(
     score,
     afterSalesRisk,
@@ -809,6 +924,7 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLo
 
   return {
     id: group.rule.id,
+    entityKey: group.entityKey || deriveOpportunityEntityKey(supportingItems[0], group.rule.id),
     label,
     score,
     baseScore,
@@ -826,6 +942,10 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLo
     matchedTerms: [...group.matchedTerms],
     recommendation,
     evidenceSources: summarizeEvidenceSources(supportingItems),
+    evidenceStrength: evidenceAssessment.strength,
+    evidenceEligible: evidenceAssessment.eligible,
+    evidenceGaps: evidenceAssessment.gaps,
+    evidenceAssessment,
     confidence,
     xianyuToday,
     afterSalesRisk,
@@ -847,12 +967,13 @@ function buildCandidateFromGroup(group, playbook, replaySignals = null, replayLo
       ? group.rule.avoidLeadHint || laneHints.avoidLeadHint
       : laneHints.avoidLeadHint,
     laneSignalScores: laneDecision.laneSignalScores,
+    ...commercialPattern,
     supportingItems,
     sourceTypes: [...new Set(group.items.map((item) => item.type))],
   };
 }
 
-export function buildOpportunityCandidates(
+function buildOpportunityCandidatesInternal(
   allUnifiedData,
   playbook = opportunityPlaybook,
   options = {}
@@ -871,7 +992,13 @@ export function buildOpportunityCandidates(
 
       const ruleMatch = findBestRuleForItem(item, playbook);
       if (ruleMatch) {
-        addItemToOpportunityGroup(groups, ruleMatch.rule, item, ruleMatch.matchedTerms);
+        addItemToOpportunityGroup(
+          groups,
+          ruleMatch.rule,
+          item,
+          ruleMatch.matchedTerms,
+          options
+        );
       }
 
       const githubMatchedTerms = getMatchedTermsForRule(item, githubHotProjectRule);
@@ -883,9 +1010,17 @@ export function buildOpportunityCandidates(
 
       if (
         isGithubProjectSignal &&
-        (!ruleMatch || ruleMatch.rule.id !== githubHotProjectRule?.id)
+        (!ruleMatch ||
+          (!options.avoidGenericDuplicates &&
+            ruleMatch.rule.id !== githubHotProjectRule?.id))
       ) {
-        addItemToOpportunityGroup(groups, githubHotProjectRule, item, githubMatchedTerms);
+        addItemToOpportunityGroup(
+          groups,
+          githubHotProjectRule,
+          item,
+          githubMatchedTerms,
+          options
+        );
       }
     }
   }
@@ -899,10 +1034,116 @@ export function buildOpportunityCandidates(
         },
         playbook,
         options.previousMainTopicSignals || null,
-        replayLookup
+        replayLookup,
+        options
       )
     )
     .sort((a, b) => b.score - a.score);
+}
+
+export function buildOpportunityCandidateAssessment(
+  allUnifiedData,
+  playbook = opportunityPlaybook,
+  options = {}
+) {
+  const allCandidates = buildOpportunityCandidatesInternal(
+    allUnifiedData,
+    playbook,
+    options
+  );
+  const replayLookup = buildOpportunityReplayLookup(options.recentReplayMemory);
+  const requireStrongEvidence = Boolean(options.requireStrongEvidence);
+  const enforceReplayDimensions = Boolean(options.enforceReplayDimensions);
+  const minimumScore = Math.max(
+    0,
+    Number.parseInt(options.minimumCandidateScore, 10) || 52
+  );
+  const candidates = [];
+  const rejectedCandidates = [];
+  const seenEntities = new Set();
+  const seenCommercialSignatures = new Set();
+
+  for (const candidate of allCandidates) {
+    const rejectionReasons = [];
+
+    if (requireStrongEvidence && !candidate.evidenceEligible) {
+      rejectionReasons.push(
+        candidate.evidenceGaps?.join("；") || "证据不足，不能进入今日商机"
+      );
+    }
+
+    if (requireStrongEvidence && candidate.score < minimumScore) {
+      rejectionReasons.push(`综合分低于发布门槛 ${minimumScore}`);
+    }
+
+    if (enforceReplayDimensions) {
+      const replayBlock = getReplayHardBlock(candidate, replayLookup);
+      if (replayBlock) rejectionReasons.push(replayBlock);
+    }
+
+    const entityKey = String(candidate.entityKey || "").toLowerCase();
+    if (
+      (enforceReplayDimensions || options.dedupeCandidateEntities) &&
+      entityKey &&
+      seenEntities.has(entityKey)
+    ) {
+      rejectionReasons.push("当天候选中已经有同一项目或产品实体");
+    }
+
+    const signature = String(candidate.commercialSignature || "").toLowerCase();
+    if (
+      enforceReplayDimensions &&
+      signature &&
+      seenCommercialSignatures.has(signature)
+    ) {
+      rejectionReasons.push("当天候选中商业模式与交付类型重复");
+    }
+
+    const assessedCandidate = {
+      ...candidate,
+      qualified: rejectionReasons.length === 0,
+      rejectionReasons,
+    };
+
+    if (assessedCandidate.qualified) {
+      candidates.push(assessedCandidate);
+      if (enforceReplayDimensions || options.dedupeCandidateEntities) {
+        if (entityKey) seenEntities.add(entityKey);
+        if (signature) seenCommercialSignatures.add(signature);
+      }
+    } else {
+      rejectedCandidates.push(assessedCandidate);
+    }
+  }
+
+  return {
+    candidates,
+    rejectedCandidates,
+    allCandidates,
+    stats: {
+      total: allCandidates.length,
+      qualified: candidates.length,
+      rejected: rejectedCandidates.length,
+      rejectedForEvidence: rejectedCandidates.filter((candidate) =>
+        candidate.rejectionReasons.some((reason) => /证据|官方|实证|来源/.test(reason))
+      ).length,
+      rejectedForReplay: rejectedCandidates.filter((candidate) =>
+        candidate.rejectionReasons.some((reason) => /近7天|当天候选/.test(reason))
+      ).length,
+    },
+  };
+}
+
+export function buildOpportunityCandidates(
+  allUnifiedData,
+  playbook = opportunityPlaybook,
+  options = {}
+) {
+  return buildOpportunityCandidateAssessment(
+    allUnifiedData,
+    playbook,
+    options
+  ).candidates;
 }
 
 export function formatOpportunityCandidatesForPrompt(
@@ -912,7 +1153,7 @@ export function formatOpportunityCandidatesForPrompt(
   const visibleCandidates = selectPromptCandidates(candidates, playbook);
 
   if (visibleCandidates.length === 0) {
-    return "今天没有命中明显高分主题。请只输出 1 个偏观察向的机会，不要硬凑。";
+    return "今天没有通过证据与去重门槛的候选。不要编造商机，调用方应跳过本次商机生成。";
   }
 
   return visibleCandidates
@@ -928,6 +1169,9 @@ export function formatOpportunityCandidatesForPrompt(
             `   - 类型: ${item.type} | 来源: ${item.source || "未知"} | 日期: ${
               item.publishedDate || "未知"
             }`,
+            `   - 证据等级: ${item.evidence?.tier || "unknown"} | 说明: ${
+              item.evidence?.reason || "未分类"
+            }`,
             `   - 摘要: ${item.description || item.plainText || "无"}`,
           ].join("\n");
         })
@@ -936,6 +1180,8 @@ export function formatOpportunityCandidatesForPrompt(
       return [
         `### ${index + 1}. ${candidate.label}`,
         `- 证据来源: ${candidate.evidenceSources}`,
+        `- 证据强度: ${candidate.evidenceStrength}`,
+        `- 证据缺口: ${candidate.evidenceGaps.join("；") || "暂无明显缺口"}`,
         `- 可信度: ${candidate.confidence}`,
         `- 是否今天能挂闲鱼: ${candidate.xianyuToday}`,
         `- 售后风险: ${candidate.afterSalesRisk}`,
@@ -943,6 +1189,9 @@ export function formatOpportunityCandidatesForPrompt(
         `- 综合分: ${candidate.score}/100`,
         `- 优先卖法: ${candidate.preferredLaneName}`,
         `- 备选卖法: ${candidate.secondaryLaneName}`,
+        `- 机会实体: ${candidate.entityKey}`,
+        `- 商业模式: ${candidate.businessModel}`,
+        `- 交付类型: ${candidate.deliveryType}`,
         `- 编排提醒: ${getEditorialHint(candidate)}`,
         `- 商品化角度: ${candidate.productAngle}`,
         `- 更适合成交给: ${candidate.buyerHint}`,

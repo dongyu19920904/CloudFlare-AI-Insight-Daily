@@ -17,6 +17,7 @@ import {
     serializeAccountOpportunityPlaybook,
 } from "../accountOpportunityPlaybook.js";
 import {
+    buildOpportunityCandidateAssessment,
     buildOpportunityCandidates,
     formatOpportunityCandidatesForPrompt,
     inferOpportunityReplaySignals,
@@ -30,6 +31,7 @@ import {
     buildOpportunityPaths,
     DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
     DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
+    DEFAULT_OPPORTUNITY_SECTION_TITLE,
     updateSectionHomeIndexContent,
 } from '../opportunityUtils.js';
 import {
@@ -53,6 +55,7 @@ import {
 import {
     DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS,
     OPPORTUNITY_REPLAY_MEMORY_KEY,
+    appendOpportunityReplayMetadata,
     createEmptyOpportunityReplayMemory,
     extractOpportunityReplayMemoryFromMarkdown,
     formatOpportunityReplayMemoryForPrompt,
@@ -60,6 +63,11 @@ import {
     mergeOpportunityReplayMemories,
     pruneOpportunityReplayMemory,
 } from '../opportunityReplayDedupe.js';
+import {
+    containsAivoraLink,
+    loadAivoraOpportunityLinkPolicy,
+    sanitizeOpportunityAivoraLinks,
+} from '../opportunityAivoraLinkPolicy.js';
 import {
     removeEmptyDailyFunSection,
     removeEmptyDailyTopicSections,
@@ -394,11 +402,50 @@ function hasOpportunityReplayRecord(memory, section, dateStr) {
         memory?.lanes,
         memory?.terms,
         memory?.titles,
+        memory?.entities,
+        memory?.businessModels,
+        memory?.deliveryTypes,
+        memory?.commercialSignatures,
     ];
 
     return collections.some((records) =>
         (records || []).some((record) => record?.section === section && record?.date === dateStr)
     );
+}
+
+const OPPORTUNITY_QUALITY_SKIP_KEY_PREFIX = 'opportunity-quality-skip';
+
+function getOpportunityQualitySkipKey(dateStr) {
+    return `${OPPORTUNITY_QUALITY_SKIP_KEY_PREFIX}:${dateStr}`;
+}
+
+async function loadOpportunityQualitySkip(env, dateStr) {
+    if (!env.DATA_KV) return null;
+    try {
+        return await getFromKV(env.DATA_KV, getOpportunityQualitySkipKey(dateStr));
+    } catch (error) {
+        console.warn(`[Scheduled][Opportunity] Failed to read quality-skip marker: ${error.message}`);
+        return null;
+    }
+}
+
+async function storeOpportunityQualitySkip(env, dateStr, details = {}) {
+    if (!env.DATA_KV) return;
+    try {
+        await storeInKV(
+            env.DATA_KV,
+            getOpportunityQualitySkipKey(dateStr),
+            {
+                date: dateStr,
+                reason: 'no-qualified-opportunity-candidates',
+                recordedAt: new Date().toISOString(),
+                ...details,
+            },
+            86400 * 2
+        );
+    } catch (error) {
+        console.warn(`[Scheduled][Opportunity] Failed to store quality-skip marker: ${error.message}`);
+    }
 }
 
 async function loadOpportunityReplayMemoryFromKv(env, dateStr, lookbackDays) {
@@ -454,7 +501,7 @@ async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
             10
         ) || DEFAULT_OPPORTUNITY_REPLAY_LOOKBACK_DAYS
     );
-    const previousDates = getPreviousDates(dateStr, 1);
+    const previousDates = getPreviousDates(dateStr, lookbackDays);
     const previousDate = previousDates[0] || null;
     let previousMainTopicSignals = { matchedRuleIds: [], matchedTerms: [], primaryLane: null };
     let memory = await loadOpportunityReplayMemoryFromKv(env, dateStr, lookbackDays);
@@ -1009,7 +1056,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
             opportunityMarkdownContent,
             dateStr,
             {
-                title: opportunityPageTitle,
+                title: DEFAULT_OPPORTUNITY_SECTION_TITLE,
                 description: DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
                 sectionPrefix: '/opportunity',
             }
@@ -1077,6 +1124,12 @@ function buildBaseDebugInfo(dateStr, mode) {
         opportunityPublicPath: null,
         opportunityCandidateCount: 0,
         opportunityTopScore: 0,
+        opportunityQualitySkipped: false,
+        opportunityDryRun: false,
+        opportunityWouldPublish: false,
+        opportunityRejectedCandidateCount: 0,
+        opportunityAivoraLinksKept: 0,
+        opportunityAivoraLinksRemoved: 0,
         accountOpportunityGenerated: false,
         accountOpportunityPublished: false,
         accountOpportunityValidationPassed: false,
@@ -1556,6 +1609,11 @@ function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPer
 
         return [
             `### ${candidate.label}`,
+            `- 证据强度: ${candidate.evidenceStrength}`,
+            `- 证据缺口: ${(candidate.evidenceGaps || []).join('；') || '暂无明显缺口'}`,
+            `- 机会实体: ${candidate.entityKey}`,
+            `- 商业模式: ${candidate.businessModel}`,
+            `- 交付类型: ${candidate.deliveryType}`,
             `- 优先卖法: ${candidate.preferredLaneName}`,
             `- 商品化角度: ${candidate.productAngle || '先写今天能卖的商品，再补技术解释'}`,
             `- 更适合成交给: ${candidate.buyerHint || '优先写成中文新手也能买懂的商品'}`,
@@ -1569,28 +1627,80 @@ function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPer
     }).join('\n\n');
 }
 
+function buildRejectedOpportunityDigest(candidates, maxCandidates = 3) {
+    const visibleCandidates = (candidates || []).slice(0, maxCandidates);
+    if (visibleCandidates.length === 0) {
+        return '今天没有额外需要点名的弱证据方向。';
+    }
+
+    return visibleCandidates.map((candidate) => {
+        const source = candidate.supportingItems?.[0];
+        const sourceTitle = source?.title || source?.source || candidate.label;
+        const linkedSource = source?.url ? `[${sourceTitle}](${source.url})` : sourceTitle;
+        return [
+            `- ${linkedSource}`,
+            `  - 拒绝原因: ${(candidate.rejectionReasons || []).join('；') || '未达到发布门槛'}`,
+        ].join('\n');
+    }).join('\n');
+}
+
+function collectOpportunityValidationRecords(candidates = []) {
+    const records = [];
+    const seen = new Set();
+
+    for (const candidate of candidates || []) {
+        for (const item of candidate.supportingItems || []) {
+            if (!item?.url || seen.has(item.url)) continue;
+            seen.add(item.url);
+            records.push({
+                url: item.url,
+                tier: item.evidence?.tier || 'unknown',
+                isPrimary: Boolean(item.evidence?.isPrimary),
+                reason: item.evidence?.reason || '',
+            });
+        }
+    }
+
+    return records;
+}
+
+function buildOpportunityValidationContext(
+    qualifiedCandidates = [],
+    rejectedCandidates = []
+) {
+    const qualifiedRecords = collectOpportunityValidationRecords(qualifiedCandidates);
+    const rejectedRecords = collectOpportunityValidationRecords(rejectedCandidates);
+    const sourceEvidence = collectOpportunityValidationRecords([
+        ...qualifiedCandidates,
+        ...rejectedCandidates,
+    ]);
+
+    return {
+        allowedSourceUrls: qualifiedRecords.map((record) => record.url),
+        allowedRejectedSourceUrls: rejectedRecords.map((record) => record.url),
+        sourceEvidence,
+    };
+}
+
 function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validationIssues) {
     return [
-        "你上一次输出不合格，请立即按要求重写，不要解释原因，不要道歉，不要拒答。",
+        "你上一次 AI 商机草稿没有通过发布校验。请只基于原始候选重写，不要补新事实。",
         "上一次输出存在这些问题：",
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
         "请严格遵守以下规则：",
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
-        "- 必须包含完整结构：# 今日AI商机 / ## 先说结论 / ## 今日主推 / ## 本周可试 / ## 今天别碰 / ## 地图感 / ## 今日动作",
-        "- 今日主推、本周可试、今天别碰、地图感下面的 `###` 标题必须写成 `[标题](原始来源URL)`，不要写成纯文本标题",
-        "- 如果一个判断来自多个信息源，标题只挂最关键的主来源；正文里补一行 `参考来源： [来源1](URL) / [来源2](URL)`",
-        "- 来源 URL 必须来自下面原始候选素材里的新闻 / 项目 / 社交信号，不要链接到 news.aivora.cn 站内页面",
-        "- 今日主推必须先用 2-3 句短段落讲场景、痛点和结果，再包含：适合谁、这钱从哪来、最简单卖法、今天先做哪一步、今天就能发的文案、配图建议",
-        "- 本周可试必须先用 1-2 句短段落讲为什么值得盯，再包含：适合谁、先怎么试、为什么先别冲太猛、配图建议",
-        "- 整篇要像日报在讲赚钱机会，不要像系统填表，也不要写成长篇分析",
-        "- 如果证据偏弱，可以写成先试、先观察、先小范围验证，但不能拒答",
+        "- 必须包含：# 今日 AI 商机 / ## 直接结论 / ## 今日主推 / ## 本周小试 / ## 今天别碰 / ## 今日三步",
+        "- `###` 标题必须是纯文本；来源只放在 `证据来源` 字段中",
+        "- 每个机会的证据来源至少包含 1 个 Markdown 链接，且 URL 必须来自下面原始候选",
+        "- 今日主推必须包含：可验证信号、证据来源、可信度、目标鱼塘与笨办法、最小交付、48小时验证、第一单、复购或资产、证据缺口、售后与合规风险、停止条件",
+        "- 本周小试每个候选包含：证据来源、目标鱼塘、最小交付、48小时验证、为什么只是小试、停止条件",
+        "- 48 小时验证必须看到访谈、样品、真实报价或意向金等行为，不能只写发帖、挂闲鱼或录屏",
+        "- 只有一个合格候选时，本周小试明确写不凑数，不得编第二个",
+        "- 不要生成 aivora.cn 或 news.aivora.cn 链接",
         "- 不要出现便宜 token、风险自负、多用户商业化",
-        "- 标题先写结果、场景或交付动作，不要把 GitHub stars、安装量、SDK 名词堆进标题",
-        "- “这钱从哪来”先写买家今天为什么会心动，再补当天新变化，控制在 1-2 句",
-        "- 少写技术圈热闹，多写买家今天为什么会心动、今天先做什么",
-        "- 今日主推和本周可试不要写成同一种卖法模式，至少换一个角度",
-        "- 至少保留一个带点脑洞但今晚就能试卖的方向，不要所有机会都像同一张报价单",
+        "- 不得虚构销量、利润率、价格、政策、授权、用户反馈或确定性赚钱结果",
+        "- 今日主推与本周小试不能重复同一实体或同一商业模式与交付组合",
         "",
         "下面是原始候选素材：",
         basePromptInput,
@@ -1643,65 +1753,125 @@ async function generateOpportunityMarkdown(
     const opportunityPaths = buildOpportunityPaths(dateStr);
     debugInfo.opportunityPublicPath = opportunityPaths.publicPath;
 
-    const opportunityCandidates = buildOpportunityCandidates(
+    const candidateAssessment = buildOpportunityCandidateAssessment(
         allUnifiedData,
         opportunityPlaybook,
         {
             previousMainTopicSignals: options.previousMainTopicSignals || null,
             recentReplayMemory: options.recentReplayMemory || null,
+            requireStrongEvidence: true,
+            enforceReplayDimensions: true,
+            entityAwareGrouping: true,
+            avoidGenericDuplicates: true,
+            minimumCandidateScore: 52,
         }
+    );
+    const opportunityCandidates = candidateAssessment.candidates.slice(
+        0,
+        opportunityPlaybook.outputRules.maxPromptCandidates || 4
+    );
+    const rejectedOpportunityCandidates = candidateAssessment.rejectedCandidates.slice(
+        0,
+        opportunityPlaybook.outputRules.maxDigestCandidates || 3
+    );
+    const validationContext = buildOpportunityValidationContext(
+        opportunityCandidates,
+        rejectedOpportunityCandidates
     );
     const playbookText = [
         serializeOpportunityPlaybook(opportunityPlaybook),
-        buildDailyCreativityBrief(opportunityPlaybook, dateStr, {
-            issueLabel: 'AI商机',
-            sectionLabels: ['今日主推', '本周可试'],
-        }),
     ].join('\n\n');
+
+    debugInfo.opportunityCandidateCount = opportunityCandidates.length;
+    debugInfo.opportunityCandidateAssessment = candidateAssessment.stats;
+    debugInfo.opportunityRejectedCandidateCount = candidateAssessment.rejectedCandidates.length;
+    debugInfo.opportunityTopScore = opportunityCandidates[0]?.score || 0;
+
+    if (opportunityCandidates.length === 0) {
+        debugInfo.opportunityQualitySkipped = true;
+        debugInfo.opportunityQualitySkipReason = 'no-qualified-opportunity-candidates';
+        return {
+            opportunityPaths,
+            opportunityMarkdownContent: '',
+            validation: {
+                ok: false,
+                issues: ['今天没有通过一手证据、商业可操作性与 7 天去重门槛的候选'],
+            },
+            candidateAssessment,
+            qualitySkipped: true,
+        };
+    }
+
     const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
         opportunityCandidates,
         opportunityPlaybook
     );
     const opportunitySourceDigest = buildOpportunitySourceDigest(
         opportunityCandidates,
-        opportunityPlaybook.outputRules.maxDigestCandidates || 3,
+        opportunityPlaybook.outputRules.maxDigestCandidates || 4,
         opportunityPlaybook.outputRules.maxEvidenceItemsPerCandidate || 2
     );
-
-    debugInfo.opportunityCandidateCount = opportunityCandidates.length;
-    debugInfo.opportunityTopScore = opportunityCandidates[0]?.score || 0;
 
     console.log(`[Scheduled][Opportunity] Generating content...`);
     const replayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const opportunityPromptInput = [
-        `## 候选主题\n\n${opportunityCandidatesText}`,
+        `## 已通过发布门槛的候选\n\n${opportunityCandidatesText}`,
         replayMemoryPrompt ? `## 近7天商机记忆\n\n${replayMemoryPrompt}` : '',
-        `## 今日摘要\n\n${opportunitySourceDigest}`,
+        `## 候选证据摘要\n\n${opportunitySourceDigest}`,
+        `## 弱证据或重复候选（只能用于“今天别碰”）\n\n${buildRejectedOpportunityDigest(rejectedOpportunityCandidates)}`,
     ].filter(Boolean).join('\n\n');
 
     const opportunitySystemPrompt = getSystemPromptAiOpportunity(dateStr, playbookText);
-    let opportunityMarkdownContent = await generateContentWithTransportFallback(
+    let aivoraLinkPolicy = { allowedUrls: [] };
+    const normalizeAndValidate = async (rawMarkdown) => {
+        let markdown = removeMarkdownCodeBlock(rawMarkdown);
+        markdown = convertPlaceholdersToMarkdownImages(markdown);
+        markdown = replaceIncorrectDomainLinks(
+            markdown,
+            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+        );
+
+        if (containsAivoraLink(markdown)) {
+            aivoraLinkPolicy = await loadAivoraOpportunityLinkPolicy(env, dateStr);
+        }
+        const sanitizedLinks = sanitizeOpportunityAivoraLinks(
+            markdown,
+            aivoraLinkPolicy,
+            { maxLinks: 1 }
+        );
+        debugInfo.opportunityAivoraLinksKept = sanitizedLinks.keptCount;
+        debugInfo.opportunityAivoraLinksRemoved =
+            (debugInfo.opportunityAivoraLinksRemoved || 0) + sanitizedLinks.removedCount;
+        markdown = appendOpportunityReplayMetadata(
+            sanitizedLinks.markdown,
+            opportunityCandidates
+        );
+
+        const validation = validateOpportunityPublication({
+            markdown,
+            bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
+            ...validationContext,
+            aivoraLinkPolicy,
+            minimumOpportunityCount: 1,
+            maximumOpportunityCount: opportunityPlaybook.outputRules.maxPublishedOpportunities || 4,
+        });
+        return { markdown, validation };
+    };
+
+    const firstDraft = await generateContentWithTransportFallback(
         env,
         opportunityPromptInput,
         opportunitySystemPrompt
     );
-    opportunityMarkdownContent = removeMarkdownCodeBlock(opportunityMarkdownContent);
-    opportunityMarkdownContent = convertPlaceholdersToMarkdownImages(opportunityMarkdownContent);
-    opportunityMarkdownContent = replaceIncorrectDomainLinks(
-        opportunityMarkdownContent,
-        env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
-    );
-
-    let validation = validateOpportunityPublication({
-        markdown: opportunityMarkdownContent,
-        bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
-    });
+    let normalizedDraft = await normalizeAndValidate(firstDraft);
+    let opportunityMarkdownContent = normalizedDraft.markdown;
+    let validation = normalizedDraft.validation;
 
     if (!validation.ok) {
         console.warn(
             `[Scheduled][Opportunity] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
         );
-        let repairedMarkdownContent = await generateContentWithTransportFallback(
+        const repairedDraft = await generateContentWithTransportFallback(
             env,
             buildOpportunityRepairPrompt(
                 opportunityPromptInput,
@@ -1710,28 +1880,10 @@ async function generateOpportunityMarkdown(
             ),
             opportunitySystemPrompt
         );
-        repairedMarkdownContent = removeMarkdownCodeBlock(repairedMarkdownContent);
-        repairedMarkdownContent = convertPlaceholdersToMarkdownImages(repairedMarkdownContent);
-        repairedMarkdownContent = replaceIncorrectDomainLinks(
-            repairedMarkdownContent,
-            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
-        );
-
-        const repairedValidation = validateOpportunityPublication({
-            markdown: repairedMarkdownContent,
-            bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
-        });
-
-        if (repairedValidation.ok) {
-            opportunityMarkdownContent = repairedMarkdownContent;
-            validation = repairedValidation;
-        } else {
-            validation = repairedValidation;
-            opportunityMarkdownContent = repairedMarkdownContent;
-        }
+        normalizedDraft = await normalizeAndValidate(repairedDraft);
+        opportunityMarkdownContent = normalizedDraft.markdown;
+        validation = normalizedDraft.validation;
     }
-
-    opportunityMarkdownContent = `## ⚡ 快速导航\n\n- [🎯 今日主推](#今日主推) - 今天最值得先试的机会\n- [🧪 本周可试](#本周可试) - 适合先低成本测试的方向\n- [🚫 今天别碰](#今天别碰) - 看着热，但不建议小白跟进\n- [🗺️ 地图感](#地图感) - 知道就行的背景概念\n- [✅ 今日动作](#今日动作) - 今天先发什么、先卖什么\n\n${opportunityMarkdownContent}`;
 
     debugInfo.opportunityGenerated = true;
 
@@ -1739,6 +1891,10 @@ async function generateOpportunityMarkdown(
         opportunityPaths,
         opportunityMarkdownContent,
         validation,
+        candidateAssessment,
+        qualitySkipped: false,
+        validationContext,
+        aivoraLinkPolicy,
     };
 }
 
@@ -1949,7 +2105,7 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
         opportunityMarkdownContent,
         dateStr,
         {
-            title: opportunityPageTitle,
+            title: DEFAULT_OPPORTUNITY_SECTION_TITLE,
             description: DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
             sectionPrefix: '/opportunity',
         }
@@ -2301,7 +2457,23 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
-    console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+    const dryRun = Boolean(options.dryRun);
+    debugInfo.opportunityDryRun = dryRun;
+    console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
+
+    if (!dryRun && !options.ignoreQualitySkipMarker) {
+        const existingQualitySkip = await loadOpportunityQualitySkip(env, dateStr);
+        if (existingQualitySkip) {
+            debugInfo.skipped = true;
+            debugInfo.skipReason = 'opportunity-quality-skip-already-recorded';
+            debugInfo.opportunityQualitySkipped = true;
+            debugInfo.opportunityQualitySkipMarker = existingQualitySkip;
+            await reportScheduledProgress(options, 'opportunity', 'quality-skipped', 100, {
+                reason: debugInfo.skipReason,
+            });
+            return debugInfo;
+        }
+    }
 
     await reportScheduledProgress(options, 'opportunity', 'loading-sources', 10);
     const {
@@ -2309,13 +2481,20 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
         previousOpportunityReplaySignals,
         recentOpportunityReplayMemory,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: Boolean(specifiedDate),
+        preferCachedData: true,
         loadOpportunityReplay: true,
+        skipSourceCacheWrite: dryRun,
     });
     await reportScheduledProgress(options, 'opportunity', 'generating', 42, {
         sourceItems: debugInfo.totalSourceItemCount,
     });
-    const { opportunityPaths, opportunityMarkdownContent } = await generateOpportunityMarkdown(
+    const {
+        opportunityPaths,
+        opportunityMarkdownContent,
+        validation: generatedValidation,
+        candidateAssessment,
+        qualitySkipped,
+    } = await generateOpportunityMarkdown(
         env,
         dateStr,
         allUnifiedData,
@@ -2326,11 +2505,26 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
         }
     );
 
+    if (qualitySkipped) {
+        debugInfo.skipped = true;
+        debugInfo.skipReason = 'no-qualified-opportunity-candidates';
+        debugInfo.opportunityQualitySkipped = true;
+        debugInfo.opportunityValidationIssues = generatedValidation.issues;
+        if (!dryRun) {
+            await storeOpportunityQualitySkip(env, dateStr, {
+                candidateAssessment: candidateAssessment?.stats || null,
+            });
+        }
+        await reportScheduledProgress(options, 'opportunity', 'quality-skipped', 100, {
+            reason: debugInfo.skipReason,
+            rejectedCandidates: candidateAssessment?.stats?.rejected || 0,
+        });
+        console.warn(`[Scheduled][Opportunity] No qualified candidates; skipping AI generation and publish.`);
+        return debugInfo;
+    }
+
     await reportScheduledProgress(options, 'opportunity', 'validating', 78);
-    const validation = validateOpportunityPublication({
-        markdown: opportunityMarkdownContent,
-        bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
-    });
+    const validation = generatedValidation;
     debugInfo.opportunityValidationPassed = validation.ok;
     debugInfo.opportunityValidationIssues = validation.issues;
     if (!validation.ok) {
@@ -2338,6 +2532,15 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
             issueCount: validation.issues.length,
         });
         console.warn(`[Scheduled][Opportunity] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
+        return debugInfo;
+    }
+
+    if (dryRun) {
+        debugInfo.opportunityWouldPublish = true;
+        debugInfo.opportunityPublished = false;
+        debugInfo.opportunityDryRunMarkdown = opportunityMarkdownContent;
+        await reportScheduledProgress(options, 'opportunity', 'dry-run-complete', 100);
+        console.log(`[Scheduled][Opportunity] Dry-run completed successfully for ${dateStr}; skipping GitHub publish.`);
         return debugInfo;
     }
 

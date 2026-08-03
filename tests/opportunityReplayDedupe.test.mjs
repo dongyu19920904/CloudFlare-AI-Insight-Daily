@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { opportunityPlaybook } from "../src/opportunityPlaybook.js";
 import {
+  appendOpportunityReplayMetadata,
   extractOpportunityReplayMemoryFromMarkdown,
   mergeOpportunityReplayMemories,
   normalizeOpportunitySourceUrl,
@@ -81,4 +82,39 @@ test("pruneOpportunityReplayMemory keeps only records inside the lookback window
 
   assert.deepEqual(pruned.sourceUrls.map((record) => record.key), ["example.com/fresh"]);
   assert.deepEqual(pruned.githubProjects.map((record) => record.key), ["github.com/acme/fresh"]);
+});
+
+test("hidden replay metadata persists entity, business model, delivery type, and signature", () => {
+  const markdown = appendOpportunityReplayMetadata(
+    `# 今日 AI 商机
+
+## 今日主推
+### 给内容团队交付可验收的视频样片
+- **证据来源：** [官方仓库：证明工作流可运行](https://github.com/HBAI-Ltd/Toonflow-app)
+`,
+    [
+      {
+        entityKey: "github:hbai-ltd/toonflow-app",
+        businessModel: "result-delivery",
+        deliveryType: "automation-workflow",
+        commercialSignature: "result-delivery:automation-workflow",
+        supportingItems: [
+          { url: "https://github.com/HBAI-Ltd/Toonflow-app" },
+        ],
+      },
+    ]
+  );
+  const memory = extractOpportunityReplayMemoryFromMarkdown(markdown, {
+    date: "2026-08-03",
+    section: "opportunity",
+    playbook: opportunityPlaybook,
+  });
+
+  assert.equal(memory.entities[0].entity, "github:hbai-ltd/toonflow-app");
+  assert.equal(memory.businessModels[0].businessModel, "result-delivery");
+  assert.equal(memory.deliveryTypes[0].deliveryType, "automation-workflow");
+  assert.equal(
+    memory.commercialSignatures[0].commercialSignature,
+    "result-delivery:automation-workflow"
+  );
 });

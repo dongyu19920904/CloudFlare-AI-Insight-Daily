@@ -55,6 +55,10 @@ export function createEmptyOpportunityReplayMemory() {
     terms: [],
     lanes: [],
     titles: [],
+    entities: [],
+    businessModels: [],
+    deliveryTypes: [],
+    commercialSignatures: [],
   };
 }
 
@@ -101,6 +105,10 @@ export function mergeOpportunityReplayMemories(...memories) {
     merged.terms.push(...(memory.terms || []));
     merged.lanes.push(...(memory.lanes || []));
     merged.titles.push(...(memory.titles || []));
+    merged.entities.push(...(memory.entities || []));
+    merged.businessModels.push(...(memory.businessModels || []));
+    merged.deliveryTypes.push(...(memory.deliveryTypes || []));
+    merged.commercialSignatures.push(...(memory.commercialSignatures || []));
   }
 
   return {
@@ -110,6 +118,10 @@ export function mergeOpportunityReplayMemories(...memories) {
     terms: dedupeRecords(merged.terms, "key"),
     lanes: dedupeRecords(merged.lanes, "key"),
     titles: dedupeRecords(merged.titles, "key"),
+    entities: dedupeRecords(merged.entities, "key"),
+    businessModels: dedupeRecords(merged.businessModels, "key"),
+    deliveryTypes: dedupeRecords(merged.deliveryTypes, "key"),
+    commercialSignatures: dedupeRecords(merged.commercialSignatures, "key"),
   };
 }
 
@@ -125,6 +137,14 @@ export function pruneOpportunityReplayMemory(
     terms: pruneRecordsByDate(memory?.terms, currentDate, lookbackDays),
     lanes: pruneRecordsByDate(memory?.lanes, currentDate, lookbackDays),
     titles: pruneRecordsByDate(memory?.titles, currentDate, lookbackDays),
+    entities: pruneRecordsByDate(memory?.entities, currentDate, lookbackDays),
+    businessModels: pruneRecordsByDate(memory?.businessModels, currentDate, lookbackDays),
+    deliveryTypes: pruneRecordsByDate(memory?.deliveryTypes, currentDate, lookbackDays),
+    commercialSignatures: pruneRecordsByDate(
+      memory?.commercialSignatures,
+      currentDate,
+      lookbackDays
+    ),
   });
 }
 
@@ -171,6 +191,31 @@ export function extractOpportunityReplayMemoryFromMarkdown(
   }
 
   const normalized = content.toLowerCase();
+
+  for (const match of content.matchAll(/<!--\s*opportunity-replay:\s*(\{[^\n]*\})\s*-->/g)) {
+    try {
+      const metadata = JSON.parse(match[1]);
+      const entity = String(metadata.entity || "").trim().toLowerCase();
+      const businessModel = String(metadata.businessModel || "").trim().toLowerCase();
+      const deliveryType = String(metadata.deliveryType || "").trim().toLowerCase();
+      const commercialSignature = String(
+        metadata.commercialSignature ||
+          (businessModel && deliveryType ? `${businessModel}:${deliveryType}` : "")
+      )
+        .trim()
+        .toLowerCase();
+
+      addRecord(memory.entities, entity, { entity });
+      addRecord(memory.businessModels, businessModel, { businessModel });
+      addRecord(memory.deliveryTypes, deliveryType, { deliveryType });
+      addRecord(memory.commercialSignatures, commercialSignature, {
+        commercialSignature,
+      });
+    } catch {
+      // Invalid hidden metadata is ignored; visible source URL replay still applies.
+    }
+  }
+
   const matchedRules = (playbook?.topicRules || [])
     .map((rule) => {
       const matchedTerms = (rule.match || []).filter((term) =>
@@ -210,6 +255,10 @@ export function getOpportunityReplayMemoryStats(memory) {
     ruleIdCount: memory?.ruleIds?.length || 0,
     laneCount: memory?.lanes?.length || 0,
     titleCount: memory?.titles?.length || 0,
+    entityCount: memory?.entities?.length || 0,
+    businessModelCount: memory?.businessModels?.length || 0,
+    deliveryTypeCount: memory?.deliveryTypes?.length || 0,
+    commercialSignatureCount: memory?.commercialSignatures?.length || 0,
   };
 }
 
@@ -218,12 +267,16 @@ export function formatOpportunityReplayMemoryForPrompt(memory, limit = 10) {
   const githubProjects = (memory?.githubProjects || []).slice(0, limit);
   const ruleIds = (memory?.ruleIds || []).slice(0, 8);
   const lanes = (memory?.lanes || []).slice(0, 6);
+  const entities = (memory?.entities || []).slice(0, 12);
+  const commercialSignatures = (memory?.commercialSignatures || []).slice(0, 12);
 
   if (
     sourceUrls.length === 0 &&
     githubProjects.length === 0 &&
     ruleIds.length === 0 &&
-    lanes.length === 0
+    lanes.length === 0 &&
+    entities.length === 0 &&
+    commercialSignatures.length === 0
   ) {
     return "";
   }
@@ -240,6 +293,12 @@ export function formatOpportunityReplayMemoryForPrompt(memory, limit = 10) {
   const laneLines = lanes.map((item) =>
     `- ${item.label || item.id || item.key} (${item.date}, ${item.section})`
   );
+  const entityLines = entities.map((item) =>
+    `- ${item.entity || item.key} (${item.date}, ${item.section})`
+  );
+  const commercialLines = commercialSignatures.map((item) =>
+    `- ${item.commercialSignature || item.key} (${item.date}, ${item.section})`
+  );
 
   return [
     "以下是过去 7 天已经用过的 AI 商机信号。本次不要复用同一来源链接或同一 GitHub 项目；同一商机类型如果刚出现过，必须换成新的证据、新项目和新卖法。",
@@ -247,5 +306,42 @@ export function formatOpportunityReplayMemoryForPrompt(memory, limit = 10) {
     projectLines.length ? `\n已用 GitHub 项目：\n${projectLines.join("\n")}` : "",
     ruleLines.length ? `\n近期商机规则：\n${ruleLines.join("\n")}` : "",
     laneLines.length ? `\n近期卖法类型：\n${laneLines.join("\n")}` : "",
+    entityLines.length ? `\n近期项目或产品实体：\n${entityLines.join("\n")}` : "",
+    commercialLines.length
+      ? `\n近期商业模式与交付组合：\n${commercialLines.join("\n")}`
+      : "",
   ].filter(Boolean).join("\n");
+}
+
+export function appendOpportunityReplayMetadata(markdown, candidates = []) {
+  const content = String(markdown || "").trimEnd();
+  if (!content) return content;
+
+  const usedSourceKeys = new Set(
+    [...content.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)]
+      .map((match) => normalizeOpportunitySourceUrl(match[1]))
+      .filter(Boolean)
+  );
+  const metadata = [];
+  const seen = new Set();
+
+  for (const candidate of candidates || []) {
+    const isUsed = (candidate.supportingItems || []).some((item) =>
+      usedSourceKeys.has(normalizeOpportunitySourceUrl(item.url))
+    );
+    if (!isUsed) continue;
+
+    const payload = {
+      entity: candidate.entityKey || "",
+      businessModel: candidate.businessModel || "",
+      deliveryType: candidate.deliveryType || "",
+      commercialSignature: candidate.commercialSignature || "",
+    };
+    const key = JSON.stringify(payload);
+    if (!payload.entity || seen.has(key)) continue;
+    seen.add(key);
+    metadata.push(`<!-- opportunity-replay: ${key} -->`);
+  }
+
+  return metadata.length > 0 ? `${content}\n\n${metadata.join("\n")}\n` : `${content}\n`;
 }

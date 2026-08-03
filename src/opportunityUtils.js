@@ -8,9 +8,11 @@ const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const LATEST_OPPORTUNITY_SHORTCODE = "{{< latest-opportunity >}}";
 
 export const DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION =
-  "与 AI日报共享同源信息，再额外筛选 AI 工具、AI账号和低门槛实操机会。";
+  "从当天可核验的一手 AI 信号中筛选低成本机会，给出目标用户、最小交付、48 小时验证、风险与停止条件。";
 
-export const DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION}10点左右更新。`;
+export const DEFAULT_OPPORTUNITY_SECTION_TITLE = "爱窝啦 AI 商机";
+
+export const DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION} 每天只保留达到证据门槛的机会。`;
 
 export function buildOpportunityPaths(dateStr) {
   const yearMonth = getYearMonth(dateStr);
@@ -64,7 +66,7 @@ function removeFrontMatterLine(frontMatter, field) {
 
 function buildSectionHomeFrontMatter(dateStr, options = {}) {
   const {
-    title = "AI商机",
+    title = DEFAULT_OPPORTUNITY_SECTION_TITLE,
     description = DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
     sectionPrefix = "/opportunity",
   } = options;
@@ -87,7 +89,7 @@ export function updateSectionHomeIndexContent(
   options = {}
 ) {
   const {
-    title = "AI商机",
+    title = DEFAULT_OPPORTUNITY_SECTION_TITLE,
     description = DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
     sectionPrefix = "/opportunity",
   } = options;
@@ -99,6 +101,7 @@ export function updateSectionHomeIndexContent(
   if (existingContent && FRONT_MATTER_REGEX.test(existingContent)) {
     frontMatter = existingContent.match(FRONT_MATTER_REGEX)[0];
     frontMatter = removeFrontMatterLine(frontMatter, "next");
+    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "title", title);
     frontMatter = replaceOrInsertFrontMatterLine(
       frontMatter,
       "description",

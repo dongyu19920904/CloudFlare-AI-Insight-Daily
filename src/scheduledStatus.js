@@ -49,6 +49,10 @@ function inferSingleTaskOutcome(taskMode, debugInfo) {
         return { task: taskMode, outcome: 'dry-run', published: false };
     }
 
+    if (debugInfo.opportunityDryRun && debugInfo.opportunityWouldPublish) {
+        return { task: taskMode, outcome: 'dry-run', published: false };
+    }
+
     const normalizedMode = String(taskMode || debugInfo.mode || '');
     const fields = normalizedMode.includes('account-opportunity')
         ? {

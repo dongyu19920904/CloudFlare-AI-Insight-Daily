@@ -10,6 +10,8 @@ const COMMON_FAILURE_PATTERNS = [
 
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
+import { validateOpportunityAivoraLinks } from "./opportunityAivoraLinkPolicy.js";
+import { classifyOpportunityEvidence } from "./opportunityEvidence.js";
 
 const DAILY_META_PATTERNS = [
   /AI思考:?/i,
@@ -696,48 +698,178 @@ export function validateDailyPublication({
   };
 }
 
+function extractLevel3Blocks(section) {
+  const content = String(section || "");
+  const matches = [...content.matchAll(/^###\s+.+$/gm)];
+  return matches.map((match, index) => {
+    const start = match.index;
+    const end = matches[index + 1]?.index ?? content.length;
+    return content.slice(start, end).trim();
+  });
+}
+
+function hasOpportunityEvidenceLink(block) {
+  return /^-\s*\*{0,2}证据来源(?:[:：]\*{0,2}|\*{0,2}[:：]).*\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(
+    String(block || "")
+  );
+}
+
+function buildEvidenceByUrl(sourceEvidence = []) {
+  const evidenceByUrl = new Map();
+  for (const record of sourceEvidence || []) {
+    const url = canonicalizeUrl(record?.url);
+    if (!url) continue;
+    evidenceByUrl.set(url, record);
+  }
+  return evidenceByUrl;
+}
+
+function collectOpportunitySourcePolicyIssues(
+  markdown,
+  {
+    allowedSourceUrls = null,
+    allowedRejectedSourceUrls = null,
+    sourceEvidence = [],
+  } = {}
+) {
+  const issues = [];
+  const allowedQualified = Array.isArray(allowedSourceUrls)
+    ? new Set(allowedSourceUrls.map(canonicalizeUrl).filter(Boolean))
+    : null;
+  const allowedRejected = Array.isArray(allowedRejectedSourceUrls)
+    ? new Set(allowedRejectedSourceUrls.map(canonicalizeUrl).filter(Boolean))
+    : allowedQualified;
+  const evidenceByUrl = buildEvidenceByUrl(sourceEvidence);
+  const directSection = extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im);
+  const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
+  const smallSection = extractSection(markdown, /^##\s+本周小试(?:\s|$).*$/im);
+  const avoidSection = extractSection(markdown, /^##\s+今天别碰(?:\s|$).*$/im);
+  const actionSection = extractSection(markdown, /^##\s+今日三步(?:\s|$).*$/im);
+  const opportunityBlocks = [
+    ...extractLevel3Blocks(mainSection),
+    ...extractLevel3Blocks(smallSection),
+  ];
+
+  for (const block of opportunityBlocks) {
+    if (/^###\s+\[[^\]]+\]\(https?:\/\//m.test(block)) {
+      issues.push("AI 商机机会标题必须是纯文本，原始链接应放在证据来源字段");
+    }
+
+    if (!hasOpportunityEvidenceLink(block)) {
+      issues.push("AI 商机每个机会都必须在证据来源字段提供原始链接");
+    }
+
+    const blockLinks = extractSectionLinks(block).filter((link) => !isNoiseSectionLink(link));
+    const containsCriticalFact =
+      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|封号|下线|退役|正式上线|政策|授权|许可(?:证)?|license)/i.test(
+        block
+      );
+    if (
+      containsCriticalFact &&
+      !blockLinks.some((link) => {
+        const evidence =
+          evidenceByUrl.get(link.url) ||
+          classifyOpportunityEvidence({ url: link.url }, "");
+        return evidence.isPrimary === true;
+      })
+    ) {
+      issues.push("AI 商机涉及价格、状态、政策或许可事实时必须引用官方或原项目来源");
+    }
+  }
+
+  if (allowedQualified) {
+    const qualifiedSections = [directSection, mainSection, smallSection, actionSection].join("\n");
+    for (const link of extractSectionLinks(qualifiedSections)) {
+      if (isNoiseSectionLink(link)) continue;
+      if (!allowedQualified.has(link.url)) {
+        issues.push(`AI 商机主推或行动区包含合格候选之外的来源链接: ${link.url}`);
+      }
+    }
+  }
+
+  if (allowedRejected) {
+    for (const link of extractSectionLinks(avoidSection)) {
+      if (isNoiseSectionLink(link)) continue;
+      if (!allowedRejected.has(link.url)) {
+        issues.push(`AI 商机“今天别碰”包含被拒候选之外的来源链接: ${link.url}`);
+      }
+    }
+  }
+
+  return {
+    issues,
+    opportunityCount: opportunityBlocks.length,
+  };
+}
+
 export function validateOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
+  allowedSourceUrls = null,
+  allowedRejectedSourceUrls = null,
+  sourceEvidence = [],
+  aivoraLinkPolicy = { allowedUrls: [] },
+  minimumOpportunityCount = 1,
+  maximumOpportunityCount = 4,
 }) {
   const issues = collectMarkdownIssues(markdown, {
     label: "商机页面",
     minChars: 260,
     requiredPhrases: [
-      "# 今日AI商机",
-      "## 先说结论",
+      "# 今日 AI 商机",
+      "## 直接结论",
       "## 今日主推",
-      "## 本周可试",
+      "## 本周小试",
       "## 今天别碰",
-      "## 地图感",
-      "## 今日动作",
-      "这钱从哪来",
-      "最简单卖法",
-      "今天先做哪一步",
-      "今天就能发的文案",
-      "配图建议",
-      "先怎么试",
-      "为什么先别冲太猛",
+      "## 今日三步",
+      "可验证信号",
+      "证据来源",
+      "可信度",
+      "目标鱼塘与笨办法",
+      "最小交付",
+      "48小时验证",
+      "第一单",
+      "复购或资产",
+      "证据缺口",
+      "售后与合规风险",
+      "停止条件",
+      "今天确认",
+      "今天制作",
+      "今天询价",
     ],
     forbiddenPhrases: bannedPublicPhrases,
+    forbiddenPatterns: [
+      /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
+      /先编商机|素材不够.*硬凑/i,
+    ],
   });
 
-  issues.push(
-    ...collectMissingLinkedHeadingIssues(
-      markdown,
-      [
-        { name: "今日主推", pattern: /^##\s+今日主推(?:\s|$).*$/im },
-        { name: "本周可试", pattern: /^##\s+本周可试(?:\s|$).*$/im },
-        { name: "今天别碰", pattern: /^##\s+今天别碰(?:\s|$).*$/im },
-        { name: "地图感", pattern: /^##\s+地图感(?:\s|$).*$/im },
-      ],
-      "商机页面"
-    )
+  const sourcePolicy = collectOpportunitySourcePolicyIssues(markdown, {
+    allowedSourceUrls,
+    allowedRejectedSourceUrls,
+    sourceEvidence,
+  });
+  issues.push(...sourcePolicy.issues);
+
+  if (sourcePolicy.opportunityCount < minimumOpportunityCount) {
+    issues.push(`AI 商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的机会`);
+  }
+  if (sourcePolicy.opportunityCount > maximumOpportunityCount) {
+    issues.push(`AI 商机最多只能发布 ${maximumOpportunityCount} 个机会`);
+  }
+
+  const aivoraValidation = validateOpportunityAivoraLinks(
+    markdown,
+    aivoraLinkPolicy,
+    { maxLinks: 1 }
   );
+  issues.push(...aivoraValidation.issues);
 
   return {
     ok: issues.length === 0,
     issues,
+    opportunityCount: sourcePolicy.opportunityCount,
+    aivoraLinkCount: aivoraValidation.linkCount,
   };
 }
 

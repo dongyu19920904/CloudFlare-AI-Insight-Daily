@@ -1,55 +1,58 @@
 export const opportunityPlaybook = {
   businessProfile: {
     coreBusiness: [
-      "AI账号",
-      "AI工具账号",
-      "资料包/模板/SOP",
-      "跑通包",
-      "轻服务/代配置",
-      "私域社群",
+      "小行业结果型服务",
+      "工具部署与迁移",
+      "数据整理与监测",
+      "内容产品与可复用资产",
+      "轻量自动化与垂直工作流",
+      "AI账号与开发工具入口（仅在证据和场景直接相关时）",
     ],
     targetUsers: [
       "中文新手",
       "低预算用户",
-      "AI账号买家",
-      "闲鱼小卖家",
-      "一人公司和内容副业新手",
+      "自由职业者和一人公司",
+      "内容创作者与小团队",
+      "小行业从业者和个体商家",
+      "程序员与独立开发者",
     ],
     tone: "务实、直接、偏成交，不写空话",
     editorialRule:
-      "先根据当天真实信息源判断机会，再决定最适合写成账号、模板包、跑通包、私域资料还是轻服务；先写买家愿意付钱的理由、你能交付什么、今天怎么低成本验证，再补当天的新变化。",
+      "只从当天可核验的一手信号出发，先判断谁正在用笨办法解决什么问题，再决定最小交付物；写清 48 小时验证、第一单、复购资产、证据缺口与停止条件，不为凑数强行制造商机。",
   },
 
   strategyKernel: {
     formula:
-      "选一个有钱且持续痛的人群 -> 用内容证明你懂他的问题 -> 用低价资料/模板/跑通包拿到第一单 -> 用私域和售后沉淀复购 -> 把一次性交付沉淀成 SOP、案例、产品和会员。",
+      "先找到持续付费的鱼塘和可验证痛点 -> 用最小结果型交付拿到真实反馈或意向金 -> 把交付过程沉淀成数据、流程、案例和分发 -> 只有能降低边际成本或带来复购时才称为杠杆。",
     buyerPonds: [
-      "AI账号购买者：怕折腾入口、怕不会用、怕售后没人管",
-      "闲鱼/微信小卖家：想上新品、改标题、降售后、提高成交",
-      "内容副业新手：想要选题、脚本、模板、工作流和可复制案例",
-      "小老板/个体商家：想用 AI 做客服、朋友圈、私域、商品文案",
-      "程序员/独立开发者：想把 GitHub 项目跑通、部署、改成小工具",
+      "小行业从业者：已有明确工作任务，却还在复制粘贴、手工整理或反复外包",
+      "内容创作者：需要稳定产出可验收结果，而不是再收藏一套提示词",
+      "小老板/个体商家：愿意为省时间、少出错和更快成交付费",
+      "程序员/独立开发者：愿意为部署、迁移、集成、数据和垂直场景验证付费",
+      "AI工具用户：只有在入口、订阅或账号与具体交付直接相关时才作为鱼塘",
     ],
     selectionChecklist: [
       "目标鱼塘是否明确：到底卖给谁，不要写成泛泛 AI 爱好者",
+      "证据是否过关：产品状态和关键事实至少有官方发布、原项目或可复现实证",
       "痛点是否高频：今天、这周就会遇到，不是一年一次的概念",
-      "交付物是否具体：账号、教程、模板、SOP、表格、录屏、跑通服务",
-      "低成本验证是否成立：今晚能发一条文案、挂一版标题或做一个截图",
-      "复购或升级是否存在：资料库、社群、会员、月费、陪跑、代配置",
-      "售后边界是否清楚：不要把不稳定、高解释成本的方向硬写成主推",
+      "交付物是否具体：必须能展示、验收和限定边界，不能只交一堆链接",
+      "低成本验证是否成立：48 小时内能拿到访谈、试用、询价或意向金之一",
+      "复购或资产是否真实：能否降低下次交付成本、形成分发或持续服务",
+      "停止条件是否清楚：什么结果出现时立刻不做，避免沉没成本",
     ],
     offerLadder: [
-      "免费/引流：避坑清单、工具清单、标题样例、上手截图",
-      "低价：资料包、模板库、教程包、账号搭售说明",
-      "中价：跑通包、配置包、训练营、陪跑小课",
-      "高价：代配置、自动化服务、私域系统、企业/团队方案",
-      "长期：资料库会员、社群答疑、月费维护、工具订阅",
+      "发现：公开拆解一个具体问题和可验证结果，吸引同类用户",
+      "验证：小范围访谈、样品或定金，不先做大而全产品",
+      "第一单：固定范围、固定验收标准的最小结果型交付",
+      "复购：更新、监测、维护、数据或持续结果，而不是强行拉群",
+      "资产：把重复步骤沉淀成流程、数据、组件、案例和分发渠道",
     ],
     badOpportunitySignals: [
       "只有热度，没有买家痛点",
       "只有教程标题，没有实际交付链接、步骤或可验证结果",
       "只有 GitHub stars，没有中文新手能拿到的结果",
-      "只会制造焦虑，但今天卖家不知道上什么货",
+      "只有社交转述或标题党，没有官方、原项目或可复现链接",
+      "只会制造焦虑，但读者不知道 48 小时内该验证什么",
       "售后风险高，还要求卖家承诺长期稳定",
     ],
   },
@@ -69,9 +72,9 @@ export const opportunityPlaybook = {
     },
     {
       id: "bundle",
-      name: "搭售类",
-      description: "更适合写成账号+教程、账号+环境配置、账号+模板包。",
-      sellFormats: ["账号+教程", "账号+环境配置", "账号+模板包"],
+      name: "可复用数字交付",
+      description: "只有能重复出售、降低交付成本或形成分发时，才写成模板、数据或内容产品。",
+      sellFormats: ["场景数据包", "可复用组件", "结果模板", "对比与决策包"],
       scoringProfile: {
         catalogFit: 27,
         standardDelivery: 18,
@@ -81,9 +84,9 @@ export const opportunityPlaybook = {
     },
     {
       id: "service",
-      name: "轻服务类",
-      description: "更适合写成代配置、代搭建、模板交付、1对1陪跑。",
-      sellFormats: ["代配置", "代搭建", "模板交付", "1对1陪跑"],
+      name: "结果型轻服务",
+      description: "按明确范围交付可验收结果，可包含部署、迁移、集成、内容、数据或自动化。",
+      sellFormats: ["结果交付", "部署迁移", "数据整理", "轻量自动化"],
       scoringProfile: {
         catalogFit: 24,
         standardDelivery: 20,
@@ -240,23 +243,23 @@ export const opportunityPlaybook = {
 
   outputRules: {
     maxPromptCandidates: 4,
-    maxPublishedOpportunities: 2,
+    maxPublishedOpportunities: 4,
     maxDigestCandidates: 3,
     maxEvidenceItemsPerCandidate: 2,
-    allowWeakDaySingleOpportunity: true,
+    allowWeakDaySingleOpportunity: false,
     requireAccountLikeOpportunityInTodayCanSell: false,
     requireDistinctCreativityModes: true,
     dailyCreativityModeCount: 3,
-    weakDayLanguage: ["先小范围试发", "先观察", "先低成本验证"],
-    requireSections: ["先说结论", "今日主推", "本周可试", "今天别碰", "地图感", "今日动作"],
-    offerTiers: ["低价引流款", "标准成交款", "搭售利润款"],
+    weakDayLanguage: ["证据不足就跳过", "今天不凑数", "先补原始来源"],
+    requireSections: ["直接结论", "今日主推", "本周小试", "今天别碰", "今日三步"],
+    offerTiers: ["48 小时验证", "固定范围第一单", "复购或资产化"],
     creativityModes: [
       {
         id: "translation",
         label: "信息差翻译型",
         summary: "把英文更新、GitHub 项目或海外玩法翻成中文新手能直接拿来用的小包。",
         monetizationHint: "卖的是省搜索、省踩坑、省翻译时间。",
-        starterMove: "先整理一个中文上手版或场景清单，今晚就能试发。",
+        starterMove: "先找 5 位目标用户确认他们是否真会为省搜索和翻译时间付费。",
         avoid: "不要只复述项目很火、很多 stars。",
       },
       {
@@ -264,7 +267,7 @@ export const opportunityPlaybook = {
         label: "半成品跑通型",
         summary: "把热门工具或工作流卖成“你不用自己折腾，我先帮你跑通”的交付。",
         monetizationHint: "卖的是结果，不是教程本身。",
-        starterMove: "先做一个最小跑通版截图或录屏，当天就能试卖。",
+        starterMove: "先复现一次完整流程并记录时间、成本和失败点，再找目标用户报价。",
         avoid: "不要写成空泛陪跑或大而全定制。",
       },
       {
@@ -272,7 +275,7 @@ export const opportunityPlaybook = {
         label: "对比试错型",
         summary: "不卖单一工具，卖“我替你先试过这几个，直接告诉你怎么选”的试错包。",
         monetizationHint: "卖的是少走弯路和更快决策。",
-        starterMove: "先做 2-3 个工具的中文对比清单或体验包。",
+        starterMove: "先替 3 位目标用户完成一次真实选择，验证他们是否认可这个判断。",
         avoid: "不要写成普通测评文章。",
       },
       {
@@ -280,7 +283,7 @@ export const opportunityPlaybook = {
         label: "小行业切片型",
         summary: "把同一个热点切成具体职业或小场景，让小白看到自己能马上用在哪里。",
         monetizationHint: "卖的是具体职业结果，而不是笼统 AI 概念。",
-        starterMove: "先挑一个最容易成交的人群做窄包，比如客服、销售、短视频剪辑。",
+        starterMove: "先访谈一个具体职业的 5 个人，只验证同一个高频任务。",
         avoid: "不要一次覆盖太多行业。",
       },
       {
@@ -288,7 +291,7 @@ export const opportunityPlaybook = {
         label: "救火迁移型",
         summary: "当某工具波动、涨价、限流时，卖“今天先别慌，我给你迁过去”的过渡方案。",
         monetizationHint: "卖的是止损、替代和连续可用。",
-        starterMove: "先做一个迁移清单、平替入口包或应急组合包。",
+        starterMove: "先用非关键数据完成一次迁移，记录停机时间、失败点和许可边界。",
         avoid: "不要把所有热点都硬写成救火。",
       },
       {
@@ -296,41 +299,41 @@ export const opportunityPlaybook = {
         label: "反常识组合型",
         summary: "把两个原本不会一起卖的东西组合成一单，重点卖“省试错的整套结果”。",
         monetizationHint: "卖的是组合后的新结果，不是单个工具本身。",
-        starterMove: "先做低价试水版组合包，验证有人问再加深。",
+        starterMove: "先做一个可验收样品，确认组合后的结果确实优于单个工具。",
         avoid: "不要写成花哨但无法交付的概念套餐。",
       },
     ],
     narrativeRequirement:
-      "今日主推和本周可试都先用 1-2 句短段落讲清场景、痛点和结果，再补必要 bullets，不要写成问答表单。",
+      "先用短段落给直接判断，再用少量字段讲清证据、鱼塘、最小交付、48 小时验证、第一单、复购资产、风险和停止条件；整篇控制长度，不写成交口号。",
     requiredOpportunityFields: [
-      "目标鱼塘",
-      "适合谁",
-      "这钱从哪来",
-      "可交付物",
-      "最简单卖法",
-      "最低成本验证",
-      "今天先做哪一步",
-      "今天就能发的文案",
-      "复购/升级路径",
-      "售后边界",
-      "配图建议",
+      "可验证信号",
+      "证据来源",
+      "可信度",
+      "目标鱼塘与笨办法",
+      "最小交付",
+      "48小时验证",
+      "第一单",
+      "复购或资产",
+      "证据缺口",
+      "售后与合规风险",
+      "停止条件",
     ],
     requiredWeeklyTryFields: [
-      "适合谁",
-      "先怎么试",
-      "最低成本验证",
-      "为什么先别冲太猛",
-      "配图建议",
+      "证据来源",
+      "目标鱼塘",
+      "最小交付",
+      "48小时验证",
+      "停止条件",
     ],
     requiredActionFields: [
-      "先发什么",
-      "先录什么",
-      "先卖哪一款",
+      "今天确认",
+      "今天制作",
+      "今天询价",
     ],
     titleRule:
-      "标题先写结果或场景，再写工具名；不要把项目名、stars、安装量直接写进标题。",
+      "标题直接写目标用户和可交付结果；不要把 stars、安装量或赚钱承诺写成标题。",
     whyNowRule:
-      "“这钱从哪来”先写买家今天为什么会心动，再补当天新变化，控制在 1-2 句。",
+      "开头先说今天出现了什么可验证信号，再说明为什么值得用 48 小时测试，而不是宣称一定能赚钱。",
     discouragedLeadSignals: ["GitHub stars", "安装量", "技术圈热议", "SDK 名词堆砌"],
     bannedClaims: [
       "不要假装知道闲鱼实时销量、成交量或全网主流售价。",
@@ -397,28 +400,28 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
     rules,
     "",
     "### 输出硬规则",
-    `- 今日可卖至少保留 1 条账号或账号搭售方向: ${
+    `- 是否强制保留账号方向: ${
       playbook.outputRules.requireAccountLikeOpportunityInTodayCanSell
         ? "是"
         : "否"
     }`,
-    `- 今日至少轮换 ${playbook.outputRules.dailyCreativityModeCount || 3} 种创意卖法候选，并保证主推与次推不是同一种模式: ${
+    `- 候选覆盖 ${playbook.outputRules.dailyCreativityModeCount || 3} 种商业验证角度，并保证主推与次推不是同一种模式: ${
       playbook.outputRules.requireDistinctCreativityModes ? "是" : "否"
     }`,
-    `- 参考卖法可自然带出: ${playbook.outputRules.offerTiers.join("、")}，但不要机械写成报价表`,
-    `- 弱证据时允许语气: ${playbook.outputRules.weakDayLanguage.join("、")}`,
+    `- 验证阶梯: ${playbook.outputRules.offerTiers.join("、")}，不要机械写成报价表`,
+    `- 弱证据处理: ${playbook.outputRules.weakDayLanguage.join("、")}`,
     `- 叙事要求: ${playbook.outputRules.narrativeRequirement}`,
     `- 每条机会必须包含: ${playbook.outputRules.requiredOpportunityFields.join(
       "、"
     )}`,
-    `- 本周可试必须包含: ${playbook.outputRules.requiredWeeklyTryFields.join(
+    `- 本周小试必须包含: ${playbook.outputRules.requiredWeeklyTryFields.join(
       "、"
     )}`,
-    `- 今日动作必须包含: ${playbook.outputRules.requiredActionFields.join(
+    `- 今日三步必须包含: ${playbook.outputRules.requiredActionFields.join(
       "、"
     )}`,
     `- 标题规则: ${playbook.outputRules.titleRule}`,
-    `- 今天能卖写法: ${playbook.outputRules.whyNowRule}`,
+    `- 今日信号写法: ${playbook.outputRules.whyNowRule}`,
     `- 不要把这些写成主卖点: ${playbook.outputRules.discouragedLeadSignals.join(
       "、"
     )}`,
@@ -426,7 +429,7 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
     "### 创意卖法模式库",
     ...playbook.outputRules.creativityModes.map(
       (mode) =>
-        `- ${mode.label}: ${mode.summary}｜怎么赚钱：${mode.monetizationHint}｜新手起手：${mode.starterMove}｜别写成：${mode.avoid}`
+        `- ${mode.label}: ${mode.summary}｜价值来源：${mode.monetizationHint}｜48 小时起手：${mode.starterMove}｜别写成：${mode.avoid}`
     ),
     "",
     "### 禁止乱写",

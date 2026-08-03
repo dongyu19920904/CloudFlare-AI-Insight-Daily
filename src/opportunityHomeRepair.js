@@ -3,6 +3,7 @@ import { buildMonthDirectoryIndex } from './contentUtils.js';
 import { extractFrontMatterField } from './dailyHomeRepair.js';
 import {
     DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
+    DEFAULT_OPPORTUNITY_SECTION_TITLE,
     buildOpportunityPaths,
     updateSectionHomeIndexContent,
 } from './opportunityUtils.js';
@@ -37,7 +38,7 @@ async function repairSectionHomePointer(env, dateStr, options) {
 
     const pageTitle = extractFrontMatterField(pageContent, 'title') || undefined;
     const homeContent = options.updateHome(existingHomeContent, pageContent, dateStr, {
-        title: pageTitle,
+        title: options.title || pageTitle,
         description: options.description,
         sectionPrefix: options.sectionPrefix,
     });
@@ -78,7 +79,7 @@ async function repairSectionHomePointer(env, dateStr, options) {
 
 export function buildOpportunityHomeRepairContent(existingHomeContent, pageContent, dateStr) {
     return updateSectionHomeIndexContent(existingHomeContent, pageContent, dateStr, {
-        title: extractFrontMatterField(pageContent, 'title') || undefined,
+        title: DEFAULT_OPPORTUNITY_SECTION_TITLE,
         description: DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
         sectionPrefix: '/opportunity',
     });
@@ -98,6 +99,7 @@ export async function repairOpportunityHomePointer(env, dateStr) {
         logPrefix: 'OpportunityHomeRepair',
         buildPaths: buildOpportunityPaths,
         updateHome: updateSectionHomeIndexContent,
+        title: DEFAULT_OPPORTUNITY_SECTION_TITLE,
         description: DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
         sectionPrefix: '/opportunity',
     });
