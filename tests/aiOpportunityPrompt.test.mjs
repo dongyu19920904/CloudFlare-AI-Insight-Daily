@@ -39,6 +39,8 @@ test("getSystemPromptAiOpportunity keeps the concise publication structure", () 
   assert.match(prompt, /## 今日三步/);
   assert.match(prompt, /可验证信号/);
   assert.match(prompt, /证据缺口/);
+  assert.match(prompt, /今日三步必须恰好 3 个一级列表项/);
+  assert.match(prompt, /每项只有一个完整句子且不超过 80 个中文字符/);
   assert.doesNotMatch(prompt, /## 地图感/);
   assert.doesNotMatch(prompt, /配图建议/);
   assert.doesNotMatch(prompt, /今天就能发的文案/);

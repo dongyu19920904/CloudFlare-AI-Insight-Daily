@@ -4,9 +4,7 @@ import assert from "node:assert/strict";
 import { validateOpportunityPublication } from "../src/publishValidation.js";
 
 function buildOpportunityMarkdown(sourceUrl = "https://github.com/example/video-workflow") {
-  return `# 今日 AI 商机
-
-## 直接结论
+  return `## 直接结论
 今天只验证一个小样，不先做完整产品。
 - **做不做：** 做一次小样验证。
 - **先验证：** 五位目标用户是否愿意给真实素材。
@@ -49,6 +47,34 @@ test("opportunity publication accepts an allowlisted primary source", () => {
 
   assert.equal(result.ok, true, result.issues.join("\n"));
   assert.equal(result.opportunityCount, 1);
+});
+
+test("opportunity publication ignores deterministic replay metadata after the action section", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const metadata = Array.from(
+    { length: 4 },
+    (_, index) =>
+      `<!-- opportunity-replay: {"entity":"entity-${index}","businessModel":"service","deliveryType":"sample","commercialSignature":"entity-${index}|service|sample"} -->`,
+  ).join("\n");
+  const result = validateOpportunityPublication({
+    markdown: `${buildOpportunityMarkdown(sourceUrl)}\n\n${metadata}`,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("opportunity publication rejects a model-authored H1", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const result = validateOpportunityPublication({
+    markdown: `# 今日 AI 商机\n\n${buildOpportunityMarkdown(sourceUrl)}`,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /不得输出一级标题/);
 });
 
 test("opportunity publication rejects a source URL invented outside the candidate set", () => {

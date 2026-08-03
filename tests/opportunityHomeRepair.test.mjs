@@ -80,3 +80,14 @@ test("opportunity recovery workflow accepts the dynamic latest-entry section hom
   assert.equal((workflow.match(/dynamic_latest or shortcode_current or actual == expected/g) || []).length, 2);
   assert.match(workflow, /if not dynamic_latest and .*actual != expected:/);
 });
+
+test("opportunity repair keeps the template-owned H1 and constrains the action list", () => {
+  const scheduledHandler = readFileSync(
+    new URL("../src/handlers/scheduled.js", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(scheduledHandler, /页面模板已经提供唯一 H1；正文不得输出一级标题/);
+  assert.match(scheduledHandler, /今日三步必须恰好 3 个一级列表项/);
+  assert.doesNotMatch(scheduledHandler, /必须包含：# 今日 AI 商机/);
+});

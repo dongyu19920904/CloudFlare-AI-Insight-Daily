@@ -1690,15 +1690,15 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
         "",
         "请严格遵守以下规则：",
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
-        "- 必须包含：# 今日 AI 商机 / ## 直接结论 / ## 今日主推 / ## 本周小试 / ## 今天别碰 / ## 今日三步",
+        "- 页面模板已经提供唯一 H1；正文不得输出一级标题，只包含：## 直接结论 / ## 今日主推 / ## 本周小试 / ## 今天别碰 / ## 今日三步",
         "- `###` 标题必须是纯文本；来源只放在 `证据来源` 字段中",
         "- 每个机会的证据来源至少包含 1 个 Markdown 链接，且 URL 必须来自下面原始候选",
         "- 今日主推必须包含：可验证信号、证据来源、可信度、目标鱼塘与笨办法、最小交付、48小时验证、第一单、复购或资产、证据缺口、售后与合规风险、停止条件",
         "- 本周小试每个候选包含：证据来源、目标鱼塘、最小交付、48小时验证、为什么只是小试、停止条件",
-        "- 直接结论约 160-260 字，今日主推约 500-900 字，每个本周小试约 220-420 字，今日三步合计约 180-320 字；每个字段尽量只写一个短句",
+        "- 直接结论约 160-260 字，今日主推约 500-900 字，每个本周小试约 220-420 字，今日三步合计约 120-240 字；每个字段尽量只写一个短句",
         "- 硬上限按含 Markdown 的字符数计算：直接结论 420、今日主推单条 1250、本周小试单条 760、今日三步 720；必须留出余量，不要贴线写",
         "- 今日主推开场最多 2 个短句，不复述项目 README，不在多个字段重复同一事实",
-        "- 今日三步只写动作、对象和可观察结果，不重复主推里的背景、范围或证据说明",
+        "- 今日三步必须恰好 3 个一级列表项，每项只有一个完整句子且不超过 80 个中文字符；不得放链接、子列表、背景、范围、证据说明或第二句解释，只写动作、对象和可观察结果",
         "- 48 小时验证必须看到访谈、样品、真实报价或意向金等行为，不能只写发帖、挂闲鱼或录屏",
         "- 只有一个合格候选时，本周小试明确写不凑数，不得编第二个",
         "- 产品存在、功能可用或 star 增长不等于有人愿意付费；没有访谈、报价、订单或用户原话时，付费需求只能写成待验证假设",
@@ -1852,19 +1852,18 @@ async function generateOpportunityMarkdown(
         debugInfo.opportunityAivoraLinksKept = sanitizedLinks.keptCount;
         debugInfo.opportunityAivoraLinksRemoved =
             (debugInfo.opportunityAivoraLinksRemoved || 0) + sanitizedLinks.removedCount;
-        markdown = appendOpportunityReplayMetadata(
-            sanitizedLinks.markdown,
-            opportunityCandidates
-        );
-
+        const visibleMarkdown = sanitizedLinks.markdown;
         const validation = validateOpportunityPublication({
-            markdown,
+            markdown: visibleMarkdown,
             bannedPublicPhrases: opportunityPlaybook.outputRules.bannedPublicPhrases || [],
             ...validationContext,
             aivoraLinkPolicy,
             minimumOpportunityCount: 1,
             maximumOpportunityCount: opportunityPlaybook.outputRules.maxPublishedOpportunities || 4,
         });
+        markdown = validation.ok
+            ? appendOpportunityReplayMetadata(visibleMarkdown, opportunityCandidates)
+            : visibleMarkdown;
         return { markdown, validation };
     };
 

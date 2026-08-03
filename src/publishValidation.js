@@ -43,6 +43,13 @@ function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
 
+function stripOpportunityReplayMetadata(markdown) {
+  return String(markdown || "").replace(
+    /<!--\s*opportunity-replay:\s*\{[^\n]*\}\s*-->/g,
+    ""
+  );
+}
+
 function canonicalizeUrl(url) {
   if (!url) return "";
 
@@ -880,11 +887,11 @@ export function validateOpportunityPublication({
   minimumOpportunityCount = 1,
   maximumOpportunityCount = 4,
 }) {
-  const issues = collectMarkdownIssues(markdown, {
+  const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
+  const issues = collectMarkdownIssues(visibleMarkdown, {
     label: "商机页面",
     minChars: 260,
     requiredPhrases: [
-      "# 今日 AI 商机",
       "## 直接结论",
       "## 今日主推",
       "## 本周小试",
@@ -917,13 +924,17 @@ export function validateOpportunityPublication({
     ],
   });
 
-  const sourcePolicy = collectOpportunitySourcePolicyIssues(markdown, {
+  if (/^#\s+\S/m.test(visibleMarkdown)) {
+    issues.push("AI 商机正文不得输出一级标题，页面模板会提供唯一 H1");
+  }
+
+  const sourcePolicy = collectOpportunitySourcePolicyIssues(visibleMarkdown, {
     allowedSourceUrls,
     allowedRejectedSourceUrls,
     sourceEvidence,
   });
   issues.push(...sourcePolicy.issues);
-  issues.push(...collectOpportunityLengthIssues(markdown));
+  issues.push(...collectOpportunityLengthIssues(visibleMarkdown));
 
   if (sourcePolicy.opportunityCount < minimumOpportunityCount) {
     issues.push(`AI 商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的机会`);
@@ -933,7 +944,7 @@ export function validateOpportunityPublication({
   }
 
   const aivoraValidation = validateOpportunityAivoraLinks(
-    markdown,
+    visibleMarkdown,
     aivoraLinkPolicy,
     { maxLinks: 1 }
   );

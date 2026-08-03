@@ -1000,9 +1000,7 @@ AI 工具正在继续进入真实工作流。
 
 test("validateOpportunityPublication rejects gray phrasing and missing required fields", () => {
   const result = validateOpportunityPublication({
-    markdown: `# 今日 AI 商机
-
-## 今日主推
+    markdown: `## 今日主推
 ### 一个机会
 - 最简单卖法：便宜 token
 `,
@@ -1016,9 +1014,7 @@ test("validateOpportunityPublication rejects gray phrasing and missing required 
 
 test("validateOpportunityPublication accepts an evidence-first opportunity brief", () => {
   const result = validateOpportunityPublication({
-    markdown: `# 今日 AI 商机
-
-## 直接结论
+    markdown: `## 直接结论
 今天值得验证的不是卖安装教程，而是为内容团队交付一个可验收样片。
 - **做不做：** 先做一次样品验证，不先上架。
 - **先验证：** 目标用户是否愿意提供真实脚本并接受范围明确的样片。
@@ -1159,9 +1155,7 @@ test("validateDailyPublication accepts allowlisted daily trending GitHub TOP pro
 
 test("validateOpportunityPublication keeps titles plain and source links in evidence fields", () => {
   const result = validateOpportunityPublication({
-    markdown: `# 今日 AI 商机
-
-## 直接结论
+    markdown: `## 直接结论
 今天先验证一个内容交付样品。
 
 ## 今日主推
