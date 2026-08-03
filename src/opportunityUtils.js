@@ -44,6 +44,13 @@ export function insertOpportunityLinkIntoDailyNavigation(markdown, publicPath) {
   );
 }
 
+export function stripTemplateOwnedOpportunityH1(markdown) {
+  return String(markdown || "").replace(
+    /^\uFEFF?[ \t]*#(?!#)[ \t]+[^\r\n]*(?:\r?\n){1,2}/,
+    ""
+  );
+}
+
 function stripFrontMatter(content) {
   return String(content || "").replace(FRONT_MATTER_REGEX, "");
 }

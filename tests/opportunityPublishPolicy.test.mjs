@@ -77,6 +77,23 @@ test("opportunity publication rejects a model-authored H1", () => {
   assert.match(result.issues.join(" | "), /不得输出一级标题/);
 });
 
+test("opportunity publication rejects links and extra prose in the three actions", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const malformed = buildOpportunityMarkdown(sourceUrl).replace(
+    "- **今天确认：** 核对许可边界。",
+    `- **今天确认：** 打开[官方仓库](${sourceUrl})核对许可边界。\n这里再解释一段背景。`,
+  );
+  const result = validateOpportunityPublication({
+    markdown: malformed,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /不得附加段落或子列表/);
+  assert.match(result.issues.join(" | "), /不得重复来源链接/);
+});
+
 test("opportunity publication rejects a source URL invented outside the candidate set", () => {
   const result = validateOpportunityPublication({
     markdown: buildOpportunityMarkdown("https://invented.example.com/source"),

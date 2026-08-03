@@ -877,6 +877,33 @@ function collectOpportunityLengthIssues(markdown) {
   return issues;
 }
 
+function collectOpportunityActionShapeIssues(markdown) {
+  const issues = [];
+  const actionSection = extractSection(markdown, /^##\s+今日三步(?:\s|$).*$/im);
+  const actionBody = getSectionBody(actionSection);
+  const nonEmptyLines = actionBody
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const actionItems = nonEmptyLines.filter((line) => /^[-*+]\s+\S/.test(line));
+
+  if (actionItems.length !== 3 || nonEmptyLines.length !== actionItems.length) {
+    issues.push("AI 商机“今日三步”必须恰好是 3 个一级列表项，不得附加段落或子列表");
+  }
+  if (actionItems.some((line) => /\[[^\]]+\]\(https?:\/\//i.test(line))) {
+    issues.push("AI 商机“今日三步”不得重复来源链接，只保留动作、对象和可观察结果");
+  }
+  if (
+    actionItems.some(
+      (line) => normalizeText(line.replace(/[*_`]/g, "")).length > 100
+    )
+  ) {
+    issues.push("AI 商机“今日三步”每项最多 100 个字符，应删掉背景和第二句解释");
+  }
+
+  return issues;
+}
+
 export function validateOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
@@ -935,6 +962,7 @@ export function validateOpportunityPublication({
   });
   issues.push(...sourcePolicy.issues);
   issues.push(...collectOpportunityLengthIssues(visibleMarkdown));
+  issues.push(...collectOpportunityActionShapeIssues(visibleMarkdown));
 
   if (sourcePolicy.opportunityCount < minimumOpportunityCount) {
     issues.push(`AI 商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的机会`);

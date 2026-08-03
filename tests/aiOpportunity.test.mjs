@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildOpportunityPaths,
   insertOpportunityLinkIntoDailyNavigation,
+  stripTemplateOwnedOpportunityH1,
   updateSectionHomeIndexContent,
 } from "../src/opportunityUtils.js";
 
@@ -64,6 +65,18 @@ test("insertOpportunityLinkIntoDailyNavigation is idempotent", () => {
 
   const occurrences = (twice.match(/今日 AI 商机/g) || []).length;
   assert.equal(occurrences, 1);
+});
+
+test("stripTemplateOwnedOpportunityH1 removes only the model-authored leading H1", () => {
+  const output = stripTemplateOwnedOpportunityH1(
+    "# 今日 AI 商机\n\n## 直接结论\n保留正文",
+  );
+
+  assert.equal(output, "## 直接结论\n保留正文");
+  assert.equal(
+    stripTemplateOwnedOpportunityH1("## 直接结论\n保留正文"),
+    "## 直接结论\n保留正文",
+  );
 });
 
 test("updateSectionHomeIndexContent keeps the opportunity home as a dynamic redirect section", () => {

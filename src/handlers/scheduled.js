@@ -32,6 +32,7 @@ import {
     DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
     DEFAULT_OPPORTUNITY_SECTION_DESCRIPTION,
     DEFAULT_OPPORTUNITY_SECTION_TITLE,
+    stripTemplateOwnedOpportunityH1,
     updateSectionHomeIndexContent,
 } from '../opportunityUtils.js';
 import {
@@ -1835,6 +1836,7 @@ async function generateOpportunityMarkdown(
     let aivoraLinkPolicy = { allowedUrls: [] };
     const normalizeAndValidate = async (rawMarkdown) => {
         let markdown = removeMarkdownCodeBlock(rawMarkdown);
+        markdown = stripTemplateOwnedOpportunityH1(markdown);
         markdown = convertPlaceholdersToMarkdownImages(markdown);
         markdown = replaceIncorrectDomainLinks(
             markdown,
@@ -2466,6 +2468,7 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
+    debugInfo.opportunityPipelineVersion = 'reader-v3-visible-validation';
     const dryRun = Boolean(options.dryRun);
     debugInfo.opportunityDryRun = dryRun;
     console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
