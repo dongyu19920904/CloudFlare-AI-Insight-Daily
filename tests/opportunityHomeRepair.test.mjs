@@ -30,7 +30,8 @@ description: "new"
 
   assert.match(repaired, /^title: 爱窝啦 AI 商机$/m);
   assert.doesNotMatch(repaired, /^next:/m);
-  assert.match(repaired, /\{\{< latest-opportunity >\}\}/);
+  assert.match(repaired, /^type: opportunity$/m);
+  assert.doesNotMatch(repaired, /latest-opportunity/);
   assert.doesNotMatch(repaired, /## New opportunity body/);
   assert.doesNotMatch(repaired, /Old opportunity body/);
 });

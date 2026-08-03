@@ -66,7 +66,7 @@ test("insertOpportunityLinkIntoDailyNavigation is idempotent", () => {
   assert.equal(occurrences, 1);
 });
 
-test("updateSectionHomeIndexContent keeps the opportunity home on the latest-page shortcode", () => {
+test("updateSectionHomeIndexContent keeps the opportunity home as a dynamic redirect section", () => {
   const output = updateSectionHomeIndexContent("", "## **今日AI商机**", "2026-03-22", {
     title: "爱窝啦 AI 商机 2026/3/22",
     description: "从每天 AI 日报里提炼实操机会。",
@@ -75,8 +75,9 @@ test("updateSectionHomeIndexContent keeps the opportunity home on the latest-pag
 
   assert.match(output, /title: 爱窝啦 AI 商机 2026\/3\/22/);
   assert.doesNotMatch(output, /^next:/m);
+  assert.match(output, /^type: opportunity$/m);
   assert.match(output, /cascade:\s*\n\s*type: docs/);
-  assert.match(output, /\{\{< latest-opportunity >\}\}/);
+  assert.doesNotMatch(output, /latest-opportunity/);
   assert.doesNotMatch(output, /## \*\*今日AI商机\*\*/);
 });
 
@@ -100,6 +101,7 @@ description: "旧描述"
 
   assert.match(output, /title: 爱窝啦 AI 商机 2026\/8\/3/);
   assert.doesNotMatch(output, /^next:/m);
-  assert.match(output, /\{\{< latest-opportunity >\}\}/);
+  assert.match(output, /^type: opportunity$/m);
+  assert.doesNotMatch(output, /latest-opportunity/);
   assert.doesNotMatch(output, /旧全文|新全文不应复制/);
 });

@@ -30,7 +30,8 @@ test("getSystemPromptAiOpportunity asks for actionable 48-hour validation and st
 test("getSystemPromptAiOpportunity keeps the concise publication structure", () => {
   const prompt = getSystemPromptAiOpportunity("2026-08-03", "### 当前业务");
 
-  assert.match(prompt, /# 今日 AI 商机/);
+  assert.match(prompt, /正文不得再输出一级标题/);
+  assert.match(prompt, /- \*\*直接答案：\*\*/);
   assert.match(prompt, /## 直接结论/);
   assert.match(prompt, /## 今日主推/);
   assert.match(prompt, /## 本周小试/);
@@ -41,6 +42,17 @@ test("getSystemPromptAiOpportunity keeps the concise publication structure", () 
   assert.doesNotMatch(prompt, /## 地图感/);
   assert.doesNotMatch(prompt, /配图建议/);
   assert.doesNotMatch(prompt, /今天就能发的文案/);
+});
+
+test("getSystemPromptAiOpportunity aligns headings, keywords, and evidence links with the daily reader", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-08-03", "### 当前业务");
+
+  assert.match(prompt, /三级机会标题必须是纯文本/);
+  assert.match(prompt, /不能把来源链接塞进标题/);
+  assert.match(prompt, /第一句用粗体写最影响决策的关键判断/);
+  assert.match(prompt, /额外加粗 2-4 个真正影响决策的短关键词/);
+  assert.match(prompt, /链接负责可核验事实/);
+  assert.match(prompt, /不写「原文」「点击这里」/);
 });
 
 test("getSystemPromptAiOpportunity forbids forced account resale and invented claims", () => {

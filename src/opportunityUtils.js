@@ -5,7 +5,6 @@ const OPPORTUNITY_LINK_LABEL =
 
 const QUICK_NAV_HEADER = "## ⚡ 快速导航";
 const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
-const LATEST_OPPORTUNITY_SHORTCODE = "{{< latest-opportunity >}}";
 
 export const DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION =
   "从当天可核验的一手 AI 信号中筛选低成本机会，给出目标用户、最小交付、48 小时验证、风险与停止条件。";
@@ -74,6 +73,7 @@ function buildSectionHomeFrontMatter(dateStr, options = {}) {
   return `---
 linkTitle: AI商机
 title: ${title}
+type: opportunity
 breadcrumbs: false
 description: "${description}"
 cascade:
@@ -107,6 +107,11 @@ export function updateSectionHomeIndexContent(
       "description",
       `"${description}"`
     );
+    frontMatter = replaceOrInsertFrontMatterLine(
+      frontMatter,
+      "type",
+      "opportunity"
+    );
   } else {
     frontMatter = buildSectionHomeFrontMatter(dateStr, {
       title,
@@ -115,5 +120,5 @@ export function updateSectionHomeIndexContent(
     });
   }
 
-  return `${frontMatter.trimEnd()}\n\n${LATEST_OPPORTUNITY_SHORTCODE}`;
+  return `${frontMatter.trimEnd()}\n`;
 }
