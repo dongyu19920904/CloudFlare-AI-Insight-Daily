@@ -88,7 +88,8 @@ jobs:
           actual = (match.group(1) if match else "").rstrip("/")
           expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
           shortcode_current = "{{< latest-opportunity >}}" in content
-          print("true" if shortcode_current or actual == expected else "false")
+          dynamic_latest = bool(re.search(r'^type:\s*["\']?opportunity["\']?\s*$', content, re.M))
+          print("true" if dynamic_latest or shortcode_current or actual == expected else "false")
           PY
           )
           fi
@@ -248,12 +249,13 @@ jobs:
           actual = (match.group(1) if match else "").rstrip("/")
           expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
           shortcode_current = "{{< latest-opportunity >}}" in content
-          print("true" if shortcode_current or actual == expected else "false")
+          dynamic_latest = bool(re.search(r'^type:\s*["\']?opportunity["\']?\s*$', content, re.M))
+          print("true" if dynamic_latest or shortcode_current or actual == expected else "false")
           PY
               )
 
               if [ "$HOME_CURRENT" = "true" ]; then
-                echo "Verified AI opportunity home points to ${EXPECTED_HOME_NEXT} on attempt ${attempt}."
+                echo "Verified AI opportunity home resolves the latest entry on attempt ${attempt}."
                 exit 0
               fi
             fi
@@ -315,7 +317,8 @@ jobs:
           match = re.search(r"^next:\s*(\S+)\s*$", content, re.M)
           actual = (match.group(1) if match else "").rstrip("/")
           expected = os.environ["EXPECTED_HOME_NEXT"].rstrip("/")
-          if "{{< latest-opportunity >}}" not in content and actual != expected:
+          dynamic_latest = bool(re.search(r'^type:\s*["\']?opportunity["\']?\s*$', content, re.M))
+          if not dynamic_latest and "{{< latest-opportunity >}}" not in content and actual != expected:
               raise SystemExit(f"Opportunity home next is stale: {actual!r}, expected {expected!r}")
           PY
           echo "ok=true" >> "$GITHUB_OUTPUT"

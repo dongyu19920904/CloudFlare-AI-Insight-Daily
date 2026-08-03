@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -67,4 +68,15 @@ description: "new"
   assert.match(repaired, /\{\{< latest-account-opportunity >\}\}/);
   assert.doesNotMatch(repaired, /## New account opportunity body/);
   assert.doesNotMatch(repaired, /Old account opportunity body/);
+});
+
+test("opportunity recovery workflow accepts the dynamic latest-entry section home", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ensure-daily-opportunity.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.equal((workflow.match(/dynamic_latest = bool/g) || []).length, 3);
+  assert.equal((workflow.match(/dynamic_latest or shortcode_current or actual == expected/g) || []).length, 2);
+  assert.match(workflow, /if not dynamic_latest and .*actual != expected:/);
 });
