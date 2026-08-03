@@ -162,6 +162,22 @@ test("opportunity publication rejects an unproven willingness-to-pay headline", 
   assert.match(result.issues.join(" | "), /禁止模式/);
 });
 
+test("opportunity publication rejects generic crowd claims and invented time estimates", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl).replace(
+    "原项目已经可以复现，但付费需求还没有被证明，因此只做一次小样验证。",
+    "这是用户的共同烦恼，而且预计 1-2 小时就能跑通。"
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
 test("a GitHub repository root cannot be labeled as a direct license page", () => {
   const sourceUrl = "https://github.com/example/video-workflow";
   const markdown = buildOpportunityMarkdown(sourceUrl).replace(
@@ -193,6 +209,23 @@ test("opportunity publication rejects an overlong main item", () => {
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join(" | "), /今日主推.*过长/);
+});
+
+test("opportunity publication rejects an overlong action section", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const repeated = "继续重复背景并不能帮助今天行动。".repeat(55);
+  const markdown = buildOpportunityMarkdown(sourceUrl).replace(
+    "- **今天制作：** 做一支三镜头样片。",
+    `- **今天制作：** ${repeated}`
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /今日三步.*过长/);
 });
 
 test("opportunity publication requires primary evidence for policy and license claims", () => {

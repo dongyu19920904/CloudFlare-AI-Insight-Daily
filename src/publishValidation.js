@@ -838,21 +838,25 @@ function collectOpportunityLengthIssues(markdown) {
   const directSection = extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im);
   const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
   const smallSection = extractSection(markdown, /^##\s+本周小试(?:\s|$).*$/im);
+  const actionSection = extractSection(markdown, /^##\s+今日三步(?:\s|$).*$/im);
   const mainBlocks = extractLevel3Blocks(mainSection);
   const smallBlocks = extractLevel3Blocks(smallSection);
 
-  if (normalizeText(getSectionBody(directSection)).length > 520) {
+  if (normalizeText(getSectionBody(directSection)).length > 420) {
     issues.push("AI 商机“直接结论”过长，应让读者在 20 秒内完成判断");
   }
   for (const block of mainBlocks) {
-    if (normalizeText(block).length > 1400) {
+    if (normalizeText(block).length > 1250) {
       issues.push("AI 商机“今日主推”单条过长，应压缩重复背景和项目说明");
     }
   }
   for (const block of smallBlocks) {
-    if (normalizeText(block).length > 800) {
+    if (normalizeText(block).length > 700) {
       issues.push("AI 商机“本周小试”单条过长，应只保留验证所需信息");
     }
+  }
+  if (normalizeText(getSectionBody(actionSection)).length > 600) {
+    issues.push("AI 商机“今日三步”过长，应只保留动作、对象和可观察结果");
   }
 
   return issues;
@@ -899,6 +903,8 @@ export function validateOpportunityPublication({
       /先编商机|素材不够.*硬凑/i,
       /目标用户不缺|人人都(?:需要|会)|每个.{0,24}都(?:踩过|需要|愿意|会)/i,
       /普遍(?:遇到|存在|需要|面临)|(?:的人|用户|客户|买家)愿意(?:直接)?(?:付钱|花钱|买单|购买)/i,
+      /共同(?:烦恼|痛点|问题|需求)|没人(?:帮|做|提供)|这就是可以卖的地方/i,
+      /预计\s*\d+(?:\s*[-–—至到]\s*\d+)?\s*(?:分钟|小时|天)/i,
       /跑(?:通|一遍).{0,20}(?:就|即可).{0,12}(?:能卖|可以卖|有东西可以卖)/i,
     ],
   });
