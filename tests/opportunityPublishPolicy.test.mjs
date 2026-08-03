@@ -146,6 +146,22 @@ test("opportunity publication rejects unsupported universal market claims", () =
   assert.match(result.issues.join(" | "), /禁止模式/);
 });
 
+test("opportunity publication rejects an unproven willingness-to-pay headline", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl).replace(
+    "### 给内容团队交付一支可验收样片",
+    "### 给内容团队交付样片——卡在剪辑的人愿意直接花钱跳过"
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
 test("a GitHub repository root cannot be labeled as a direct license page", () => {
   const sourceUrl = "https://github.com/example/video-workflow";
   const markdown = buildOpportunityMarkdown(sourceUrl).replace(
