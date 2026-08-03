@@ -25,8 +25,32 @@ test("daily assembly always publishes the generated three-line summary", () => {
   assert.match(markdown, /^## \*\*今日摘要\*\*/);
   assert.match(markdown, /第一句说明今天最重要的事实。\n第二句指出产品与开源背后的变化。\n第三句告诉读者今天先看什么。/);
   assert.match(markdown, /## \*\*🔥 今日焦点 TOP 1\*\*/);
-  assert.ok(markdown.indexOf("今日摘要") < markdown.indexOf("utm_medium=mid_ad"));
-  assert.ok(markdown.indexOf("utm_medium=mid_ad") < markdown.indexOf("今日焦点 TOP 1"));
+  assert.ok(markdown.indexOf("今日摘要") < markdown.indexOf("今日焦点 TOP 1"));
+  assert.doesNotMatch(markdown, /utm_medium=mid_ad/);
+});
+
+test("daily assembly keeps one exact reader-first Aivora link in the FAQ", () => {
+  const body = `## **🔥 今日焦点 TOP 1**
+
+### 1. 官方模型更新
+
+这是正文。
+
+## **❓ 相关问题**
+
+### 新模型需要什么订阅？
+
+先通过[官方说明](https://example.com/official)确认订阅、地区限制和计费边界，再用一个低风险任务验证是否适合自己的使用场景。
+
+访问 [爱窝啦 Aivora](https://aivora.cn/?utm_source=old) 即可统一体验。`;
+
+  const markdown = assembleDailySummaryMarkdown(body, "今天有一项经过官方确认的模型更新，读者应先核对限制。", env);
+  const storeLinks = markdown.match(/https:\/\/www\.aivora\.cn\//g) || [];
+
+  assert.equal(storeLinks.length, 1);
+  assert.match(markdown, /爱窝啦·AI账号店/);
+  assert.match(markdown, /商品、价格与可用状态以官网实时页面为准/);
+  assert.doesNotMatch(markdown, /utm_source|统一体验|爱窝啦 Aivora/);
 });
 
 test("daily assembly strips obsolete model-generated intros before the TOP section", () => {

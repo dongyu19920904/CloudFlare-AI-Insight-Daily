@@ -1,5 +1,5 @@
 import { insertFoot } from './foot.js';
-import { insertAd, insertMidAd } from './ad.js';
+import { insertAd } from './ad.js';
 import { normalizeDailyFaqAivoraCta } from './dailySectionSanitizer.js';
 
 const DAILY_TOP_HEADING_PATTERN = /^##\s*\*{0,2}.*TOP.*\*{0,2}\s*$/im;
@@ -29,8 +29,7 @@ function stripGeneratedDailyPreamble(markdown) {
 export function assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env) {
     const summary = normalizeThreeLineSummary(outputOfCall3);
     const body = normalizeDailyFaqAivoraCta(stripGeneratedDailyPreamble(outputOfCall2));
-    const contentWithMidAd = insertMidAd(body);
-    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${summary}\n\`\`\`\n\n${contentWithMidAd}`;
+    let dailySummaryMarkdownContent = `## **今日摘要**\n\n\`\`\`\n${summary}\n\`\`\`\n\n${body}`;
 
     if (env.INSERT_AD == 'true') dailySummaryMarkdownContent += `${insertAd()}\n`;
     if (env.INSERT_FOOT == 'true') dailySummaryMarkdownContent += `${insertFoot()}\n\n`;

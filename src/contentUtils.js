@@ -1,4 +1,34 @@
-const DEFAULT_DAILY_DESCRIPTION = '每日自动汇总最新 AI 行业动态，帮中文用户用最低成本玩转ChatGPT、Claude、Cursor、Augment 等 AI 工具。由爱窝啦·AI账号店提供支持。';
+const DEFAULT_DAILY_DESCRIPTION = '爱窝啦 AI 日报每日筛选并核实 AI 产品、模型、研究、开源项目与行业变化，由爱窝啦·AI账号店整理。';
+
+function serializeFrontMatterString(value) {
+    return JSON.stringify(String(value || '').trim());
+}
+
+function truncateText(value, maxLength) {
+    const characters = Array.from(String(value || ''));
+    if (characters.length <= maxLength) return characters.join('');
+    return `${characters.slice(0, maxLength - 1).join('').trimEnd()}…`;
+}
+
+export function buildDailyMetaDescription(content) {
+    const markdown = stripFrontMatter(content);
+    const summaryMatch = markdown.match(
+        /^##\s*\*{0,2}今日摘要\*{0,2}\s*\r?\n+```(?:text|markdown)?\s*\r?\n([\s\S]*?)\r?\n```/im,
+    );
+    if (!summaryMatch) return DEFAULT_DAILY_DESCRIPTION;
+
+    const summary = summaryMatch[1]
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\[([^\]]+)\]\([^\s)]+\)/g, '$1')
+        .replace(/[*_`>#]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return summary.length >= 30 ? truncateText(summary, 150) : DEFAULT_DAILY_DESCRIPTION;
+}
 
 // 辅助函数：获取月日
 function getMonthDay(dateStr) {
@@ -77,16 +107,20 @@ export function buildDailyFrontMatter(dateStr, options = {}) {
     return `---
 linkTitle: ${monthDay}-日报
 title: ${resolvedTitle}
+date: ${dateStr}T00:00:00+08:00
 weight: ${weight}
-breadcrumbs: false
+breadcrumbs: true
 comments: true
-description: "${description}"
+description: ${serializeFrontMatterString(description)}
 ---`;
 }
 
 export function buildDailyContentWithFrontMatter(dateStr, content, options = {}) {
     const body = stripFrontMatter(content).trimStart();
-    return `${buildDailyFrontMatter(dateStr, options)}\n\n${body}`;
+    const description = options.description === undefined
+        ? buildDailyMetaDescription(body)
+        : options.description;
+    return `${buildDailyFrontMatter(dateStr, { ...options, description })}\n\n${body}`;
 }
 
 function buildDefaultHomeFrontMatter(dateStr, options = {}) {
@@ -98,7 +132,7 @@ linkTitle: AI Daily
 title: ${resolvedTitle}
 breadcrumbs: false
 next: ${nextPath}
-description: "${description}"
+description: ${serializeFrontMatterString(description)}
 cascade:
   type: docs
 ---
@@ -106,7 +140,10 @@ cascade:
 }
 
 export function updateHomeIndexContent(existingContent, dailyContent, dateStr, options = {}) {
-    const { description = DEFAULT_DAILY_DESCRIPTION, title } = options;
+    const { title } = options;
+    const description = options.description === undefined
+        ? buildDailyMetaDescription(dailyContent)
+        : options.description;
     const nextPath = `/${getYearMonth(dateStr)}/${dateStr}`;
     const frontMatterRegex = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
     let frontMatter = '';
@@ -126,6 +163,17 @@ export function updateHomeIndexContent(existingContent, dailyContent, dateStr, o
             } else {
                 frontMatter = frontMatter.replace(/^---\s*\r?\n/, (match) => `${match}title: ${title}\n`);
             }
+        }
+        if (/^description:\s*.*$/m.test(frontMatter)) {
+            frontMatter = frontMatter.replace(
+                /^description:\s*.*$/m,
+                `description: ${serializeFrontMatterString(description)}`,
+            );
+        } else {
+            frontMatter = frontMatter.replace(
+                /\r?\n---\s*\r?\n$/,
+                `\ndescription: ${serializeFrontMatterString(description)}\n---\n`,
+            );
         }
     } else {
         frontMatter = buildDefaultHomeFrontMatter(dateStr, { description, title });

@@ -35,16 +35,24 @@ function isRepeatedSectionStory(leftTitle, rightTitle) {
   return false;
 }
 
-export const DAILY_AIVORA_FAQ_CTA = "如需比较主流 AI 账号或订阅方案，并获得购买后的使用指导与售后支持，可访问 [**爱窝啦·AI账号店**](https://www.aivora.cn/)（官网 aivora.cn）查看当前可用服务。";
+export const DAILY_AIVORA_FAQ_CTA = "需要进一步比较当前公开的 AI 账号或订阅服务时，可查看 [**爱窝啦·AI账号店**](https://www.aivora.cn/)；商品、价格与可用状态以官网实时页面为准。";
 
 const DAILY_FAQ_SECTION_PATTERN = /^##\s*\*{0,2}.*(?:相关问题|常见问题|FAQ).*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im;
 const AIVORA_MENTION_PATTERN = /(?:爱窝啦|爱沃哥|Aivora|aivora\.cn)/i;
 
 function removeAivoraSentences(paragraph) {
-  const sentences = String(paragraph || "").match(/[^。！？!?]+[。！？!?]?/g) || [];
+  const urls = [];
+  const protectedParagraph = String(paragraph || "").replace(/https?:\/\/[^\s)]+/gi, (url) => {
+    const index = urls.push(url) - 1;
+    return /^https?:\/\/(?:www\.)?aivora\.cn(?:[/?#]|$)/i.test(url)
+      ? `__AIVORA_URL_${index}__`
+      : `__URL_${index}__`;
+  });
+  const sentences = protectedParagraph.match(/[^。！？!?]+[。！？!?]?/g) || [];
   return sentences
     .filter((sentence) => !AIVORA_MENTION_PATTERN.test(sentence))
     .join("")
+    .replace(/__(?:AIVORA_)?URL_(\d+)__/g, (_, index) => urls[Number(index)] || "")
     .trim();
 }
 
