@@ -5,6 +5,7 @@ import { opportunityPlaybook } from "../src/opportunityPlaybook.js";
 import {
   appendOpportunityReplayMetadata,
   extractOpportunityReplayMemoryFromMarkdown,
+  getMissingOpportunityReplaySections,
   mergeOpportunityReplayMemories,
   normalizeOpportunitySourceUrl,
   pruneOpportunityReplayMemory,
@@ -117,4 +118,50 @@ test("hidden replay metadata persists entity, business model, delivery type, and
     memory.commercialSignatures[0].commercialSignature,
     "result-delivery:automation-workflow"
   );
+  assert.equal(memory.offerFamilies[0].offerFamily, "workflow-automation");
+});
+
+test("partial KV replay memory backfills only missing date sections and old offer-family metadata", () => {
+  const memory = {
+    sourceUrls: [
+      { key: "example.com/aug-4", date: "2026-08-04", section: "opportunity" },
+      { key: "example.com/account-aug-4", date: "2026-08-04", section: "account-opportunity" },
+      { key: "example.com/aug-3", date: "2026-08-03", section: "opportunity" },
+    ],
+    offerFamilies: [
+      {
+        key: "developer-tool-setup",
+        offerFamily: "developer-tool-setup",
+        date: "2026-08-04",
+        section: "opportunity",
+      },
+    ],
+  };
+
+  const missing = getMissingOpportunityReplaySections(memory, [
+    "2026-08-04",
+    "2026-08-03",
+  ]);
+
+  assert.deepEqual(missing, [
+    { date: "2026-08-03", section: "opportunity" },
+    { date: "2026-08-03", section: "account-opportunity" },
+  ]);
+});
+
+test("replay merge preserves one commercial occurrence per date", () => {
+  const merged = mergeOpportunityReplayMemories(
+    {
+      offerFamilies: [
+        { key: "developer-tool-setup", offerFamily: "developer-tool-setup", date: "2026-08-03", section: "opportunity" },
+      ],
+    },
+    {
+      offerFamilies: [
+        { key: "developer-tool-setup", offerFamily: "developer-tool-setup", date: "2026-08-04", section: "opportunity" },
+      ],
+    }
+  );
+
+  assert.equal(merged.offerFamilies.length, 2);
 });

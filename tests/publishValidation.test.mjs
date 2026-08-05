@@ -1009,12 +1009,11 @@ test("validateOpportunityPublication rejects gray phrasing and missing required 
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止片段: 便宜 token/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: 证据来源/);
+  assert.match(result.issues.join("\n"), /缺少必需片段: 证据与可信度/);
 });
 
 test("validateOpportunityPublication accepts an evidence-first opportunity brief", () => {
-  const result = validateOpportunityPublication({
-    markdown: `## 直接结论
+  const markdown = `## 直接结论
 今天值得验证的不是卖安装教程，而是为内容团队交付一个可验收样片。
 - **做不做：** 先做一次样品验证，不先上架。
 - **先验证：** 目标用户是否愿意提供真实脚本并接受范围明确的样片。
@@ -1024,17 +1023,12 @@ test("validateOpportunityPublication accepts an evidence-first opportunity brief
 ### 给内容团队交付一支可验收样片
 原项目已经提供可运行的桌面工作流，但“项目能跑”不等于“有人愿意买”。先把它当生产工具，验证客户是否愿意为首支样片省时间。
 
-- **可验证信号：** 原项目公开了代码、教程和视频工作流。
-- **证据来源：** [官方仓库：证明项目代码、教程与许可说明可核验](https://github.com/HBAI-Ltd/Toonflow-app)
-- **可信度：** 中
-- **目标鱼塘与笨办法：** 小型内容团队仍在多人传脚本、素材和修改意见。
+- **证据与可信度：** 中；[官方仓库：证明项目代码、教程与许可说明可核验](https://github.com/HBAI-Ltd/Toonflow-app)；本次候选输入未提供目标用户付费证据。
+- **鱼塘与笨办法：** 待验证假设：小型内容团队可能仍在多人传脚本、素材和修改意见。
 - **最小交付：** 一支三镜头样片、实际耗时、模型成本和失败记录，不包含长期代运营。
 - **48小时验证：** 复现官方教程后，把样片给五位内容团队负责人看，询问是否愿意提供真实脚本试做。
-- **第一单：** 固定一个脚本、三镜头和一次修改，以交付可播放样片为验收标准。
-- **复购或资产：** 若同类脚本重复出现，可沉淀配置、错误库和成本表；否则只是一次性服务。
-- **证据缺口：** 尚无目标用户付费证据。
-- **售后与合规风险：** 中，需要核对素材版权和商业分发许可。
-- **停止条件：** 无法复现、成本不可控，或五位目标用户都没有试做意愿。
+- **第一单与复购：** 固定一个脚本、三镜头和一次修改，以交付可播放样片为验收标准；若同类脚本重复出现，再沉淀配置、错误库和成本表，否则只是一次性服务。
+- **风险与停止：** 中，需要核对素材版权和商业分发许可；无法复现、成本不可控，或五位目标用户都没有试做意愿就停。
 
 ## 本周小试
 今天没有第二个达到证据门槛的机会，不凑数。
@@ -1045,7 +1039,9 @@ test("validateOpportunityPublication accepts an evidence-first opportunity brief
 ## 今日三步
 - **今天确认：** 核对原项目许可与商业分发边界。
 - **今天制作：** 只做一支三镜头样片并记录真实成本。
-- **今天询价：** 找五位内容团队负责人问是否愿意拿真实脚本试做。`,
+- **今天询价：** 找五位内容团队负责人问是否愿意拿真实脚本试做。`;
+  const validationOptions = {
+    markdown,
     bannedPublicPhrases: ["便宜 token", "风险自负", "多用户商业化"],
     allowedSourceUrls: ["https://github.com/HBAI-Ltd/Toonflow-app"],
     sourceEvidence: [
@@ -1054,10 +1050,37 @@ test("validateOpportunityPublication accepts an evidence-first opportunity brief
         isPrimary: true,
       },
     ],
-  });
+  };
+  const result = validateOpportunityPublication(validationOptions);
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
+
+  const unsupportedMarketClaim = validateOpportunityPublication({
+    ...validationOptions,
+    markdown: markdown.replace(
+      "待验证假设：小型内容团队可能仍在多人传脚本、素材和修改意见。",
+      "目前没有针对中文内容团队的现成方案，内容团队反复手动传脚本、素材和修改意见。"
+    ),
+  });
+  assert.equal(unsupportedMarketClaim.ok, false);
+  assert.match(
+    unsupportedMarketClaim.issues.join("\n"),
+    /未经需求证据支持的市场缺口或群体痛点/
+  );
+
+  const unsupportedPainTitle = validateOpportunityPublication({
+    ...validationOptions,
+    markdown: markdown.replace(
+      "### 给内容团队交付一支可验收样片",
+      "### 帮反复手工传素材的内容团队交付样片"
+    ),
+  });
+  assert.equal(unsupportedPainTitle.ok, false);
+  assert.match(
+    unsupportedPainTitle.issues.join("\n"),
+    /未经需求证据支持的市场缺口或群体痛点/
+  );
 });
 
 test("validateDailyPublication enforces daily trending allowlist for GitHub TOP projects", () => {

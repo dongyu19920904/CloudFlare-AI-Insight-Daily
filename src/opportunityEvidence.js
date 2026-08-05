@@ -34,11 +34,18 @@ const OFFICIAL_HOST_SUFFIXES = [
   "huggingface.co",
   "meta.com",
   "mistral.ai",
+  "minimax.io",
   "cursor.com",
   "perplexity.ai",
   "x.ai",
   "arxiv.org",
 ];
+
+const DEVELOPER_SETUP_DELIVERY_TYPES = new Set([
+  "integration",
+  "deployment-setup",
+  "result-service",
+]);
 
 const GENERIC_RULE_IDS = new Set([
   "github_hot_project",
@@ -215,6 +222,19 @@ export function classifyOpportunityEvidence(item, sourceType = item?.type || "")
   };
 }
 
+export function isOfficialOpportunityUrl(value) {
+  const parsed = safeUrl(value);
+  if (!parsed) return false;
+  return OFFICIAL_HOST_SUFFIXES.some((suffix) =>
+    isHostOrSubdomain(parsed.hostname, suffix)
+  );
+}
+
+export function isTrustedOpportunityMediaUrl(value) {
+  const parsed = safeUrl(value);
+  return Boolean(parsed && TRUSTED_MEDIA_HOSTS.has(normalizeHostname(parsed.hostname)));
+}
+
 export function assessOpportunityEvidence(items = []) {
   const classified = (items || []).map((item) => ({
     item,
@@ -352,4 +372,230 @@ export function classifyOpportunityCommercialPattern(items = [], preferredLane =
     deliveryType,
     commercialSignature: `${businessModel}:${deliveryType}`,
   };
+}
+
+export function deriveOpportunityOfferFamily({
+  businessModel = "",
+  deliveryType = "",
+  preferredLane = "",
+  label = "",
+  productAngle = "",
+  deliveryHint = "",
+  supportingItems = [],
+} = {}) {
+  const text = [
+    label,
+    productAngle,
+    deliveryHint,
+    ...(supportingItems || []).map((item) => getEvidenceText(item)),
+  ].join(" ");
+  const hasGithubProject = (supportingItems || []).some((item) =>
+    Boolean(normalizeGithubProjectUrl(item?.url))
+  );
+
+  if (
+    businessModel === "access-resale" ||
+    deliveryType === "account-access" ||
+    preferredLane === "account"
+  ) {
+    return "account-access";
+  }
+  if (deliveryType === "migration") return "migration-service";
+  if (deliveryType === "monitoring") return "monitoring-service";
+  if (deliveryType === "content-production") return "content-production";
+  if (deliveryType === "data-research") return "data-research";
+  if (deliveryType === "training-guidance") return "training-guidance";
+  if (deliveryType === "template-pack") return "reusable-digital-delivery";
+  if (
+    deliveryType === "integration" ||
+    deliveryType === "deployment-setup" ||
+    (hasGithubProject && DEVELOPER_SETUP_DELIVERY_TYPES.has(deliveryType))
+  ) {
+    return "developer-tool-setup";
+  }
+  if (deliveryType === "automation-workflow") return "workflow-automation";
+  if (/部署|安装|配置|接入|集成|跑通|deploy|install|setup|integrat/i.test(text)) {
+    return "developer-tool-setup";
+  }
+  if (businessModel === "digital-product" || preferredLane === "bundle") {
+    return "reusable-digital-delivery";
+  }
+  return "result-delivery";
+}
+
+function decodeHtmlUrls(html) {
+  return String(html || "")
+    .replace(/\\u002f/gi, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&");
+}
+
+export function extractOfficialOpportunityLinksFromHtml(html, sourceUrl = "") {
+  const decoded = decodeHtmlUrls(html);
+  const source = safeUrl(sourceUrl);
+  const sourceHost = normalizeHostname(source?.hostname);
+  const urls = [];
+  const seen = new Set();
+
+  for (const match of decoded.matchAll(/https?:\/\/[^\s"'<>\\]+/gi)) {
+    const raw = String(match[0] || "").replace(/[),.;\]]+$/g, "");
+    const parsed = safeUrl(raw);
+    if (!parsed) continue;
+    const hostname = normalizeHostname(parsed.hostname);
+    if (hostname === sourceHost || !isOfficialOpportunityUrl(parsed.href)) continue;
+    const canonical = canonicalizeOpportunityEvidenceUrl(parsed.href);
+    if (!canonical || seen.has(canonical)) continue;
+    seen.add(canonical);
+    urls.push(canonical);
+  }
+
+  return urls;
+}
+
+async function fetchOpportunityEvidence(url, fetchImpl, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort("opportunity-evidence-timeout"),
+    Math.max(1000, Number.parseInt(options.timeoutMs, 10) || 8000)
+  );
+
+  try {
+    return await fetchImpl(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        Accept: options.accept || "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
+        "User-Agent": "Aivora-AI-Opportunity/1.0",
+        ...(options.headers || {}),
+      },
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function addEvidenceRecord(recordsBySourceUrl, sourceUrl, record) {
+  const key = canonicalizeOpportunityEvidenceUrl(sourceUrl);
+  if (!key) return;
+  recordsBySourceUrl[key] = record;
+}
+
+export async function buildOpportunityEvidenceEnrichment(
+  candidates = [],
+  {
+    fetchImpl = fetch,
+    githubToken = "",
+    maxGithubRequests = 4,
+    maxTrustedMediaRequests = 2,
+    timeoutMs = 8000,
+  } = {}
+) {
+  const recordsBySourceUrl = {};
+  const stats = {
+    githubRequests: 0,
+    trustedMediaRequests: 0,
+    officialLinksFound: 0,
+    failures: 0,
+  };
+  const uniqueItems = [];
+  const seenUrls = new Set();
+
+  for (const candidate of candidates || []) {
+    for (const item of candidate?.supportingItems || []) {
+      const key = canonicalizeOpportunityEvidenceUrl(item?.url);
+      if (!key || seenUrls.has(key)) continue;
+      seenUrls.add(key);
+      uniqueItems.push(item);
+    }
+  }
+
+  const githubItems = uniqueItems
+    .filter((item) => normalizeGithubProjectUrl(item?.url))
+    .slice(0, Math.max(0, maxGithubRequests));
+  const mediaItems = uniqueItems
+    .filter((item) => isTrustedOpportunityMediaUrl(item?.url))
+    .slice(0, Math.max(0, maxTrustedMediaRequests));
+
+  for (const item of githubItems) {
+    const projectKey = normalizeGithubProjectUrl(item.url);
+    const repository = String(projectKey || "").replace(/^github\.com\//, "");
+    if (!repository) continue;
+    stats.githubRequests += 1;
+
+    try {
+      const response = await fetchOpportunityEvidence(
+        `https://api.github.com/repos/${repository}`,
+        fetchImpl,
+        {
+          timeoutMs,
+          accept: "application/vnd.github+json",
+          headers: githubToken ? { Authorization: `Bearer ${githubToken}` } : {},
+        }
+      );
+      if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+      const metadata = await response.json();
+      const license = String(metadata?.license?.spdx_id || "未声明");
+      const archived = Boolean(metadata?.archived);
+      const updatedAt = String(metadata?.updated_at || "未知");
+      addEvidenceRecord(recordsBySourceUrl, item.url, {
+        checked: true,
+        kind: "github-api",
+        summary: `GitHub API 核验：license=${license}，archived=${archived ? "是" : "否"}，updated_at=${updatedAt}`,
+        evidenceItems: [],
+      });
+    } catch (error) {
+      stats.failures += 1;
+      addEvidenceRecord(recordsBySourceUrl, item.url, {
+        checked: false,
+        kind: "github-api",
+        error: error?.message || String(error),
+        evidenceItems: [],
+      });
+    }
+  }
+
+  for (const item of mediaItems) {
+    stats.trustedMediaRequests += 1;
+    try {
+      const response = await fetchOpportunityEvidence(item.url, fetchImpl, { timeoutMs });
+      if (!response.ok) throw new Error(`media page returned ${response.status}`);
+      const html = await response.text();
+      const officialLinks = extractOfficialOpportunityLinksFromHtml(html, item.url).slice(0, 3);
+      stats.officialLinksFound += officialLinks.length;
+      addEvidenceRecord(recordsBySourceUrl, item.url, {
+        checked: true,
+        kind: "trusted-media-outbound-links",
+        summary: officialLinks.length > 0
+          ? `可信媒体原文提取到 ${officialLinks.length} 个官方或原项目外链`
+          : "已检查可信媒体原文，本次未提取到可确认的官方或原项目外链",
+        evidenceItems: officialLinks.map((url) => {
+          const parsed = safeUrl(url);
+          const normalizedItem = {
+            type: "project",
+            title: `${normalizeHostname(parsed?.hostname)} 官方或原项目页面`,
+            description: "该链接由可信媒体原文直接引用；它只证明对应官方或原项目页面存在，其他商业判断仍需验证。",
+            plainText: "",
+            source: "可信媒体原文中的官方外链",
+            url,
+            publishedDate: item.publishedDate || "",
+            searchText: `${item.searchText || ""} ${url}`.toLowerCase(),
+          };
+          return {
+            ...normalizedItem,
+            evidence: classifyOpportunityEvidence(normalizedItem, "project"),
+          };
+        }),
+      });
+    } catch (error) {
+      stats.failures += 1;
+      addEvidenceRecord(recordsBySourceUrl, item.url, {
+        checked: false,
+        kind: "trusted-media-outbound-links",
+        error: error?.message || String(error),
+        evidenceItems: [],
+      });
+    }
+  }
+
+  return { recordsBySourceUrl, stats };
 }

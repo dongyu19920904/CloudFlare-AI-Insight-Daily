@@ -361,3 +361,35 @@ test("productized business materials outrank pure community heat", () => {
   assert.ok(materialCandidate.score > heatCandidate.score);
   assert.equal(materialCandidate.preferredLane, "bundle");
 });
+
+test("general opportunity profile removes account and Xianyu instructions without changing account defaults", () => {
+  const input = {
+    news: [
+      {
+        title: "ChatGPT subscription account update",
+        description: "OpenAI released a subscription account update with a setup guide",
+        source: "OpenAI official",
+        url: "https://openai.com/news/subscription-update",
+        published_date: "2026-08-05",
+        details: { content_html: "<p>account subscription release guide</p>" },
+      },
+    ],
+  };
+
+  const accountCandidates = buildOpportunityCandidates(input);
+  const generalCandidates = buildOpportunityCandidates(input, undefined, {
+    profile: "general",
+  });
+  const accountPrompt = formatOpportunityCandidatesForPrompt(accountCandidates);
+  const generalPrompt = formatOpportunityCandidatesForPrompt(
+    generalCandidates,
+    undefined,
+    { profile: "general" }
+  );
+
+  assert.equal(accountCandidates[0].preferredLane, "account");
+  assert.notEqual(generalCandidates[0].preferredLane, "account");
+  assert.match(accountPrompt, /是否今天能挂闲鱼/);
+  assert.doesNotMatch(generalPrompt, /闲鱼|账号搭售/);
+  assert.match(generalPrompt, /48 小时验证起手/);
+});

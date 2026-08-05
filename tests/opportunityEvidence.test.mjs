@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 
 import {
   assessOpportunityEvidence,
+  buildOpportunityEvidenceEnrichment,
   classifyOpportunityCommercialPattern,
   classifyOpportunityEvidence,
   deriveOpportunityEntityKey,
+  deriveOpportunityOfferFamily,
+  extractOfficialOpportunityLinksFromHtml,
 } from "../src/opportunityEvidence.js";
 
 test("classifyOpportunityEvidence treats an original GitHub repository as primary and reproducible", () => {
@@ -105,4 +108,76 @@ test("entity and commercial fingerprints are stable", () => {
     deliveryType: "automation-workflow",
     commercialSignature: "result-delivery:automation-workflow",
   });
+});
+
+test("developer deployment and integration collapse into one reader offer family", () => {
+  const deployment = deriveOpportunityOfferFamily({
+    businessModel: "productized-service",
+    deliveryType: "deployment-setup",
+    preferredLane: "service",
+    supportingItems: [{ url: "https://github.com/uber/ADR" }],
+  });
+  const integration = deriveOpportunityOfferFamily({
+    businessModel: "productized-service",
+    deliveryType: "integration",
+    preferredLane: "service",
+    supportingItems: [{ url: "https://github.com/ruvnet/ruflo" }],
+  });
+
+  assert.equal(deployment, "developer-tool-setup");
+  assert.equal(integration, "developer-tool-setup");
+});
+
+test("trusted media extraction finds official outbound links", () => {
+  const links = extractOfficialOpportunityLinksFromHtml(
+    `<a href="https://huggingface.co/MiniMaxAI/H3">模型页</a>
+     <script>const api = "https:\\/\\/platform.minimax.io\\/docs";</script>`,
+    "https://www.36kr.com/p/example"
+  );
+
+  assert.deepEqual(links, [
+    "https://huggingface.co/MiniMaxAI/H3",
+    "https://platform.minimax.io/docs",
+  ]);
+});
+
+test("opportunity evidence enrichment stays within GitHub and media request budgets", async () => {
+  const requests = [];
+  const fetchImpl = async (url) => {
+    requests.push(String(url));
+    if (String(url).startsWith("https://api.github.com/")) {
+      return new Response(
+        JSON.stringify({
+          license: { spdx_id: "Apache-2.0" },
+          archived: false,
+          updated_at: "2026-08-05T00:00:00Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    return new Response(
+      `<a href="https://huggingface.co/example/model">official model</a>`,
+      { status: 200, headers: { "content-type": "text/html" } }
+    );
+  };
+  const supportingItems = [
+    ...Array.from({ length: 5 }, (_, index) => ({
+      url: `https://github.com/example/repo-${index}`,
+      title: `Repo ${index}`,
+    })),
+    ...Array.from({ length: 3 }, (_, index) => ({
+      url: `https://www.36kr.com/p/${index}`,
+      title: `Media ${index}`,
+    })),
+  ];
+
+  const result = await buildOpportunityEvidenceEnrichment(
+    [{ supportingItems }],
+    { fetchImpl, maxGithubRequests: 4, maxTrustedMediaRequests: 2 }
+  );
+
+  assert.equal(result.stats.githubRequests, 4);
+  assert.equal(result.stats.trustedMediaRequests, 2);
+  assert.equal(requests.length, 6);
+  assert.equal(result.stats.failures, 0);
 });

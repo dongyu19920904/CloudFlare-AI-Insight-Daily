@@ -3,8 +3,10 @@ import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { normalizeOpportunitySourceUrl } from "./opportunityReplayDedupe.js";
 import {
   assessOpportunityEvidence,
+  canonicalizeOpportunityEvidenceUrl,
   classifyOpportunityCommercialPattern,
   classifyOpportunityEvidence,
+  deriveOpportunityOfferFamily,
   deriveOpportunityEntityKey,
 } from "./opportunityEvidence.js";
 import {
@@ -227,7 +229,29 @@ function isAccountLikeCandidate(candidate) {
   return candidate?.preferredLane === "account" || candidate?.preferredLane === "bundle";
 }
 
-function getLaneProductHints(laneId) {
+function getLaneProductHints(laneId, profile = "account") {
+  if (profile === "general") {
+    if (laneId === "bundle") {
+      return {
+        productAngle: "可复用的数据、决策或内容交付",
+        buyerHint: "正在重复整理、比较或制作同类结果的具体职业与小团队",
+        deliveryHint: "一个可验收样品，以及能降低下次交付成本的流程或组件",
+        channelHint: "目标用户所在社群、同行私聊或已有客户访谈",
+        titleHint: "先写目标用户和可验收结果，再写使用了什么工具",
+        avoidLeadHint: "不要把教程、模板或资料库本身当作付费理由。",
+      };
+    }
+
+    return {
+      productAngle: "固定范围、可验收的结果型轻服务",
+      buyerHint: "正用手工笨办法完成具体任务、愿意先测试一个小结果的人",
+      deliveryHint: "测试环境样品、结果报告、复现说明和明确的不包含项",
+      channelHint: "一对一访谈、垂直社群或已有客户",
+      titleHint: "先写目标用户、最小交付和验收结果，再写项目名",
+      avoidLeadHint: "不要把 stars、框架名或技术热度当成需求证据。",
+    };
+  }
+
   if (laneId === "account") {
     return {
       productAngle: "低门槛体验账号或账号搭售商品",
@@ -260,7 +284,11 @@ function getLaneProductHints(laneId) {
   };
 }
 
-function getEditorialHint(candidate) {
+function getEditorialHint(candidate, profile = "account") {
+  if (profile === "general") {
+    return "先写谁正在用什么笨办法，再写可验收的最小结果、48 小时行为验证和停止条件；不要写成账号上新或行业分析。";
+  }
+
   if (candidate?.preferredLane === "account") {
     return "优先把它写成可直接购买的账号入口或账号搭售商品，不要先讲行业讨论。";
   }
@@ -272,10 +300,14 @@ function getEditorialHint(candidate) {
   return "先写你帮用户跑通什么，再写技术背景；除非账号或搭售机会很弱，否则不要占满今日可卖。";
 }
 
-function selectPromptCandidates(candidates, playbook) {
+function selectPromptCandidates(candidates, playbook, options = {}) {
   const maxCandidates = playbook.outputRules.maxPromptCandidates || 4;
   const sortedCandidates = [...(candidates || [])];
   const selectedCandidates = sortedCandidates.slice(0, maxCandidates);
+
+  if (options.profile === "general") {
+    return selectedCandidates;
+  }
 
   if (selectedCandidates.length === 0) {
     return selectedCandidates;
@@ -412,7 +444,7 @@ function scoreSupportingItem(item, matchedTerms) {
   );
 }
 
-function getLaneSignalScores(group) {
+function getLaneSignalScores(group, profile = "account") {
   const laneSignalScores = {
     account: 0,
     bundle: 0,
@@ -468,12 +500,20 @@ function getLaneSignalScores(group) {
     }
   }
 
+  if (profile === "general") {
+    laneSignalScores.account = Number.NEGATIVE_INFINITY;
+    laneSignalScores.bundle += 2;
+    laneSignalScores.service += 3;
+  }
+
   return laneSignalScores;
 }
 
-function getResolvedLaneOrder(group) {
-  const laneSignalScores = getLaneSignalScores(group);
-  const rankedLaneIds = Object.keys(laneSignalScores).sort((leftLaneId, rightLaneId) => {
+function getResolvedLaneOrder(group, profile = "account") {
+  const laneSignalScores = getLaneSignalScores(group, profile);
+  const rankedLaneIds = Object.keys(laneSignalScores)
+    .filter((laneId) => profile !== "general" || laneId !== "account")
+    .sort((leftLaneId, rightLaneId) => {
     const scoreDiff = laneSignalScores[rightLaneId] - laneSignalScores[leftLaneId];
     if (scoreDiff !== 0) return scoreDiff;
 
@@ -484,7 +524,7 @@ function getResolvedLaneOrder(group) {
     if (rightLaneId === group.rule.secondaryLane) return 1;
 
     return leftLaneId.localeCompare(rightLaneId);
-  });
+    });
 
   return {
     laneSignalScores,
@@ -496,7 +536,14 @@ function getResolvedLaneOrder(group) {
   };
 }
 
-function getLaneSpecificRecommendation(preferredLaneId, rule) {
+function getLaneSpecificRecommendation(preferredLaneId, rule, profile = "account") {
+  if (profile === "general") {
+    if (preferredLaneId === "bundle") {
+      return "先验证一个具体职业是否愿意为可复用结果付费，再把重复步骤沉淀成数据、流程或组件。";
+    }
+    return "先在测试环境交付一个固定范围的可验收结果，用访谈、样品、报价或可退意向金验证，不先做大而全服务。";
+  }
+
   if (preferredLaneId === rule.preferredLane) {
     return rule.defaultAdvice;
   }
@@ -512,15 +559,15 @@ function getLaneSpecificRecommendation(preferredLaneId, rule) {
   return "这类变化更适合写成跑通、代配置或交付服务，不要只讲技术热闹。";
 }
 
-function getResolvedCandidateLabel(rule, preferredLaneId) {
+function getResolvedCandidateLabel(rule, preferredLaneId, profile = "account") {
   if (preferredLaneId === rule.preferredLane) {
     return rule.label;
   }
 
   const laneLabelById = {
     account: "账号机会",
-    bundle: "搭售机会",
-    service: "轻服务机会",
+    bundle: profile === "general" ? "可复用交付机会" : "搭售机会",
+    service: profile === "general" ? "结果型服务机会" : "轻服务机会",
   };
 
   const baseLabel = String(rule.label || "")
@@ -589,7 +636,14 @@ function inferXianyuToday(score, afterSalesRisk, preferredLaneId, supportingItem
   return "观察";
 }
 
-function buildTodaySmallestAction(preferredLaneId, candidateLike) {
+function buildTodaySmallestAction(preferredLaneId, candidateLike, profile = "account") {
+  if (profile === "general") {
+    if (preferredLaneId === "bundle") {
+      return `先做一个可验收样品，找 5 位同一类目标用户确认他们现在的笨办法和真实付费行为：${candidateLike.productAngle}`;
+    }
+    return `先在测试环境复现一次最小结果并记录失败点，再访谈 5 位同一鱼塘用户：${candidateLike.productAngle}`;
+  }
+
   if (preferredLaneId === "account") {
     return `先挂一版低价体验/平替入口标题，写清楚售后边界：${candidateLike.productAngle}`;
   }
@@ -636,6 +690,10 @@ function buildOpportunityReplayLookup(memory) {
     memory?.commercialSignatures,
     (record) => record?.commercialSignature || record?.key
   );
+  const offerFamilyCounts = countReplayRecords(
+    memory?.offerFamilies,
+    (record) => record?.offerFamily || record?.key
+  );
 
   return {
     sourceUrlCounts,
@@ -647,6 +705,7 @@ function buildOpportunityReplayLookup(memory) {
     businessModelCounts,
     deliveryTypeCounts,
     commercialSignatureCounts,
+    offerFamilyCounts,
     isEmpty:
       sourceUrlCounts.size === 0 &&
       githubProjectCounts.size === 0 &&
@@ -656,7 +715,8 @@ function buildOpportunityReplayLookup(memory) {
       entityCounts.size === 0 &&
       businessModelCounts.size === 0 &&
       deliveryTypeCounts.size === 0 &&
-      commercialSignatureCounts.size === 0,
+      commercialSignatureCounts.size === 0 &&
+      offerFamilyCounts.size === 0,
   };
 }
 
@@ -743,6 +803,11 @@ function getReplayHardBlock(candidate, replayLookup) {
     return "近7天已经使用同一商业模式与交付类型组合";
   }
 
+  const offerFamily = String(candidate.offerFamily || "").toLowerCase();
+  if (offerFamily && replayLookup.offerFamilyCounts.has(offerFamily)) {
+    return "近7天已经使用同一读者交付家族";
+  }
+
   return "";
 }
 
@@ -820,6 +885,51 @@ function getPreviousTopicPenalty(candidate, replaySignals) {
   return { penalty: 0, reason: "" };
 }
 
+function applySupplementalOpportunityEvidence(items = [], recordsBySourceUrl = {}) {
+  const enrichedItems = [];
+  const checks = [];
+  const seenUrls = new Set();
+
+  const addItem = (item) => {
+    const key = canonicalizeOpportunityEvidenceUrl(item?.url);
+    if (!key || seenUrls.has(key)) return;
+    seenUrls.add(key);
+    enrichedItems.push(item);
+  };
+
+  for (const item of items || []) {
+    const sourceKey = canonicalizeOpportunityEvidenceUrl(item?.url);
+    const record = sourceKey ? recordsBySourceUrl?.[sourceKey] : null;
+    const summary = String(record?.summary || "").trim();
+    const enrichedItem = summary
+      ? {
+          ...item,
+          description: [item.description, summary].filter(Boolean).join("；"),
+          searchText: `${item.searchText || ""} ${summary}`.toLowerCase(),
+        }
+      : item;
+    addItem(enrichedItem);
+
+    if (record) {
+      checks.push({
+        sourceUrl: item.url,
+        checked: Boolean(record.checked),
+        kind: record.kind || "",
+        summary,
+        error: record.error || "",
+      });
+      for (const evidenceItem of record.evidenceItems || []) {
+        addItem(evidenceItem);
+      }
+    }
+  }
+
+  return {
+    items: enrichedItems.slice(0, 5),
+    checks,
+  };
+}
+
 function buildCandidateFromGroup(
   group,
   playbook,
@@ -827,7 +937,8 @@ function buildCandidateFromGroup(
   replayLookup = null,
   options = {}
 ) {
-  const laneDecision = getResolvedLaneOrder(group);
+  const profile = options.profile || "account";
+  const laneDecision = getResolvedLaneOrder(group, profile);
   const preferredLane = getOpportunityLaneById(
     laneDecision.preferredLaneId,
     playbook
@@ -836,7 +947,7 @@ function buildCandidateFromGroup(
     laneDecision.secondaryLaneId,
     playbook
   );
-  const laneHints = getLaneProductHints(laneDecision.preferredLaneId);
+  const laneHints = getLaneProductHints(laneDecision.preferredLaneId, profile);
   const laneScores = getLaneDimensionScores(
     laneDecision.preferredLaneId,
     playbook
@@ -866,13 +977,42 @@ function buildCandidateFromGroup(
         (!isNoisyItem(item) || hasConcreteSignal(item))
     )
     .slice(0, 3);
-  const supportingItems =
+  const baseSupportingItems =
     cleanSupportingItems.length > 0 ? cleanSupportingItems : rankedItems.slice(0, 3);
+  const supplementalEvidence = applySupplementalOpportunityEvidence(
+    baseSupportingItems,
+    options.supplementalEvidenceBySourceUrl || {}
+  );
+  const supportingItems = supplementalEvidence.items;
+  const label = getResolvedCandidateLabel(
+    group.rule,
+    laneDecision.preferredLaneId,
+    profile
+  );
+  const recommendation = getLaneSpecificRecommendation(
+    laneDecision.preferredLaneId,
+    group.rule,
+    profile
+  );
+  const productAngle = useRuleSpecificHints
+    ? group.rule.productAngle || laneHints.productAngle
+    : laneHints.productAngle;
+  const deliveryHint = useRuleSpecificHints
+    ? group.rule.deliveryHint || laneHints.deliveryHint
+    : laneHints.deliveryHint;
   const evidenceAssessment = assessOpportunityEvidence(supportingItems);
   const commercialPattern = classifyOpportunityCommercialPattern(
     supportingItems,
     laneDecision.preferredLaneId
   );
+  const offerFamily = deriveOpportunityOfferFamily({
+    ...commercialPattern,
+    preferredLane: laneDecision.preferredLaneId,
+    label,
+    productAngle,
+    deliveryHint,
+    supportingItems,
+  });
   const replayPenalty = getPreviousTopicPenalty(
     {
       id: group.rule.id,
@@ -886,6 +1026,7 @@ function buildCandidateFromGroup(
       matchedTerms: [...group.matchedTerms],
       preferredLane: laneDecision.preferredLaneId,
       ...commercialPattern,
+      offerFamily,
     },
     replayLookup,
     { includeCommercialDimensions: Boolean(options.enforceReplayDimensions) }
@@ -899,14 +1040,6 @@ function buildCandidateFromGroup(
   const scoreText = totalReplayPenalty
     ? `${summarizeScoreBreakdown(scores)} / ${replayPenaltyReasons} -${totalReplayPenalty}`
     : summarizeScoreBreakdown(scores);
-  const label = getResolvedCandidateLabel(group.rule, laneDecision.preferredLaneId);
-  const recommendation = getLaneSpecificRecommendation(
-    laneDecision.preferredLaneId,
-    group.rule
-  );
-  const productAngle = useRuleSpecificHints
-    ? group.rule.productAngle || laneHints.productAngle
-    : laneHints.productAngle;
   const candidateLike = {
     label,
     preferredLane: laneDecision.preferredLaneId,
@@ -949,14 +1082,16 @@ function buildCandidateFromGroup(
     confidence,
     xianyuToday,
     afterSalesRisk,
-    todaySmallestAction: buildTodaySmallestAction(laneDecision.preferredLaneId, candidateLike),
+    todaySmallestAction: buildTodaySmallestAction(
+      laneDecision.preferredLaneId,
+      candidateLike,
+      profile
+    ),
     productAngle,
     buyerHint: useRuleSpecificHints
       ? group.rule.buyerHint || laneHints.buyerHint
       : laneHints.buyerHint,
-    deliveryHint: useRuleSpecificHints
-      ? group.rule.deliveryHint || laneHints.deliveryHint
-      : laneHints.deliveryHint,
+    deliveryHint,
     channelHint: useRuleSpecificHints
       ? group.rule.channelHint || laneHints.channelHint
       : laneHints.channelHint,
@@ -968,6 +1103,8 @@ function buildCandidateFromGroup(
       : laneHints.avoidLeadHint,
     laneSignalScores: laneDecision.laneSignalScores,
     ...commercialPattern,
+    offerFamily,
+    officialEvidenceChecks: supplementalEvidence.checks,
     supportingItems,
     sourceTypes: [...new Set(group.items.map((item) => item.type))],
   };
@@ -1062,6 +1199,7 @@ export function buildOpportunityCandidateAssessment(
   const rejectedCandidates = [];
   const seenEntities = new Set();
   const seenCommercialSignatures = new Set();
+  const seenOfferFamilies = new Set();
 
   for (const candidate of allCandidates) {
     const rejectionReasons = [];
@@ -1099,6 +1237,15 @@ export function buildOpportunityCandidateAssessment(
       rejectionReasons.push("当天候选中商业模式与交付类型重复");
     }
 
+    const offerFamily = String(candidate.offerFamily || "").toLowerCase();
+    if (
+      enforceReplayDimensions &&
+      offerFamily &&
+      seenOfferFamilies.has(offerFamily)
+    ) {
+      rejectionReasons.push("当天候选中读者交付家族重复");
+    }
+
     const assessedCandidate = {
       ...candidate,
       qualified: rejectionReasons.length === 0,
@@ -1110,6 +1257,7 @@ export function buildOpportunityCandidateAssessment(
       if (enforceReplayDimensions || options.dedupeCandidateEntities) {
         if (entityKey) seenEntities.add(entityKey);
         if (signature) seenCommercialSignatures.add(signature);
+        if (offerFamily) seenOfferFamilies.add(offerFamily);
       }
     } else {
       rejectedCandidates.push(assessedCandidate);
@@ -1148,9 +1296,11 @@ export function buildOpportunityCandidates(
 
 export function formatOpportunityCandidatesForPrompt(
   candidates,
-  playbook = opportunityPlaybook
+  playbook = opportunityPlaybook,
+  options = {}
 ) {
-  const visibleCandidates = selectPromptCandidates(candidates, playbook);
+  const profile = options.profile || "account";
+  const visibleCandidates = selectPromptCandidates(candidates, playbook, { profile });
 
   if (visibleCandidates.length === 0) {
     return "今天没有通过证据与去重门槛的候选。不要编造商机，调用方应跳过本次商机生成。";
@@ -1177,12 +1327,40 @@ export function formatOpportunityCandidatesForPrompt(
         })
         .join("\n");
 
-      return [
+      const commonLines = [
         `### ${index + 1}. ${candidate.label}`,
         `- 证据来源: ${candidate.evidenceSources}`,
         `- 证据强度: ${candidate.evidenceStrength}`,
         `- 证据缺口: ${candidate.evidenceGaps.join("；") || "暂无明显缺口"}`,
         `- 可信度: ${candidate.confidence}`,
+      ];
+
+      if (profile === "general") {
+        return [
+          ...commonLines,
+          `- 读者交付家族: ${candidate.offerFamily}`,
+          `- 48 小时验证起手: ${candidate.todaySmallestAction}`,
+          `- 售后与合规风险: ${candidate.afterSalesRisk}`,
+          `- 综合分: ${candidate.score}/100`,
+          `- 优先交付方向: ${candidate.preferredLaneName}`,
+          `- 备选交付方向: ${candidate.secondaryLaneName}`,
+          `- 机会实体: ${candidate.entityKey}`,
+          `- 商业模式: ${candidate.businessModel}`,
+          `- 交付类型: ${candidate.deliveryType}`,
+          `- 编排提醒: ${getEditorialHint(candidate, profile)}`,
+          `- 最小交付角度: ${candidate.productAngle}`,
+          `- 目标鱼塘提示: ${candidate.buyerHint}`,
+          `- 可验收交付提示: ${candidate.deliveryHint}`,
+          `- 验证触达位置: ${candidate.channelHint}`,
+          `- 标题写法: ${candidate.titleHint}`,
+          `- 不要主写: ${candidate.avoidLeadHint}`,
+          `- 推荐写法: ${candidate.recommendation}`,
+          `- 支撑素材:\n${supportingItemsText}`,
+        ].join("\n");
+      }
+
+      return [
+        ...commonLines,
         `- 是否今天能挂闲鱼: ${candidate.xianyuToday}`,
         `- 售后风险: ${candidate.afterSalesRisk}`,
         `- 今天最小动作: ${candidate.todaySmallestAction}`,
@@ -1192,7 +1370,7 @@ export function formatOpportunityCandidatesForPrompt(
         `- 机会实体: ${candidate.entityKey}`,
         `- 商业模式: ${candidate.businessModel}`,
         `- 交付类型: ${candidate.deliveryType}`,
-        `- 编排提醒: ${getEditorialHint(candidate)}`,
+        `- 编排提醒: ${getEditorialHint(candidate, profile)}`,
         `- 商品化角度: ${candidate.productAngle}`,
         `- 更适合成交给: ${candidate.buyerHint}`,
         `- 你能交付: ${candidate.deliveryHint}`,

@@ -304,19 +304,14 @@ export const opportunityPlaybook = {
       },
     ],
     narrativeRequirement:
-      "先用短段落给直接判断，再用少量字段讲清证据、鱼塘、最小交付、48 小时验证、第一单、复购资产、风险和停止条件；整篇控制长度，不写成交口号。",
+      "先用短段落给直接判断，再用六组字段讲清证据与可信度、鱼塘与笨办法、最小交付、48 小时验证、第一单与复购、风险与停止；整篇控制长度，不写成交口号。",
     requiredOpportunityFields: [
-      "可验证信号",
-      "证据来源",
-      "可信度",
-      "目标鱼塘与笨办法",
+      "证据与可信度",
+      "鱼塘与笨办法",
       "最小交付",
       "48小时验证",
-      "第一单",
-      "复购或资产",
-      "证据缺口",
-      "售后与合规风险",
-      "停止条件",
+      "第一单与复购",
+      "风险与停止",
     ],
     requiredWeeklyTryFields: [
       "证据来源",
@@ -352,10 +347,15 @@ export function getOpportunityLaneById(
   return playbook.productLanes.find((lane) => lane.id === laneId) || null;
 }
 
-export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
+export function serializeOpportunityPlaybook(
+  playbook = opportunityPlaybook,
+  options = {}
+) {
+  const profile = options.profile || "account";
   const business = playbook.businessProfile;
   const strategy = playbook.strategyKernel || {};
   const lanes = playbook.productLanes
+    .filter((lane) => profile !== "general" || lane.id !== "account")
     .map((lane) => {
       return [
         `- ${lane.name}: ${lane.description}`,
@@ -366,15 +366,27 @@ export function serializeOpportunityPlaybook(playbook = opportunityPlaybook) {
 
   const rules = playbook.topicRules
     .map((rule) => {
-      const preferredLane = getOpportunityLaneById(rule.preferredLane, playbook);
+      const resolvedPreferredLaneId =
+        profile === "general" && rule.preferredLane === "account"
+          ? rule.secondaryLane || "service"
+          : rule.preferredLane;
+      const preferredLane = getOpportunityLaneById(resolvedPreferredLaneId, playbook);
       const secondaryLane = getOpportunityLaneById(rule.secondaryLane, playbook);
+      const label =
+        profile === "general" && rule.preferredLane === "account"
+          ? `${rule.id.toUpperCase()} 相关变化（仅在能形成具体结果交付时采用）`
+          : rule.label;
+      const advice =
+        profile === "general" && rule.preferredLane === "account"
+          ? "不要写账号上新；只在当天证据能触发具体服务、迁移、数据或可复用交付时采用。"
+          : rule.defaultAdvice;
 
       return [
-        `- ${rule.label}`,
+        `- ${label}`,
         `  - 命中关键词: ${rule.match.join("、")}`,
-        `  - 优先卖法: ${preferredLane?.name || rule.preferredLane}`,
+        `  - 优先卖法: ${preferredLane?.name || resolvedPreferredLaneId}`,
         `  - 备选卖法: ${secondaryLane?.name || rule.secondaryLane}`,
-        `  - 写法提醒: ${rule.defaultAdvice}`,
+        `  - 写法提醒: ${advice}`,
       ].join("\n");
     })
     .join("\n");

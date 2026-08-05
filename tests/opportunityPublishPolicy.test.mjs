@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { validateOpportunityPublication } from "../src/publishValidation.js";
+import {
+  normalizeOpportunityEvidenceBoundaryLanguage,
+  validateOpportunityPublication,
+} from "../src/publishValidation.js";
 
 function buildOpportunityMarkdown(sourceUrl = "https://github.com/example/video-workflow") {
   return `## 直接结论
@@ -13,17 +16,12 @@ function buildOpportunityMarkdown(sourceUrl = "https://github.com/example/video-
 ## 今日主推
 ### 给内容团队交付一支可验收样片
 原项目已经可以复现，但付费需求还没有被证明，因此只做一次小样验证。
-- **可验证信号：** 原项目发布了视频内容工作流。
-- **证据来源：** [官方仓库：证明项目代码与工作流可核验](${sourceUrl})
-- **可信度：** 中
-- **目标鱼塘与笨办法：** 小内容团队仍靠多人手工传脚本和素材。
+- **证据与可信度：** 中；[官方仓库：证明项目代码与工作流可核验](${sourceUrl})；本次候选输入未提供真实付费证据。
+- **鱼塘与笨办法：** 待验证假设：小内容团队可能仍靠多人手工传脚本和素材。
 - **最小交付：** 一支三镜头样片和实际成本记录，不含长期代运营。
 - **48小时验证：** 给五位目标用户看样片并询问是否愿意提供真实脚本试做。
-- **第一单：** 固定一个脚本、三镜头和一次修改，以可播放样片验收。
-- **复购或资产：** 重复需求出现后再沉淀配置和错误库，否则只是一次性单。
-- **证据缺口：** 没有真实付费证据。
-- **售后与合规风险：** 中，需要核对素材版权和许可边界。
-- **停止条件：** 无法复现、成本不可控或五位用户都无意愿。
+- **第一单与复购：** 固定一个脚本、三镜头和一次修改，以可播放样片验收；重复需求出现后再沉淀配置和错误库，否则只是一次性单。
+- **风险与停止：** 中，需要核对素材版权和许可边界；无法复现、成本不可控或五位用户都无意愿就停。
 
 ## 本周小试
 今天没有第二个达到证据门槛的机会，不凑数。
@@ -176,7 +174,7 @@ test("the avoid section cannot name an item when no rejected candidate exists", 
 test("opportunity publication rejects unsupported universal market claims", () => {
   const sourceUrl = "https://github.com/example/video-workflow";
   const markdown = buildOpportunityMarkdown(sourceUrl).replace(
-    "小内容团队仍靠多人手工传脚本和素材。",
+    "待验证假设：小内容团队可能仍靠多人手工传脚本和素材。",
     "目标用户不缺，每个人都会为这项服务付费。"
   );
   const result = validateOpportunityPublication({
@@ -219,6 +217,117 @@ test("opportunity publication rejects generic crowd claims and invented time est
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
+test("opportunity publication rejects unsupported claims that a media article has no official link", () => {
+  const qualifiedUrl = "https://github.com/example/video-workflow";
+  const rejectedUrl = "https://www.36kr.com/p/example";
+  const markdown = buildOpportunityMarkdown(qualifiedUrl).replace(
+    "今天没有额外需要点名的高风险方向。",
+    `[36kr 报道](${rejectedUrl})没有指向官方仓库，所以这条一定无法核验。`
+  );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [qualifiedUrl],
+    allowedRejectedSourceUrls: [rejectedUrl],
+    sourceEvidence: [{ url: qualifiedUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
+test("opportunity publication rejects media absence claims and zero-risk license conclusions", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl)
+    .replace(
+      "今天没有额外需要点名的高风险方向。",
+      "只有媒体转述，无原项目链接或产品演示。"
+    )
+    .replace(
+      "中，需要核对素材版权和许可边界",
+      "低，MIT 许可，无授权风险"
+    );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: ["https://example.com/rejected"],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
+test("opportunity publication requires evidence gaps to be scoped to candidate input", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl)
+    .replace(
+      "本次候选输入未提供真实付费证据。",
+      "尚无真实付费证据。"
+    )
+    .replace(
+      "今天没有额外需要点名的高风险方向。",
+      "只有融资金额和采访语录，无官方产品主页、GitHub 仓库或可复现演示。"
+    );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: ["https://example.com/rejected"],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
+test("opportunity publication rejects duplicate evidence links and unverified no-risk wording", () => {
+  const sourceUrl = "https://github.com/example/video-workflow";
+  const markdown = buildOpportunityMarkdown(sourceUrl)
+    .replace(
+      "原项目已经可以复现",
+      `[原项目仓库](${sourceUrl})已经可以复现`
+    )
+    .replace(
+      "中，需要核对素材版权和许可边界",
+      "低，无已知商标或内容限制"
+    );
+  const result = validateOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, isPrimary: true }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /不得重复引用同一个来源链接/);
+  assert.match(result.issues.join(" | "), /禁止模式/);
+});
+
+test("opportunity evidence normalization scopes model absence claims before validation", () => {
+  const sourceUrl = "https://www.36kr.com/p/example";
+  const normalized = normalizeOpportunityEvidenceBoundaryLanguage(`## 今日主推
+### 验证一个机会
+- **证据与可信度：** 中；尚无任何付费记录，没有任何用户原话或询价记录，无已知商标限制。
+- **鱼塘与笨办法：** 目前只有项目存在证明，没有买家痛点访谈。
+- **风险与停止：** 仍需核对许可。**停止条件：** 五位目标用户均没有付费意向就停。
+
+## 今天别碰
+[融资报道](${sourceUrl})——只有融资和采访信息，无官方产品主页或可复现演示。
+
+## 今日三步
+- **今天确认：** 先核对。`);
+
+  assert.match(normalized, /本次候选输入未提供付费记录/);
+  assert.match(normalized, /本次候选输入未提供用户原话或询价记录/);
+  assert.match(normalized, /本次候选输入未提供买家痛点访谈/);
+  assert.match(normalized, /停止条件：\*\* 五位目标用户均没有付费意向就停/);
+  assert.doesNotMatch(normalized, /均本次候选输入未提供付费意向/);
+  assert.match(normalized, /相关商标、内容、依赖与授权边界仍待核对/);
+  assert.match(
+    normalized,
+    /本次候选输入未提供可核验的官方产品或原项目链接，也未提供可复现的交付证据/
+  );
+  assert.doesNotMatch(normalized, /只有融资和采访信息，无官方产品主页/);
 });
 
 test("a GitHub repository root cannot be labeled as a direct license page", () => {

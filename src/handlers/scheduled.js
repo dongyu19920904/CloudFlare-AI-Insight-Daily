@@ -46,6 +46,7 @@ import {
     validateDailyPublication,
     validateAccountOpportunityPublication,
     validateOpportunityPublication,
+    normalizeOpportunityEvidenceBoundaryLanguage,
 } from '../publishValidation.js';
 import {
     extractGithubTopProjectsFromMarkdown,
@@ -61,15 +62,19 @@ import {
     createEmptyOpportunityReplayMemory,
     extractOpportunityReplayMemoryFromMarkdown,
     formatOpportunityReplayMemoryForPrompt,
+    getMissingOpportunityReplaySections,
     getOpportunityReplayMemoryStats,
+    hasOpportunityReplaySectionDate,
     mergeOpportunityReplayMemories,
     pruneOpportunityReplayMemory,
 } from '../opportunityReplayDedupe.js';
 import {
-    containsAivoraLink,
+    buildAivoraOpportunityLinkIntent,
+    insertOpportunityAivoraLink,
     loadAivoraOpportunityLinkPolicy,
     sanitizeOpportunityAivoraLinks,
 } from '../opportunityAivoraLinkPolicy.js';
+import { buildOpportunityEvidenceEnrichment } from '../opportunityEvidence.js';
 import {
     removeEmptyDailyFunSection,
     removeEmptyDailyTopicSections,
@@ -396,29 +401,45 @@ function hasOpportunityReplayMemory(memory) {
     return Object.values(stats).some((count) => count > 0);
 }
 
-function hasOpportunityReplayRecord(memory, section, dateStr) {
-    const collections = [
-        memory?.sourceUrls,
-        memory?.githubProjects,
-        memory?.ruleIds,
-        memory?.lanes,
-        memory?.terms,
-        memory?.titles,
-        memory?.entities,
-        memory?.businessModels,
-        memory?.deliveryTypes,
-        memory?.commercialSignatures,
-    ];
-
-    return collections.some((records) =>
-        (records || []).some((record) => record?.section === section && record?.date === dateStr)
-    );
-}
-
 const OPPORTUNITY_QUALITY_SKIP_KEY_PREFIX = 'opportunity-quality-skip';
+const OPPORTUNITY_EVIDENCE_CACHE_KEY_PREFIX = 'opportunity-evidence-enrichment';
 
 function getOpportunityQualitySkipKey(dateStr) {
     return `${OPPORTUNITY_QUALITY_SKIP_KEY_PREFIX}:${dateStr}`;
+}
+
+function getOpportunityEvidenceCacheKey(dateStr, candidates = []) {
+    const sourceUrls = (candidates || [])
+        .flatMap((candidate) => candidate?.supportingItems || [])
+        .map((item) => String(item?.url || '').trim().toLowerCase())
+        .filter(Boolean)
+        .sort();
+    let hash = 2166136261;
+    for (const char of sourceUrls.join('|')) {
+        hash ^= char.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `${OPPORTUNITY_EVIDENCE_CACHE_KEY_PREFIX}:${dateStr}:${(hash >>> 0).toString(16)}`;
+}
+
+async function loadOpportunityEvidenceCache(env, cacheKey) {
+    if (!env.DATA_KV) return null;
+    try {
+        const cached = await getFromKV(env.DATA_KV, cacheKey);
+        return cached?.recordsBySourceUrl ? cached : null;
+    } catch (error) {
+        console.warn(`[Scheduled][Opportunity] Failed to read evidence cache: ${error.message}`);
+        return null;
+    }
+}
+
+async function storeOpportunityEvidenceCache(env, cacheKey, enrichment) {
+    if (!env.DATA_KV || !enrichment?.recordsBySourceUrl) return;
+    try {
+        await storeInKV(env.DATA_KV, cacheKey, enrichment, 86400 * 2);
+    } catch (error) {
+        console.warn(`[Scheduled][Opportunity] Failed to store evidence cache: ${error.message}`);
+    }
 }
 
 async function loadOpportunityQualitySkip(env, dateStr) {
@@ -511,27 +532,22 @@ async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
     let missingCount = 0;
     let loadedFromKv = hasOpportunityReplayMemory(memory);
 
-    const targets = [];
-    if (!loadedFromKv) {
-        for (const candidateDate of previousDates) {
-            targets.push({
-                date: candidateDate,
-                section: 'opportunity',
-                path: buildOpportunityPaths(candidateDate).pagePath,
-                playbook: opportunityPlaybook,
-            });
-            targets.push({
-                date: candidateDate,
-                section: 'account-opportunity',
-                path: buildAccountOpportunityPaths(candidateDate).pagePath,
-                playbook: accountOpportunityPlaybook,
-            });
-        }
-    }
+    const targets = getMissingOpportunityReplaySections(memory, previousDates)
+        .map((target) => ({
+            ...target,
+            path: target.section === 'opportunity'
+                ? buildOpportunityPaths(target.date).pagePath
+                : buildAccountOpportunityPaths(target.date).pagePath,
+            playbook: target.section === 'opportunity'
+                ? opportunityPlaybook
+                : accountOpportunityPlaybook,
+        }));
 
     if (
         options.includeCurrentOpportunity &&
-        !hasOpportunityReplayRecord(memory, 'opportunity', dateStr)
+        !hasOpportunityReplaySectionDate(memory, 'opportunity', dateStr, {
+            requireOfferFamily: true,
+        })
     ) {
         targets.push({
             date: dateStr,
@@ -1596,7 +1612,13 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     return { outputOfCall3, dailySummaryMarkdownContent, validation };
 }
 
-function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPerCandidate = 2) {
+function buildOpportunitySourceDigest(
+    candidates,
+    maxCandidates = 3,
+    maxItemsPerCandidate = 2,
+    options = {}
+) {
+    const profile = options.profile || 'account';
     const visibleCandidates = (candidates || []).slice(0, maxCandidates);
     if (visibleCandidates.length === 0) {
         return '今天候选主题较弱，请保守输出，不要硬凑热门。';
@@ -1612,13 +1634,38 @@ function buildOpportunitySourceDigest(candidates, maxCandidates = 3, maxItemsPer
             })
             .join('\n');
 
-        return [
+        const evidenceCheckText = (candidate.officialEvidenceChecks || [])
+            .map((check) => check.checked
+                ? check.summary || '已完成确定性来源核验'
+                : `核验失败，不得据此断言原文缺少官方链接：${check.error || '未知错误'}`)
+            .join('；');
+        const commonLines = [
             `### ${candidate.label}`,
             `- 证据强度: ${candidate.evidenceStrength}`,
             `- 证据缺口: ${(candidate.evidenceGaps || []).join('；') || '暂无明显缺口'}`,
             `- 机会实体: ${candidate.entityKey}`,
             `- 商业模式: ${candidate.businessModel}`,
             `- 交付类型: ${candidate.deliveryType}`,
+            evidenceCheckText ? `- 官方链接核验: ${evidenceCheckText}` : '',
+        ].filter(Boolean);
+
+        if (profile === 'general') {
+            return [
+                ...commonLines,
+                `- 读者交付家族: ${candidate.offerFamily || '未分类'}`,
+                `- 优先交付方向: ${candidate.preferredLaneName}`,
+                `- 最小交付角度: ${candidate.productAngle || '先定义一个固定范围、可验收的小结果'}`,
+                `- 目标鱼塘提示: ${candidate.buyerHint || '先缩到同一职业、同一高频任务'}`,
+                `- 可验收交付: ${candidate.deliveryHint || '写清结果、边界和不包含项'}`,
+                `- 48 小时触达: ${candidate.channelHint || '访谈同一鱼塘的 3-5 位用户'}`,
+                `- 标题写法: ${candidate.titleHint || '先写目标用户和可验收结果'}`,
+                `- 不要主写: ${candidate.avoidLeadHint || '不要把技术热度写成付费需求'}`,
+                `- 证据片段:\n${supportingText || '- 无'}`,
+            ].join('\n');
+        }
+
+        return [
+            ...commonLines,
             `- 优先卖法: ${candidate.preferredLaneName}`,
             `- 商品化角度: ${candidate.productAngle || '先写今天能卖的商品，再补技术解释'}`,
             `- 更适合成交给: ${candidate.buyerHint || '优先写成中文新手也能买懂的商品'}`,
@@ -1642,10 +1689,16 @@ function buildRejectedOpportunityDigest(candidates, maxCandidates = 3) {
         const source = candidate.supportingItems?.[0];
         const sourceTitle = source?.title || source?.source || candidate.label;
         const linkedSource = source?.url ? `[${sourceTitle}](${source.url})` : sourceTitle;
+        const evidenceChecks = (candidate.officialEvidenceChecks || [])
+            .map((check) => check.checked
+                ? check.summary || '已完成来源核验'
+                : `核验失败，只能写“本次候选未提供”，不能断言原文没有官方来源`)
+            .join('；');
         return [
             `- ${linkedSource}`,
             `  - 拒绝原因: ${(candidate.rejectionReasons || []).join('；') || '未达到发布门槛'}`,
-        ].join('\n');
+            evidenceChecks ? `  - 官方链接核验: ${evidenceChecks}` : '',
+        ].filter(Boolean).join('\n');
     }).join('\n');
 }
 
@@ -1698,10 +1751,10 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
         "- 页面模板已经提供唯一 H1；正文不得输出一级标题，只包含：## 直接结论 / ## 今日主推 / ## 本周小试 / ## 今天别碰 / ## 今日三步",
         "- `###` 标题必须是纯文本；来源只放在 `证据来源` 字段中",
         "- 每个机会的证据来源至少包含 1 个 Markdown 链接，且 URL 必须来自下面原始候选",
-        "- 今日主推必须包含：可验证信号、证据来源、可信度、目标鱼塘与笨办法、最小交付、48小时验证、第一单、复购或资产、证据缺口、售后与合规风险、停止条件",
+        "- 今日主推只用六组字段：证据与可信度、鱼塘与笨办法、最小交付、48小时验证、第一单与复购、风险与停止；证据链接和缺口合并写在第一组，售后/合规风险和停止条件合并写在最后一组",
         "- 本周小试每个候选包含：证据来源、目标鱼塘、最小交付、48小时验证、为什么只是小试、停止条件",
-        "- 直接结论约 160-260 字，今日主推约 500-900 字，每个本周小试约 220-420 字，今日三步合计约 120-240 字；每个字段尽量只写一个短句",
-        "- 硬上限按含 Markdown 的字符数计算：直接结论 420、今日主推单条 1250、本周小试单条 760、今日三步 720；必须留出余量，不要贴线写",
+        "- 直接结论约 140-220 字，今日主推约 420-700 字，每个本周小试约 180-320 字，今日三步合计约 100-180 字；每个字段只回答一件事",
+        "- 硬上限按含 Markdown 的字符数计算：直接结论 360、今日主推单条 1100、本周小试单条 650、今日三步 520；必须留出余量，不要贴线写",
         "- 今日主推开场最多 2 个短句，不复述项目 README，不在多个字段重复同一事实",
         "- 今日三步必须恰好 3 个一级列表项，每项只有一个完整句子且不超过 80 个中文字符；不得放链接、子列表、背景、范围、证据说明或第二句解释，只写动作、对象和可观察结果",
         "- 48 小时验证必须看到访谈、样品、真实报价或意向金等行为，不能只写发帖、挂闲鱼或录屏",
@@ -1711,11 +1764,12 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
         "- 没有实测记录时不得编造安装或交付耗时，只写记录实际耗时，不写预计 1-2 小时",
         "- 标题只写目标用户、最小交付和可验收结果；没有真实买家证据时，不得断言用户愿意付钱",
         "- 今天别碰如果点名具体方向，必须引用对应的被拒候选链接；没有被拒候选时使用默认句，不得点名",
+        "- 只有候选明确标注完成官方外链核验时，才可写“本次候选输入未提取到官方链接”；禁止断言“原文没有官方链接”或“报道没有指向官方来源”",
         "- 链接文字只能描述 URL 实际指向的页面；仓库首页不能称为 LICENSE、定价页或教程的直接链接",
         "- 不要生成 aivora.cn 或 news.aivora.cn 链接",
         "- 不要出现便宜 token、风险自负、多用户商业化",
         "- 不得虚构销量、利润率、价格、政策、授权、用户反馈或确定性赚钱结果",
-        "- 今日主推与本周小试不能重复同一实体或同一商业模式与交付组合",
+        "- 今日主推与本周小试不能重复同一实体、同一商业模式与交付组合或同一读者交付家族",
         "",
         "下面是原始候选素材：",
         basePromptInput,
@@ -1768,17 +1822,55 @@ async function generateOpportunityMarkdown(
     const opportunityPaths = buildOpportunityPaths(dateStr);
     debugInfo.opportunityPublicPath = opportunityPaths.publicPath;
 
+    const assessmentOptions = {
+        profile: 'general',
+        previousMainTopicSignals: options.previousMainTopicSignals || null,
+        recentReplayMemory: options.recentReplayMemory || null,
+        enforceReplayDimensions: true,
+        entityAwareGrouping: true,
+        avoidGenericDuplicates: true,
+        minimumCandidateScore: 52,
+    };
+    const previewAssessment = buildOpportunityCandidateAssessment(
+        allUnifiedData,
+        opportunityPlaybook,
+        {
+            ...assessmentOptions,
+            requireStrongEvidence: false,
+        }
+    );
+    const evidenceCacheKey = getOpportunityEvidenceCacheKey(
+        dateStr,
+        previewAssessment.candidates
+    );
+    let evidenceEnrichment = await loadOpportunityEvidenceCache(env, evidenceCacheKey);
+    if (evidenceEnrichment) {
+        debugInfo.opportunityEvidenceEnrichmentCacheHit = true;
+    } else {
+        evidenceEnrichment = await buildOpportunityEvidenceEnrichment(
+            previewAssessment.candidates.slice(0, 6),
+            {
+                githubToken: env.GITHUB_TOKEN || env.GH_TOKEN || '',
+                maxGithubRequests: 4,
+                maxTrustedMediaRequests: 2,
+                timeoutMs: 8000,
+            }
+        );
+        debugInfo.opportunityEvidenceEnrichmentCacheHit = false;
+        if (!options.dryRun) {
+            await storeOpportunityEvidenceCache(env, evidenceCacheKey, evidenceEnrichment);
+        }
+    }
+    debugInfo.opportunityEvidenceEnrichment = evidenceEnrichment?.stats || {};
+
     const candidateAssessment = buildOpportunityCandidateAssessment(
         allUnifiedData,
         opportunityPlaybook,
         {
-            previousMainTopicSignals: options.previousMainTopicSignals || null,
-            recentReplayMemory: options.recentReplayMemory || null,
+            ...assessmentOptions,
             requireStrongEvidence: true,
-            enforceReplayDimensions: true,
-            entityAwareGrouping: true,
-            avoidGenericDuplicates: true,
-            minimumCandidateScore: 52,
+            supplementalEvidenceBySourceUrl:
+                evidenceEnrichment?.recordsBySourceUrl || {},
         }
     );
     const opportunityCandidates = candidateAssessment.candidates.slice(
@@ -1794,7 +1886,7 @@ async function generateOpportunityMarkdown(
         rejectedOpportunityCandidates
     );
     const playbookText = [
-        serializeOpportunityPlaybook(opportunityPlaybook),
+        serializeOpportunityPlaybook(opportunityPlaybook, { profile: 'general' }),
     ].join('\n\n');
 
     debugInfo.opportunityCandidateCount = opportunityCandidates.length;
@@ -1819,12 +1911,14 @@ async function generateOpportunityMarkdown(
 
     const opportunityCandidatesText = formatOpportunityCandidatesForPrompt(
         opportunityCandidates,
-        opportunityPlaybook
+        opportunityPlaybook,
+        { profile: 'general' }
     );
     const opportunitySourceDigest = buildOpportunitySourceDigest(
         opportunityCandidates,
         opportunityPlaybook.outputRules.maxDigestCandidates || 4,
-        opportunityPlaybook.outputRules.maxEvidenceItemsPerCandidate || 2
+        opportunityPlaybook.outputRules.maxEvidenceItemsPerCandidate || 2,
+        { profile: 'general' }
     );
 
     console.log(`[Scheduled][Opportunity] Generating content...`);
@@ -1837,7 +1931,13 @@ async function generateOpportunityMarkdown(
     ].filter(Boolean).join('\n\n');
 
     const opportunitySystemPrompt = getSystemPromptAiOpportunity(dateStr, playbookText);
-    let aivoraLinkPolicy = { allowedUrls: [] };
+    const aivoraLinkIntent = buildAivoraOpportunityLinkIntent(opportunityCandidates);
+    let aivoraLinkPolicy = await loadAivoraOpportunityLinkPolicy(env, dateStr, {
+        intent: aivoraLinkIntent,
+        maxSemanticPageChecks: 2,
+    });
+    debugInfo.opportunityAivoraLinkRelevant = Boolean(aivoraLinkIntent.eligible);
+    debugInfo.opportunityAivoraSuggestedUrl = aivoraLinkPolicy.suggestedUrl || '';
     const normalizeAndValidate = async (rawMarkdown) => {
         let markdown = removeMarkdownCodeBlock(rawMarkdown);
         markdown = stripTemplateOwnedOpportunityH1(markdown);
@@ -1846,10 +1946,14 @@ async function generateOpportunityMarkdown(
             markdown,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
+        markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown);
 
-        if (containsAivoraLink(markdown)) {
-            aivoraLinkPolicy = await loadAivoraOpportunityLinkPolicy(env, dateStr);
-        }
+        const insertedAivoraLink = insertOpportunityAivoraLink(
+            markdown,
+            aivoraLinkPolicy
+        );
+        markdown = insertedAivoraLink.markdown;
+        debugInfo.opportunityAivoraLinkInserted = insertedAivoraLink.inserted;
         const sanitizedLinks = sanitizeOpportunityAivoraLinks(
             markdown,
             aivoraLinkPolicy,
@@ -2518,6 +2622,7 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
         {
             previousMainTopicSignals: previousOpportunityReplaySignals,
             recentReplayMemory: recentOpportunityReplayMemory,
+            dryRun,
         }
     );
 

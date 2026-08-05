@@ -12,6 +12,7 @@ import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
 import { validateOpportunityAivoraLinks } from "./opportunityAivoraLinkPolicy.js";
 import { classifyOpportunityEvidence } from "./opportunityEvidence.js";
+import { normalizeOpportunitySourceUrl } from "./opportunityReplayDedupe.js";
 
 const DAILY_META_PATTERNS = [
   /AI思考:?/i,
@@ -716,9 +717,33 @@ function extractLevel3Blocks(section) {
 }
 
 function hasOpportunityEvidenceLink(block) {
-  return /^-\s*\*{0,2}证据来源(?:[:：]\*{0,2}|\*{0,2}[:：]).*\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(
+  return /^-\s*\*{0,2}(?:证据来源|证据与可信度)(?:[:：]\*{0,2}|\*{0,2}[:：]).*\[[^\]]+\]\(https?:\/\/[^\s)]+\)/m.test(
     String(block || "")
   );
+}
+
+function collectOpportunityGroupedFieldIssues(markdown) {
+  const issues = [];
+  const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
+  const requiredFields = [
+    "证据与可信度",
+    "鱼塘与笨办法",
+    "最小交付",
+    "48小时验证",
+    "第一单与复购",
+    "风险与停止",
+  ];
+
+  for (const block of extractLevel3Blocks(mainSection)) {
+    for (const field of requiredFields) {
+      const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!new RegExp(`^-\\s*\\*{0,2}${escaped}(?:[:：]\\*{0,2}|\\*{0,2}[:：])`, "m").test(block)) {
+        issues.push(`AI 商机“今日主推”缺少六组字段中的“${field}”`);
+      }
+    }
+  }
+
+  return issues;
 }
 
 function buildEvidenceByUrl(sourceEvidence = []) {
@@ -783,6 +808,10 @@ function collectOpportunitySourcePolicyIssues(
     }
 
     const blockLinks = extractSectionLinks(block).filter((link) => !isNoiseSectionLink(link));
+    const blockSourceUrls = blockLinks.map((link) => normalizeOpportunitySourceUrl(link.url));
+    if (new Set(blockSourceUrls).size !== blockSourceUrls.length) {
+      issues.push("AI 商机同一条机会不得重复引用同一个来源链接");
+    }
     if (blockLinks.some(linkLabelOverstatesDestination)) {
       issues.push("AI 商机来源链接文字不能把 GitHub 仓库首页描述成 LICENSE、定价页或教程直达页");
     }
@@ -842,10 +871,10 @@ function collectOpportunitySourcePolicyIssues(
 
 function collectOpportunityLengthIssues(markdown) {
   const issues = [];
-  const maxDirectChars = 420;
-  const maxMainChars = 1250;
-  const maxSmallChars = 760;
-  const maxActionChars = 720;
+  const maxDirectChars = 360;
+  const maxMainChars = 1100;
+  const maxSmallChars = 650;
+  const maxActionChars = 520;
   const directSection = extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im);
   const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
   const smallSection = extractSection(markdown, /^##\s+本周小试(?:\s|$).*$/im);
@@ -904,6 +933,78 @@ function collectOpportunityActionShapeIssues(markdown) {
   return issues;
 }
 
+const OPPORTUNITY_UNSCOPED_EVIDENCE_GAP_PATTERN =
+  /(?:目前|尚)?(?:无|没有|零)([^。！？；，,\n]{0,40}(?:用户(?:使用)?记录|用户原话|买家(?:痛点)?访谈|询价记录|issues?[^。！？；，,\n]{0,12}(?:讨论|反馈)|付费证据|付费意向|付费记录))/gi;
+const OPPORTUNITY_UNSAFE_AVOID_PATTERNS = [
+  /(?:原文|报道|文章|媒体转述|媒体报道)[^。！？；\n]{0,30}(?:无|没有|未提供)[^。！？；\n]{0,24}(?:原项目|官方|产品演示|可复现)/i,
+  /(?:只有|仅有)(?:融资|采访|媒体|报道)[^。！？；\n]{0,48}(?:无|没有|未提供)[^。！？；\n]{0,30}(?:官方|原项目|GitHub|产品主页|产品演示|可复现)/i,
+];
+
+export function normalizeOpportunityEvidenceBoundaryLanguage(markdown) {
+  let normalized = String(markdown || "")
+    .split("\n")
+    .map((line) => {
+      const stopBoundary = line.search(/(?:\*\*)?(?:停止条件|何时停)：(?:\*\*)?/);
+      const evidenceText = stopBoundary >= 0 ? line.slice(0, stopBoundary) : line;
+      const stopText = stopBoundary >= 0 ? line.slice(stopBoundary) : "";
+      return evidenceText.replace(
+        OPPORTUNITY_UNSCOPED_EVIDENCE_GAP_PATTERN,
+        (_, gap) => `本次候选输入未提供${String(gap || "").replace(/^任何/, "")}`
+      ) + stopText;
+    })
+    .join("\n");
+  normalized = normalized.replace(
+    /(?:无已知|未发现)[^。！？；\n]{0,24}(?:商标|内容|依赖|许可|授权)(?:限制|风险|问题)?/gi,
+    "相关商标、内容、依赖与授权边界仍待核对"
+  );
+
+  let inAvoidSection = false;
+  normalized = normalized
+    .split("\n")
+    .map((line) => {
+      if (/^##\s+/.test(line)) {
+        inAvoidSection = /^##\s+今天别碰(?:\s|$)/.test(line);
+        return line;
+      }
+      if (
+        !inAvoidSection ||
+        !OPPORTUNITY_UNSAFE_AVOID_PATTERNS.some((pattern) => pattern.test(line))
+      ) {
+        return line;
+      }
+
+      const sourceLink = line.match(/\[[^\]]+\]\(https?:\/\/[^)]+\)/i)?.[0] || "该候选";
+      return `${sourceLink}——本次候选输入未提供可核验的官方产品或原项目链接，也未提供可复现的交付证据，先不投入。`;
+    })
+    .join("\n");
+
+  return normalized;
+}
+
+function collectOpportunityMarketHypothesisIssues(markdown) {
+  const unsupportedPatterns = [
+    /(?:市面上|市场上|国内|中文(?:市场|用户|生态|社区)?)[^。！？；\n]{0,48}(?:没有|缺少|缺乏|空白)/i,
+    /目前(?:没有|缺少|缺乏)[^。！？；\n]{0,20}(?:针对|面向)[^。！？；\n]{0,30}(?:方案|产品|服务|工具|教程|结果包|配置包)/i,
+    /(?:用户|开发者|团队|商家|创作者|从业者)[^。！？；\n]{0,36}(?:反复|经常|普遍|只能|不得不)[^。！？；\n]{0,48}(?:手动|复制|重配|配置|处理|整理|切换|拼凑)/i,
+    /(?:反复|经常|普遍|只能|不得不)[^。！？；\n]{0,36}(?:用户|开发者|团队|商家|创作者|从业者)/i,
+  ];
+  const uncertaintyPattern = /(?:待验证假设|仍待验证|尚待验证|需要验证|有待验证|可能|如果|若)/i;
+  const clauses = String(markdown || "")
+    .split(/\n|(?<=[。！？；])/u)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+
+  const unsupportedClause = clauses.find(
+    (clause) =>
+      unsupportedPatterns.some((pattern) => pattern.test(clause)) &&
+      !uncertaintyPattern.test(clause)
+  );
+
+  return unsupportedClause
+    ? ["AI 商机把未经需求证据支持的市场缺口或群体痛点写成事实，必须改为待验证假设"]
+    : [];
+}
+
 export function validateOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
@@ -924,17 +1025,12 @@ export function validateOpportunityPublication({
       "## 本周小试",
       "## 今天别碰",
       "## 今日三步",
-      "可验证信号",
-      "证据来源",
-      "可信度",
-      "目标鱼塘与笨办法",
+      "证据与可信度",
+      "鱼塘与笨办法",
       "最小交付",
       "48小时验证",
-      "第一单",
-      "复购或资产",
-      "证据缺口",
-      "售后与合规风险",
-      "停止条件",
+      "第一单与复购",
+      "风险与停止",
       "今天确认",
       "今天制作",
       "今天询价",
@@ -946,8 +1042,14 @@ export function validateOpportunityPublication({
       /目标用户不缺|人人都(?:需要|会)|每个.{0,24}都(?:踩过|需要|愿意|会)/i,
       /普遍(?:遇到|存在|需要|面临)|(?:的人|用户|客户|买家)愿意(?:直接)?(?:付钱|花钱|买单|购买)/i,
       /共同(?:烦恼|痛点|问题|需求)|没人(?:帮|做|提供)|这就是可以卖的地方/i,
+      /大多数.{0,30}(?:只会|都不会|根本)|一般.{0,24}根本|几乎没人/i,
       /预计\s*\d+(?:\s*[-–—至到]\s*\d+)?\s*(?:分钟|小时|天)/i,
       /跑(?:通|一遍).{0,20}(?:就|即可).{0,12}(?:能卖|可以卖|有东西可以卖)/i,
+      /(?:原文|报道|文章)(?:\]\([^)]+\))?(?:没有|未)(?:指向|提供|附上|给出)?.{0,16}(?:官方|原项目)(?:链接|来源|仓库)?/i,
+      ...OPPORTUNITY_UNSAFE_AVOID_PATTERNS,
+      /(?:^|[。；]\s*)(?:目前|尚)?(?:无|没有|零)[^。！？；\n]{0,40}(?:用户(?:使用)?记录|用户原话|买家(?:痛点)?访谈|询价记录|issues?[^。！？；\n]{0,12}(?:讨论|反馈)|付费证据|付费意向|付费记录)/im,
+      /(?:MIT|Apache|GPL|开源许可|license)[^。！？；\n]{0,28}(?:无授权风险|无合规风险|没有授权风险|没有合规风险)/i,
+      /(?:无已知|未发现)[^。！？；\n]{0,24}(?:商标|内容|依赖|许可|授权)(?:限制|风险|问题)?/i,
     ],
   });
 
@@ -961,8 +1063,10 @@ export function validateOpportunityPublication({
     sourceEvidence,
   });
   issues.push(...sourcePolicy.issues);
+  issues.push(...collectOpportunityGroupedFieldIssues(visibleMarkdown));
   issues.push(...collectOpportunityLengthIssues(visibleMarkdown));
   issues.push(...collectOpportunityActionShapeIssues(visibleMarkdown));
+  issues.push(...collectOpportunityMarketHypothesisIssues(visibleMarkdown));
 
   if (sourcePolicy.opportunityCount < minimumOpportunityCount) {
     issues.push(`AI 商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的机会`);

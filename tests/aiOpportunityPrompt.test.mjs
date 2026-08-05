@@ -38,7 +38,10 @@ test("getSystemPromptAiOpportunity keeps the concise publication structure", () 
   assert.match(prompt, /## 今天别碰/);
   assert.match(prompt, /## 今日三步/);
   assert.match(prompt, /可验证信号/);
-  assert.match(prompt, /证据缺口/);
+  assert.match(prompt, /证据与可信度/);
+  assert.match(prompt, /第一单与复购/);
+  assert.match(prompt, /风险与停止/);
+  assert.match(prompt, /读者交付家族/);
   assert.match(prompt, /今日三步必须恰好 3 个一级列表项/);
   assert.match(prompt, /每项只有一个完整句子且不超过 80 个中文字符/);
   assert.doesNotMatch(prompt, /## 地图感/);
@@ -65,4 +68,15 @@ test("getSystemPromptAiOpportunity forbids forced account resale and invented cl
   assert.match(prompt, /禁止虚构销量、利润率/);
   assert.match(prompt, /不要生成 aivora\.cn/);
   assert.match(prompt, /不得补写候选没有支持的事实/);
+  assert.match(prompt, /鱼塘与笨办法.+待验证假设/s);
+  assert.match(prompt, /不能把用户行为、痛点频率或市场缺口当作已确认事实/);
+  assert.match(prompt, /验证多工具配置包有没有人要/);
+  assert.match(prompt, /不要写「帮反复配置工具的开发者」/);
+  assert.match(prompt, /本次候选输入未提供 \/ 未提取到/);
+  assert.match(prompt, /零付费证据/);
+  assert.match(prompt, /只有媒体或融资信息、无原项目 \/ 产品演示/);
+  assert.match(prompt, /不能直接推导「无授权风险」「无合规风险」/);
+  assert.match(prompt, /共同烦恼 \/ 共同痛点 \/ 共同问题 \/ 共同需求/);
+  assert.match(prompt, /无已知商标 \/ 内容限制/);
+  assert.match(prompt, /同一个来源 URL 在同一条机会里只能出现一次/);
 });

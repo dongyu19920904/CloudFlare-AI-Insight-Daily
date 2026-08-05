@@ -149,3 +149,75 @@ test("seven-day commercial signature blocks a renamed delivery clone", () => {
   );
 });
 
+test("seven-day offer family blocks a different developer project with the same reader delivery", () => {
+  const assessment = buildOpportunityCandidateAssessment(
+    {
+      project: [
+        {
+          title: "Ruflo 发布多智能体接入工具",
+          description: "GitHub release supports MCP integration and reproducible configuration",
+          source: "GitHub Trending",
+          url: "https://github.com/ruvnet/ruflo",
+          published_date: "2026-08-05",
+          details: { content_html: "<p>integration plugin setup release</p>" },
+        },
+      ],
+    },
+    undefined,
+    {
+      ...strictOptions,
+      profile: "general",
+      recentReplayMemory: {
+        offerFamilies: [
+          {
+            key: "developer-tool-setup",
+            offerFamily: "developer-tool-setup",
+            date: "2026-08-04",
+            section: "opportunity",
+          },
+        ],
+      },
+    }
+  );
+
+  assert.equal(assessment.candidates.length, 0);
+  assert.match(
+    assessment.rejectedCandidates[0].rejectionReasons.join(" | "),
+    /读者交付家族/
+  );
+});
+
+test("one day keeps at most one candidate from the same reader offer family", () => {
+  const assessment = buildOpportunityCandidateAssessment(
+    {
+      project: [
+        {
+          title: "ADR 安全工具发布部署说明",
+          description: "GitHub release for AI agent security deployment and report",
+          source: "GitHub Trending",
+          url: "https://github.com/uber/ADR",
+          published_date: "2026-08-05",
+          details: { content_html: "<p>deploy setup report release</p>" },
+        },
+        {
+          title: "Ruflo 发布多智能体接入工具",
+          description: "GitHub release supports MCP integration and reproducible configuration",
+          source: "GitHub Trending",
+          url: "https://github.com/ruvnet/ruflo",
+          published_date: "2026-08-05",
+          details: { content_html: "<p>integration plugin setup release</p>" },
+        },
+      ],
+    },
+    undefined,
+    { ...strictOptions, profile: "general" }
+  );
+
+  assert.equal(assessment.candidates.length, 1);
+  assert.ok(
+    assessment.rejectedCandidates.some((candidate) =>
+      candidate.rejectionReasons.some((reason) => /读者交付家族重复/.test(reason))
+    )
+  );
+});
+
