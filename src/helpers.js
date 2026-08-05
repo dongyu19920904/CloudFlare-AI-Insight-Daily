@@ -148,6 +148,19 @@ export function convertPlaceholdersToMarkdownImages(text) {
 }
 
 /**
+ * Repairs a model formatting slip where an optional Markdown image title is
+ * attached directly to the URL instead of being separated by whitespace.
+ */
+export function normalizeMarkdownImageSyntax(text) {
+    if (!text) return text || '';
+
+    return String(text).replace(
+        /(!\[[^\]\r\n]*\]\(\s*https?:\/\/[^\s)"']+)(["'])([^)\r\n]*?)\2\)/g,
+        '$1 $2$3$2)'
+    );
+}
+
+/**
  * Checks if a given date string is within the last specified number of days (inclusive of today).
  * @param {string} dateString - The date string to check (YYYY-MM-DD).
  * @param {number} days - The number of days to look back (e.g., 3 for today and the past 2 days).

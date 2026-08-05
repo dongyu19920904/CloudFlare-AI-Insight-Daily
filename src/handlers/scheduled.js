@@ -1,4 +1,5 @@
 ﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia, replaceIncorrectDomainLinks } from '../helpers.js';
+import { normalizeMarkdownImageSyntax } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
@@ -1424,6 +1425,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     let outputOfCall2 = await generateContentWithTransportFallback(env, outputOfCall2User, outputOfCall2System);
     outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
     outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
+    outputOfCall2 = normalizeMarkdownImageSyntax(outputOfCall2);
     debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
     const outputBeforeFallback = outputOfCall2;
     outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
@@ -1484,6 +1486,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         );
         repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
         repairedOutputOfCall2 = convertPlaceholdersToMarkdownImages(repairedOutputOfCall2);
+        repairedOutputOfCall2 = normalizeMarkdownImageSyntax(repairedOutputOfCall2);
         repairedOutputOfCall2 = appendFallbackMediaSection(repairedOutputOfCall2, mediaCandidates);
         const cleanedRepairedOutput = removeMismatchedTopItemImages(repairedOutputOfCall2, mediaCandidates);
         repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
@@ -1584,6 +1587,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         }
     }
 
+    dailySummaryMarkdownContent = normalizeMarkdownImageSyntax(dailySummaryMarkdownContent);
     const dailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
     debugInfo.dailyFunSectionPresent = dailyFunStats.present;
     debugInfo.dailyFunSectionSourceLinks = dailyFunStats.sourceLinkCount;
