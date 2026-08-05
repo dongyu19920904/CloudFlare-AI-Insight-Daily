@@ -3,37 +3,33 @@ import assert from "node:assert/strict";
 
 import { getSystemPromptAiAccountOpportunity } from "../src/prompt/aiAccountOpportunityPrompt.js";
 
-test("getSystemPromptAiAccountOpportunity keeps account signals central", () => {
-  const prompt = getSystemPromptAiAccountOpportunity("2026-04-07", "### 当前业务");
+test("account opportunity prompt requires account-specific official signals", () => {
+  const prompt = getSystemPromptAiAccountOpportunity("2026-08-05", "### 当前业务");
 
-  assert.match(prompt, /账号卖家今天该盯什么、该挂什么、该避开什么/);
-  assert.match(prompt, /封号|风控|登录限制|支付失败/);
-  assert.match(prompt, /平替机会/);
-  assert.match(prompt, /闲鱼新品/);
+  assert.match(prompt, /价格、额度、地区、支付、登录、服务状态和平台政策必须引用官方页面/);
+  assert.match(prompt, /不要把模型新闻硬拗成账号商机/);
+  assert.match(prompt, /没有足够证据就写「观察」或「否」/);
+  assert.match(prompt, /每日只保留 1-2 个强行动/);
 });
 
-test("getSystemPromptAiAccountOpportunity asks for varied sellable modes beyond raw accounts", () => {
-  const prompt = getSystemPromptAiAccountOpportunity("2026-04-07", "### 当前业务");
+test("account opportunity prompt serves sellers and ordinary buyers", () => {
+  const prompt = getSystemPromptAiAccountOpportunity("2026-08-05", "### 当前业务");
 
-  assert.match(prompt, /不要天天只写原账号体验号/);
-  assert.match(prompt, /迁移包|组合体验|镜像筛选服务|标题实验/);
-  assert.match(prompt, /至少覆盖两种不同卖法模式/);
-  assert.match(prompt, /今晚就能先试挂|先改标题|先发一版商品/);
-  assert.match(prompt, /来源链接规则/);
-  assert.match(prompt, /### \[标题\]\(主来源URL\)/);
-  assert.match(prompt, /证据来源：\[来源标题\]\(来源URL\)/);
-  assert.match(prompt, /标题只挂最关键的主来源/);
-  assert.match(prompt, /输入素材里的原始 URL/);
+  assert.match(prompt, /账号卖家和 AI 工具经营者/);
+  assert.match(prompt, /普通买家/);
+  assert.match(prompt, /今天发生什么/);
+  assert.match(prompt, /今天做什么/);
+  assert.match(prompt, /最大风险/);
+  assert.match(prompt, /买家避坑/);
+  assert.match(prompt, /不能承诺与停止/);
 });
 
-test("getSystemPromptAiAccountOpportunity turns account signals into store operations", () => {
-  const prompt = getSystemPromptAiAccountOpportunity("2026-06-24", "### 当前业务");
+test("account opportunity prompt rejects unsafe or invented trading advice", () => {
+  const prompt = getSystemPromptAiAccountOpportunity("2026-08-05", "### 当前业务");
 
-  assert.match(prompt, /账号店操盘内核/);
-  assert.match(prompt, /商品组合/);
-  assert.match(prompt, /闲鱼标题方向/);
-  assert.match(prompt, /教程\/交付物/);
-  assert.match(prompt, /售后边界/);
-  assert.match(prompt, /只观察 \/ 小范围试挂 \/ 不承诺长期稳定/);
-  assert.match(prompt, /账号店待办清单/);
+  assert.match(prompt, /共享滥用、凭据转卖、盗号、黑卡、接码、绕过验证/);
+  assert.match(prompt, /不得编造建议售价、闲鱼销量、搜索热度、利润率/);
+  assert.match(prompt, /标题使用纯文本，不挂链接/);
+  assert.match(prompt, /不得生成 aivora\.cn 或 news\.aivora\.cn 链接/);
+  assert.match(prompt, /正文没有一级标题/);
 });

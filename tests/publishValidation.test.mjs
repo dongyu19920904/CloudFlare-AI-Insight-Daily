@@ -1212,85 +1212,132 @@ test("validateOpportunityPublication keeps titles plain and source links in evid
   assert.match(result.issues.join("\n"), /标题必须是纯文本/);
 });
 
-test("validateAccountOpportunityPublication requires source links in title and evidence", () => {
-  const invalid = validateAccountOpportunityPublication({
-    markdown: `# 今日AI账号商机
+const validAccountOpportunityMarkdown = `## 30 秒结论
 
-## 先看信号
-- Claude 入口有变化
+- **今天发生什么：** OpenAI 官方更新了 ChatGPT 订阅额度说明。
+- **今天做什么：** 先修改现有 FAQ，不新增无法证明需求的商品。
+- **最大风险：** 把官方套餐变化误写成闲鱼销量或账号稳定性承诺。
 
-## 今日主推
-### Claude 迁移包
-今天买家会问替代方案。
-- 发生了什么：入口变化
-- 证据来源：社群反馈
-- 可信度：中
-- 是否今天能挂闲鱼：观察
-- 今天先挂什么：迁移包
-- 今天先测什么：标题
-- 售后风险：中
-- 今天最小动作：先发一版
+## 今日硬信号
 
-## 平替机会
-- Claude 到 Gemini 迁移包
+- [OpenAI 官方订阅说明证明额度字段已更新](https://openai.com/news/subscription-quota-update)，但它不证明二手市场需求。
 
-## 闲鱼新品
-- Claude 迁移说明包
+## 今日可执行
 
-## 今天别碰
-- 长期镜像承诺
+### 先修改套餐 FAQ，不急着新增商品
 
-## 今日动作
-- 先发什么：迁移包
-- 先上什么新品：组合包
-- 先改什么标题：Claude 平替
-- 先写什么教程：迁移说明
-- 先录什么：录屏
-- 先卖哪一款：低价款
-- 先避开什么坑：长期承诺`,
-  });
+**判断：** 今天适合核对现有商品说明，不适合凭一次更新猜测买家需求。
 
-  assert.equal(invalid.ok, false);
-  assert.match(invalid.issues.join("\n"), /账号商机页面今日主推标题必须使用原始信息源链接/);
-  assert.match(invalid.issues.join("\n"), /账号商机页面证据来源必须使用原始信息源链接/);
+- **证据与可信度：** [OpenAI 官方订阅说明证明额度字段已更新](https://openai.com/news/subscription-quota-update)；可信度：高；本次候选没有真实询价记录。
+- **供给形态：** 官方订阅。
+- **适合买家与真实需求：** 适合正在比较套餐额度的用户；是否愿意购买仍是待验证假设。
+- **是否今天能挂闲鱼：** 观察；先核对旧商品说明。
+- **今天最小动作：** 修改一个额度 FAQ，并记录当天出现的真实询问。
+- **售后与合规：** 售后风险：中；交付说明必须与官方套餐和平台条款一致。
+- **不能承诺与停止：** 不承诺额度长期不变；48 小时内没有明确询问就停止制作新商品页。
 
-  const valid = validateAccountOpportunityPublication({
-    markdown: `# 今日AI账号商机
+## 买家避坑
 
-## 先看信号
-- [Claude 入口有变化](https://example.com/claude-signal)
-
-## 今日主推
-### [Claude 迁移包](https://example.com/claude-signal)
-今天买家会问替代方案。
-- 发生了什么：入口变化
-- 证据来源：[Claude 入口变化](https://example.com/claude-signal)
-- 可信度：中
-- 是否今天能挂闲鱼：观察
-- 今天先挂什么：迁移包
-- 今天先测什么：标题
-- 售后风险：中
-- 今天最小动作：先发一版
-
-## 平替机会
-- [Claude 到 Gemini 迁移包](https://example.com/gemini)
-
-## 闲鱼新品
-- Claude 迁移说明包
+- 付款前核对卖家交付的是官方订阅、账号、API 还是代配置服务。
+- 要求卖家写清套餐、使用范围、退款条件和不能承诺的事项。
 
 ## 今天别碰
-- 长期镜像承诺
 
-## 今日动作
-- 先发什么：迁移包
-- 先上什么新品：组合包
-- 先改什么标题：Claude 平替
-- 先写什么教程：迁移说明
-- 先录什么：录屏
-- 先卖哪一款：低价款
-- 先避开什么坑：长期承诺`,
+- 今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 对照官方页面核对现有商品中的额度描述。
+- **今天修改：** 删除一个无法由官方页面支持的稳定性承诺。
+- **今天记录：** 记录真实询问及买家最关心的套餐差异。`;
+
+test("validateAccountOpportunityPublication accepts evidence-first account actions", () => {
+  const sourceUrl = "https://openai.com/news/subscription-quota-update";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountOpportunityMarkdown,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "primary",
+        isPrimary: true,
+        reason: "官方来源",
+      },
+    ],
+    aivoraLinkPolicy: { allowedUrls: [] },
   });
 
-  assert.equal(valid.ok, true);
-  assert.deepEqual(valid.issues, []);
+  assert.equal(result.ok, true, result.issues.join("\n"));
+  assert.equal(result.opportunityCount, 1);
+});
+
+test("validateAccountOpportunityPublication rejects linked titles and weak critical facts", () => {
+  const weakUrl = "https://example.com/claude-price-rumor";
+  const invalid = validAccountOpportunityMarkdown
+    .replace("### 先修改套餐 FAQ，不急着新增商品", `### [Claude 已经降价](https://example.com/claude-price-rumor)`)
+    .replaceAll("https://openai.com/news/subscription-quota-update", weakUrl)
+    .replaceAll("OpenAI 官方订阅说明", "社交转述");
+  const result = validateAccountOpportunityPublication({
+    markdown: invalid,
+    allowedSourceUrls: [weakUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: weakUrl,
+        tier: "social",
+        isPrimary: false,
+        reason: "社交线索",
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /标题必须是纯文本/);
+  assert.match(result.issues.join("\n"), /每条硬信号都必须引用官方页面或原项目/);
+  assert.match(result.issues.join("\n"), /必须引用对应官方页面/);
+});
+
+test("validateAccountOpportunityPublication rejects unsafe trading advice and invented seller prices", () => {
+  const invalid = validAccountOpportunityMarkdown
+    .replace("修改一个额度 FAQ", "提供绕过风控步骤并共享账号")
+    .replace("先核对旧商品说明", "建议售价 9.9 元");
+  const result = validateAccountOpportunityPublication({
+    markdown: invalid,
+    allowedSourceUrls: ["https://openai.com/news/subscription-quota-update"],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: "https://openai.com/news/subscription-quota-update",
+        tier: "primary",
+        isPrimary: true,
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /不得提供共享滥用/);
+  assert.match(result.issues.join("\n"), /不得编造或建议具体卖家售价/);
+});
+
+test("validateAccountOpportunityPublication rejects unsupported sales claims but allows warnings", () => {
+  const invalid = validAccountOpportunityMarkdown.replace(
+    "本次候选没有真实询价记录",
+    "闲鱼实时销量已经爆发"
+  );
+  const result = validateAccountOpportunityPublication({
+    markdown: invalid,
+    allowedSourceUrls: ["https://openai.com/news/subscription-quota-update"],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: "https://openai.com/news/subscription-quota-update",
+        tier: "primary",
+        isPrimary: true,
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /不得编造销量/);
 });

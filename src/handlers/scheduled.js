@@ -27,7 +27,6 @@ import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
-import { buildDailyCreativityBrief } from '../opportunityCreativity.js';
 import {
     buildOpportunityPaths,
     DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
@@ -38,10 +37,15 @@ import {
 } from '../opportunityUtils.js';
 import {
     buildAccountOpportunityPaths,
+    buildRejectedAccountOpportunityDigest,
     DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION,
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
+    formatAccountOpportunityCandidatesForPrompt,
+    insertAccountOpportunityAivoraLink,
+    qualifyAccountOpportunityCandidates,
     updateAccountOpportunityHomeIndexContent,
 } from '../accountOpportunityUtils.js';
+import { runIsolatedAccountOpportunity } from '../accountOpportunityIsolation.js';
 import {
     validateDailyPublication,
     validateAccountOpportunityPublication,
@@ -1781,30 +1785,28 @@ function buildOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validati
 
 function buildAccountOpportunityRepairPrompt(basePromptInput, invalidMarkdown, validationIssues) {
     return [
-        "你上一次输出不合格，请立即按要求重写，不要解释原因，不要道歉，不要拒答。",
+        "你上一次 AI 账号商机草稿没有通过发布校验。请只基于原始候选重写，不要补新事实。",
         "上一次输出存在这些问题：",
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
         "请严格遵守以下规则：",
         "- 只输出 Markdown 正文，不要输出前言、说明或额外解释",
-        "- 必须包含完整结构：# 今日AI账号商机 / ## 先看信号 / ## 今日主推 / ## 平替机会 / ## 闲鱼新品 / ## 今天别碰 / ## 今日动作",
-        "- 今日主推下面的 `###` 标题必须写成 `[标题](原始来源URL)`，不要写成纯文本标题",
-        "- `证据来源` 字段必须至少包含 1 个 Markdown 来源链接；多个来源时列 1-3 个",
-        "- 平替机会、闲鱼新品、今天别碰里如果提到具体工具、账号、镜像、套餐或风控信号，也要尽量把关键词写成来源链接",
-        "- 来源 URL 必须来自下面原始候选素材里的新闻 / 项目 / 社交信号，不要链接到 news.aivora.cn 站内页面",
-        "- 今日主推必须先用 2-3 句短段落讲清今天发生了什么、买家为什么会动、你今天最适合先挂什么",
-        "- 今日主推必须包含：发生了什么、证据来源、可信度、是否今天能挂闲鱼、今天先挂什么、今天先测什么、售后风险、今天最小动作",
+        "- 页面模板已经提供唯一 H1；正文不得输出一级标题，只包含：## 30 秒结论 / ## 今日硬信号 / ## 今日可执行 / ## 买家避坑 / ## 今天别碰 / ## 今日三步",
+        "- `###` 行动标题必须是纯文本，来源链接只放在正文证据字段中",
+        "- 30 秒结论必须恰好写今天发生什么、今天做什么、最大风险三条",
+        "- 今日可执行只写 1-2 个行动；每个行动必须包含：证据与可信度、供给形态、适合买家与真实需求、是否今天能挂闲鱼、今天最小动作、售后与合规、不能承诺与停止",
+        "- 功能、价格、额度、地区、支付、登录、服务状态和政策变化必须引用候选里的官方页面",
+        "- 来源 URL 必须来自下面候选；不要生成 aivora.cn 或 news.aivora.cn 链接",
+        "- 链接文字必须说明页面证明了什么，禁止只写原文、来源或链接",
         "- 可信度只能写高/中/低；是否今天能挂闲鱼只能写是/否/观察；售后风险只能写低/中/高",
-        "- 整篇像账号卖家给自己做盘货判断，不像公开科普，也不要写成长篇分析",
-        "- 必须从账号、镜像、平替、组合包、迁移包里做判断，不要只写原账号新闻",
-        "- 可以写先试挂、先观察、先低成本验证，但不能拒答",
-        "- 不要出现便宜 token、风险自负、多用户商业化",
-        "- 不要假装知道闲鱼实时销量、真实利润率或全网成交量",
-        "- 闲鱼新品部分要写今天适合测试的新标题、新组合或新卖法，不要空泛",
-        "- 今日主推、平替机会、闲鱼新品至少覆盖两种不同卖法模式",
-        "- 至少保留一个不是原账号直接卖的方向，比如迁移包、组合体验包、筛选服务或标题实验",
+        "- 不得编造建议售价、闲鱼销量、搜索热度、利润率、库存、封号规模、转化率或稳定性",
+        "- 不得提供共享滥用、凭据转卖、盗号、黑卡、接码、绕过验证、规避风控或破解激活建议",
+        "- 不得承诺长期稳定、永不封号、官方授权或无条件可用",
+        "- 今天别碰点名具体方向时只能引用被拒候选；没有被拒候选时使用默认句",
+        "- 今日三步必须恰好是三个一级列表项：今天确认、今天修改、今天记录；不得放链接或子列表",
+        "- 同一产品实体、供给形态、买家痛点和行动组合不得换标题重复",
         "",
-        "下面是原始候选素材：",
+        "下面是通过门槛的候选和被拒候选：",
         basePromptInput,
         "",
         "下面是上一次不合格输出，仅供你纠错参考：",
@@ -2027,65 +2029,182 @@ async function generateAccountOpportunityMarkdown(
     const accountOpportunityPaths = buildAccountOpportunityPaths(dateStr);
     debugInfo.accountOpportunityPublicPath = accountOpportunityPaths.publicPath;
 
-    const accountOpportunityCandidates = buildOpportunityCandidates(
+    const assessmentOptions = {
+        profile: 'account',
+        previousMainTopicSignals: options.previousMainTopicSignals || null,
+        recentReplayMemory: options.recentReplayMemory || null,
+        entityAwareGrouping: true,
+        avoidGenericDuplicates: true,
+        requireStrongEvidence: false,
+    };
+    const previewAssessment = buildOpportunityCandidateAssessment(
+        allUnifiedData,
+        accountOpportunityPlaybook,
+        assessmentOptions
+    );
+    const evidenceCacheKey = getOpportunityEvidenceCacheKey(
+        dateStr,
+        previewAssessment.candidates
+    );
+    let evidenceEnrichment = await loadOpportunityEvidenceCache(env, evidenceCacheKey);
+    if (evidenceEnrichment) {
+        debugInfo.accountOpportunityEvidenceEnrichmentCacheHit = true;
+    } else {
+        evidenceEnrichment = await buildOpportunityEvidenceEnrichment(
+            previewAssessment.candidates.slice(0, 6),
+            {
+                githubToken: env.GITHUB_TOKEN || env.GH_TOKEN || '',
+                maxGithubRequests: 2,
+                maxTrustedMediaRequests: 2,
+                timeoutMs: 6000,
+            }
+        );
+        debugInfo.accountOpportunityEvidenceEnrichmentCacheHit = false;
+        if (!options.dryRun) {
+            await storeOpportunityEvidenceCache(env, evidenceCacheKey, evidenceEnrichment);
+        }
+    }
+    debugInfo.accountOpportunityEvidenceEnrichment = evidenceEnrichment?.stats || {};
+
+    const rawAssessment = buildOpportunityCandidateAssessment(
         allUnifiedData,
         accountOpportunityPlaybook,
         {
-            previousMainTopicSignals: options.previousMainTopicSignals || null,
-            recentReplayMemory: options.recentReplayMemory || null,
+            ...assessmentOptions,
+            supplementalEvidenceBySourceUrl:
+                evidenceEnrichment?.recordsBySourceUrl || {},
         }
     );
-    const playbookText = [
-        serializeAccountOpportunityPlaybook(accountOpportunityPlaybook),
-        buildDailyCreativityBrief(accountOpportunityPlaybook, dateStr, {
-            issueLabel: 'AI账号商机',
-            sectionLabels: ['今日主推', '平替机会'],
-        }),
-    ].join('\n\n');
-    const accountOpportunityCandidatesText = formatOpportunityCandidatesForPrompt(
-        accountOpportunityCandidates,
-        accountOpportunityPlaybook
+    const accountAssessment = qualifyAccountOpportunityCandidates(
+        rawAssessment.candidates,
+        accountOpportunityPlaybook,
+        options.recentReplayMemory,
+        {
+            minimumScore:
+                accountOpportunityPlaybook.outputRules.minimumCandidateScore || 52,
+        }
     );
-    const accountOpportunitySourceDigest = buildOpportunitySourceDigest(
+    const accountOpportunityCandidates = accountAssessment.candidates.slice(
+        0,
+        accountOpportunityPlaybook.outputRules.maxPromptCandidates || 4
+    );
+    const rejectedAccountOpportunityCandidates = [
+        ...accountAssessment.rejectedCandidates,
+        ...rawAssessment.rejectedCandidates,
+    ].slice(0, accountOpportunityPlaybook.outputRules.maxDigestCandidates || 4);
+    const validationContext = buildOpportunityValidationContext(
         accountOpportunityCandidates,
-        accountOpportunityPlaybook.outputRules.maxDigestCandidates || 4,
-        accountOpportunityPlaybook.outputRules.maxEvidenceItemsPerCandidate || 2
+        rejectedAccountOpportunityCandidates
     );
 
     debugInfo.accountOpportunityCandidateCount = accountOpportunityCandidates.length;
+    debugInfo.accountOpportunityCandidateAssessment = accountAssessment.stats;
+    debugInfo.accountOpportunityRejectedCandidateCount = rejectedAccountOpportunityCandidates.length;
     debugInfo.accountOpportunityTopScore = accountOpportunityCandidates[0]?.score || 0;
+
+    if (accountOpportunityCandidates.length === 0) {
+        debugInfo.accountOpportunityQualitySkipped = true;
+        debugInfo.accountOpportunityQualitySkipReason = 'no-qualified-account-opportunity-candidates';
+        return {
+            accountOpportunityPaths,
+            accountOpportunityMarkdownContent: '',
+            validation: {
+                ok: false,
+                issues: ['今天没有通过账号硬信号、官方证据与 7 天去重门槛的候选'],
+            },
+            candidateAssessment: accountAssessment,
+            qualitySkipped: true,
+        };
+    }
+
+    const playbookText = serializeAccountOpportunityPlaybook(
+        accountOpportunityPlaybook
+    );
+    const accountOpportunityCandidatesText =
+        formatAccountOpportunityCandidatesForPrompt(
+            accountOpportunityCandidates,
+            accountOpportunityPlaybook.outputRules.maxPromptCandidates || 4
+        );
 
     console.log(`[Scheduled][AccountOpportunity] Generating content...`);
     const accountReplayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const accountOpportunityPromptInput = [
-        `## 候选主题\n\n${accountOpportunityCandidatesText}`,
+        `## 已通过账号商机门槛的候选\n\n${accountOpportunityCandidatesText}`,
         accountReplayMemoryPrompt ? `## 近7天商机记忆\n\n${accountReplayMemoryPrompt}` : '',
-        `## 今日摘要\n\n${accountOpportunitySourceDigest}`,
+        `## 弱证据、重复或高风险候选（只能用于“今天别碰”）\n\n${buildRejectedAccountOpportunityDigest(rejectedAccountOpportunityCandidates)}`,
     ].filter(Boolean).join('\n\n');
 
     const accountOpportunitySystemPrompt = getSystemPromptAiAccountOpportunity(dateStr, playbookText);
-    let accountOpportunityMarkdownContent = await generateContentWithTransportFallback(
+    const aivoraLinkIntent = buildAivoraOpportunityLinkIntent(accountOpportunityCandidates);
+    const aivoraLinkPolicy = await loadAivoraOpportunityLinkPolicy(
+        options.dryRun ? { ...env, DATA_KV: null } : env,
+        dateStr,
+        {
+            intent: aivoraLinkIntent,
+            maxSemanticPageChecks: 2,
+        }
+    );
+    debugInfo.accountOpportunityAivoraLinkRelevant = Boolean(aivoraLinkIntent.eligible);
+    debugInfo.accountOpportunityAivoraSuggestedUrl = aivoraLinkPolicy.suggestedUrl || '';
+
+    const normalizeAndValidate = (rawMarkdown) => {
+        let markdown = removeMarkdownCodeBlock(rawMarkdown);
+        markdown = stripTemplateOwnedOpportunityH1(markdown);
+        markdown = convertPlaceholdersToMarkdownImages(markdown);
+        markdown = replaceIncorrectDomainLinks(
+            markdown,
+            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
+        );
+        markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown);
+
+        const insertedAivoraLink = insertAccountOpportunityAivoraLink(
+            markdown,
+            aivoraLinkPolicy
+        );
+        debugInfo.accountOpportunityAivoraLinkInserted = insertedAivoraLink.inserted;
+        const sanitizedLinks = sanitizeOpportunityAivoraLinks(
+            insertedAivoraLink.markdown,
+            aivoraLinkPolicy,
+            { maxLinks: 1 }
+        );
+        debugInfo.accountOpportunityAivoraLinksKept = sanitizedLinks.keptCount;
+        debugInfo.accountOpportunityAivoraLinksRemoved =
+            (debugInfo.accountOpportunityAivoraLinksRemoved || 0) +
+            sanitizedLinks.removedCount;
+        const visibleMarkdown = sanitizedLinks.markdown;
+        const validation = validateAccountOpportunityPublication({
+            markdown: visibleMarkdown,
+            bannedPublicPhrases:
+                accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
+            ...validationContext,
+            aivoraLinkPolicy,
+            minimumOpportunityCount: 1,
+            maximumOpportunityCount:
+                accountOpportunityPlaybook.outputRules.maxPublishedOpportunities || 2,
+        });
+        markdown = validation.ok
+            ? appendOpportunityReplayMetadata(
+                visibleMarkdown,
+                accountOpportunityCandidates
+            )
+            : visibleMarkdown;
+        return { markdown, validation };
+    };
+
+    const firstDraft = await generateContentWithTransportFallback(
         env,
         accountOpportunityPromptInput,
         accountOpportunitySystemPrompt
     );
-    accountOpportunityMarkdownContent = removeMarkdownCodeBlock(accountOpportunityMarkdownContent);
-    accountOpportunityMarkdownContent = convertPlaceholdersToMarkdownImages(accountOpportunityMarkdownContent);
-    accountOpportunityMarkdownContent = replaceIncorrectDomainLinks(
-        accountOpportunityMarkdownContent,
-        env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
-    );
-
-    let validation = validateAccountOpportunityPublication({
-        markdown: accountOpportunityMarkdownContent,
-        bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
-    });
+    let normalizedDraft = normalizeAndValidate(firstDraft);
+    let accountOpportunityMarkdownContent = normalizedDraft.markdown;
+    let validation = normalizedDraft.validation;
 
     if (!validation.ok) {
         console.warn(
             `[Scheduled][AccountOpportunity] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
         );
-        let repairedMarkdownContent = await generateContentWithTransportFallback(
+        const repairedDraft = await generateContentWithTransportFallback(
             env,
             buildAccountOpportunityRepairPrompt(
                 accountOpportunityPromptInput,
@@ -2094,23 +2213,10 @@ async function generateAccountOpportunityMarkdown(
             ),
             accountOpportunitySystemPrompt
         );
-        repairedMarkdownContent = removeMarkdownCodeBlock(repairedMarkdownContent);
-        repairedMarkdownContent = convertPlaceholdersToMarkdownImages(repairedMarkdownContent);
-        repairedMarkdownContent = replaceIncorrectDomainLinks(
-            repairedMarkdownContent,
-            env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
-        );
-
-        const repairedValidation = validateAccountOpportunityPublication({
-            markdown: repairedMarkdownContent,
-            bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
-        });
-
-        validation = repairedValidation;
-        accountOpportunityMarkdownContent = repairedMarkdownContent;
+        normalizedDraft = normalizeAndValidate(repairedDraft);
+        validation = normalizedDraft.validation;
+        accountOpportunityMarkdownContent = normalizedDraft.markdown;
     }
-
-    accountOpportunityMarkdownContent = `## ⚡ 快速导航\n\n- [📡 先看信号](#先看信号) - 今天先盯哪些账号与入口变化\n- [🎯 今日主推](#今日主推) - 今天最值得先挂的方向\n- [🪄 平替机会](#平替机会) - 可接住流量的替代入口\n- [🛒 闲鱼新品](#闲鱼新品) - 适合上新测试的标题和组合\n- [🚫 今天别碰](#今天别碰) - 售后重、不稳或不值得追\n- [✅ 今日动作](#今日动作) - 今天先上新、改标题、写教程和避坑\n\n${accountOpportunityMarkdownContent}`;
 
     debugInfo.accountOpportunityGenerated = true;
 
@@ -2118,6 +2224,9 @@ async function generateAccountOpportunityMarkdown(
         accountOpportunityPaths,
         accountOpportunityMarkdownContent,
         validation,
+        candidateAssessment: accountAssessment,
+        qualitySkipped: false,
+        validationContext,
     };
 }
 
@@ -2408,9 +2517,14 @@ async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifie
 }
 
 async function handleScheduledBackup(event, env, ctx, specifiedDate = null, options = {}) {
+    const dateStr = specifiedDate || getISODate();
     const daily = await handleScheduledDailyBackup(event, env, ctx, specifiedDate, options);
     const opportunity = await handleScheduledOpportunityBackup(event, env, ctx, specifiedDate, options);
-    const accountOpportunity = await handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate, options);
+    const accountOpportunity = await runIsolatedAccountOpportunity(
+        () => handleScheduledAccountOpportunityBackup(event, env, ctx, specifiedDate, options),
+        dateStr,
+        'backup'
+    );
 
     return { daily, opportunity, accountOpportunity };
 }
@@ -2685,7 +2799,10 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'account-opportunity');
-    console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}`);
+    const dryRun = Boolean(options.dryRun);
+    debugInfo.accountOpportunityPipelineVersion = 'evidence-first-risk-v2';
+    debugInfo.accountOpportunityDryRun = dryRun;
+    console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 
     await reportScheduledProgress(options, 'account-opportunity', 'loading-sources', 10);
     const {
@@ -2693,14 +2810,21 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         previousOpportunityReplaySignals,
         recentOpportunityReplayMemory,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: Boolean(specifiedDate),
+        preferCachedData: true,
         loadOpportunityReplay: true,
         includeCurrentOpportunityReplay: true,
+        skipSourceCacheWrite: dryRun,
     });
     await reportScheduledProgress(options, 'account-opportunity', 'generating', 42, {
         sourceItems: debugInfo.totalSourceItemCount,
     });
-    const { accountOpportunityPaths, accountOpportunityMarkdownContent } = await generateAccountOpportunityMarkdown(
+    const {
+        accountOpportunityPaths,
+        accountOpportunityMarkdownContent,
+        validation: generatedValidation,
+        candidateAssessment,
+        qualitySkipped,
+    } = await generateAccountOpportunityMarkdown(
         env,
         dateStr,
         allUnifiedData,
@@ -2708,14 +2832,25 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         {
             previousMainTopicSignals: previousOpportunityReplaySignals,
             recentReplayMemory: recentOpportunityReplayMemory,
+            dryRun,
         }
     );
 
+    if (qualitySkipped) {
+        debugInfo.skipped = true;
+        debugInfo.skipReason = 'no-qualified-account-opportunity-candidates';
+        debugInfo.accountOpportunityQualitySkipped = true;
+        debugInfo.accountOpportunityValidationIssues = generatedValidation.issues;
+        await reportScheduledProgress(options, 'account-opportunity', 'quality-skipped', 100, {
+            reason: debugInfo.skipReason,
+            rejectedCandidates: candidateAssessment?.stats?.rejected || 0,
+        });
+        console.warn(`[Scheduled][AccountOpportunity] No qualified account signals; skipping AI generation and publish.`);
+        return debugInfo;
+    }
+
     await reportScheduledProgress(options, 'account-opportunity', 'validating', 78);
-    const validation = validateAccountOpportunityPublication({
-        markdown: accountOpportunityMarkdownContent,
-        bannedPublicPhrases: accountOpportunityPlaybook.outputRules.bannedPublicPhrases || [],
-    });
+    const validation = generatedValidation;
     debugInfo.accountOpportunityValidationPassed = validation.ok;
     debugInfo.accountOpportunityValidationIssues = validation.issues;
     if (!validation.ok) {
@@ -2723,6 +2858,15 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
             issueCount: validation.issues.length,
         });
         console.warn(`[Scheduled][AccountOpportunity] Validation failed, skipping publish: ${validation.issues.join(' | ')}`);
+        return debugInfo;
+    }
+
+    if (dryRun) {
+        debugInfo.accountOpportunityWouldPublish = true;
+        debugInfo.accountOpportunityPublished = false;
+        debugInfo.accountOpportunityDryRunMarkdown = accountOpportunityMarkdownContent;
+        await reportScheduledProgress(options, 'account-opportunity', 'dry-run-complete', 100);
+        console.log(`[Scheduled][AccountOpportunity] Dry-run completed successfully for ${dateStr}; skipping GitHub publish and replay writes.`);
         return debugInfo;
     }
 
@@ -2773,7 +2917,11 @@ export async function handleScheduled(event, env, ctx, specifiedDate = null, mod
     if (resolvedMode === 'all') {
         const daily = await handleScheduledDaily(event, env, ctx, specifiedDate, options);
         const opportunity = await handleScheduledOpportunity(event, env, ctx, specifiedDate, options);
-        const accountOpportunity = await handleScheduledAccountOpportunity(event, env, ctx, specifiedDate, options);
+        const accountOpportunity = await runIsolatedAccountOpportunity(
+            () => handleScheduledAccountOpportunity(event, env, ctx, specifiedDate, options),
+            specifiedDate || getISODate(),
+            'combined run'
+        );
         return { daily, opportunity, accountOpportunity };
     }
 

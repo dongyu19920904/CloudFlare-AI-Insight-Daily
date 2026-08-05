@@ -441,10 +441,15 @@ export default {
                         ? requestedMode
                         : 'daily';
             try {
-                if (dryRun && mode !== 'daily' && mode !== 'opportunity') {
+                if (
+                    dryRun &&
+                    mode !== 'daily' &&
+                    mode !== 'opportunity' &&
+                    mode !== 'account-opportunity'
+                ) {
                     return jsonResponse({
                         success: false,
-                        error: 'dryRun is only supported for daily and opportunity generation test triggers.',
+                        error: 'dryRun is only supported for daily, opportunity, and account-opportunity generation test triggers.',
                         mode,
                     }, 400);
                 }

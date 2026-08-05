@@ -64,6 +64,7 @@ description: "new"
   );
 
   assert.match(repaired, /^title: AI Account Opportunity$/m);
+  assert.match(repaired, /^type: account-opportunity$/m);
   assert.doesNotMatch(repaired, /^next:/m);
   assert.match(repaired, /\{\{< latest-account-opportunity >\}\}/);
   assert.doesNotMatch(repaired, /## New account opportunity body/);

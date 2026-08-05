@@ -11,7 +11,10 @@ const COMMON_FAILURE_PATTERNS = [
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
 import { validateOpportunityAivoraLinks } from "./opportunityAivoraLinkPolicy.js";
-import { classifyOpportunityEvidence } from "./opportunityEvidence.js";
+import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
+import {
+  classifyOpportunityEvidence,
+} from "./opportunityEvidence.js";
 import { normalizeOpportunitySourceUrl } from "./opportunityReplayDedupe.js";
 
 const DAILY_META_PATTERNS = [
@@ -1090,47 +1093,300 @@ export function validateOpportunityPublication({
   };
 }
 
+const ACCOUNT_OPPORTUNITY_ACTION_FIELDS = [
+  "证据与可信度",
+  "供给形态",
+  "适合买家与真实需求",
+  "是否今天能挂闲鱼",
+  "今天最小动作",
+  "售后与合规",
+  "不能承诺与停止",
+];
+
+function collectAccountOpportunitySummaryIssues(markdown) {
+  const issues = [];
+  const summary = extractSection(markdown, /^##\s+30\s*秒结论(?:\s|$).*$/im);
+  const lines = getSectionBody(summary)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const requiredLabels = ["今天发生什么", "今天做什么", "最大风险"];
+
+  if (lines.length !== 3 || lines.some((line) => !/^[-*+]\s+/.test(line))) {
+    issues.push("账号商机“30 秒结论”必须恰好是 3 个一级列表项");
+  }
+  for (const label of requiredLabels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!lines.some((line) => new RegExp(`\\*{0,2}${escaped}[:：]\\*{0,2}`).test(line))) {
+      issues.push(`账号商机“30 秒结论”缺少“${label}”`);
+    }
+  }
+  if (normalizeText(getSectionBody(summary)).length > 360) {
+    issues.push("账号商机“30 秒结论”过长，应让读者在 30 秒内完成判断");
+  }
+  return issues;
+}
+
+function collectAccountOpportunityFieldIssues(markdown) {
+  const issues = [];
+  const actionSection = extractSection(markdown, /^##\s+今日可执行(?:\s|$).*$/im);
+  const blocks = extractLevel3Blocks(actionSection);
+
+  for (const block of blocks) {
+    if (/^###\s+\[[^\]]+\]\(https?:\/\//m.test(block)) {
+      issues.push("账号商机行动标题必须是纯文本，证据链接应放在正文中");
+    }
+    if (!/^\*\*判断[:：]\*\*\s*\S/m.test(block)) {
+      issues.push("账号商机每个行动必须先给出“判断”");
+    }
+    for (const field of ACCOUNT_OPPORTUNITY_ACTION_FIELDS) {
+      const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!new RegExp(`^-\\s*\\*\\*${escaped}[:：]\\*\\*`, "m").test(block)) {
+        issues.push(`账号商机行动缺少“${field}”字段`);
+      }
+    }
+    if (!hasOpportunityEvidenceLink(block)) {
+      issues.push("账号商机每个行动必须在“证据与可信度”中提供候选来源链接");
+    }
+    if (!/可信度[:：]\s*(?:高|中|低)(?=$|[\s；;，。])/m.test(block)) {
+      issues.push("账号商机可信度只能写高、中或低");
+    }
+    if (!/是否今天能挂闲鱼[:：]\*{0,2}\s*(?:是|否|观察)(?=$|[\s；;，。])/m.test(block)) {
+      issues.push("账号商机“是否今天能挂闲鱼”只能写是、否或观察");
+    }
+    if (!/售后风险[:：]\s*(?:低|中|高)(?=$|[\s；;，。])/m.test(block)) {
+      issues.push("账号商机售后风险只能写低、中或高");
+    }
+    if (normalizeText(block).length > 1000) {
+      issues.push("账号商机单个行动过长，应压缩为证据、动作和边界");
+    }
+  }
+
+  return { issues, opportunityCount: blocks.length, blocks };
+}
+
+function collectAccountOpportunitySourceIssues(
+  markdown,
+  {
+    allowedSourceUrls = null,
+    allowedRejectedSourceUrls = null,
+    sourceEvidence = [],
+  } = {}
+) {
+  const issues = [];
+  const allowedQualified = Array.isArray(allowedSourceUrls)
+    ? new Set(allowedSourceUrls.map(canonicalizeUrl).filter(Boolean))
+    : null;
+  const allowedRejected = Array.isArray(allowedRejectedSourceUrls)
+    ? new Set(allowedRejectedSourceUrls.map(canonicalizeUrl).filter(Boolean))
+    : allowedQualified;
+  const evidenceByUrl = buildEvidenceByUrl(sourceEvidence);
+  const summary = extractSection(markdown, /^##\s+30\s*秒结论(?:\s|$).*$/im);
+  const hardSignals = extractSection(markdown, /^##\s+今日硬信号(?:\s|$).*$/im);
+  const actionSection = extractSection(markdown, /^##\s+今日可执行(?:\s|$).*$/im);
+  const buyerSection = extractSection(markdown, /^##\s+买家避坑(?:\s|$).*$/im);
+  const avoidSection = extractSection(markdown, /^##\s+今天别碰(?:\s|$).*$/im);
+  const actionSteps = extractSection(markdown, /^##\s+今日三步(?:\s|$).*$/im);
+  const actionBlocks = extractLevel3Blocks(actionSection);
+
+  const getEvidence = (link) =>
+    evidenceByUrl.get(link.url) || classifyOpportunityEvidence({ url: link.url }, "");
+  const isPrimaryLink = (link) => getEvidence(link)?.isPrimary === true;
+  const hasOfficialLink = (links) =>
+    links.some((link) => isOfficialAccountOpportunityUrl(link.url));
+
+  const hardSignalLines = getSectionBody(hardSignals)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => /^[-*+]\s+/.test(line));
+  if (hardSignalLines.length === 0) {
+    issues.push("账号商机“今日硬信号”至少需要 1 条可核验事实");
+  }
+  for (const line of hardSignalLines) {
+    const links = extractSectionLinks(line).filter((link) => !isNoiseSectionLink(link));
+    if (links.length === 0 || !links.some(isPrimaryLink)) {
+      issues.push("账号商机每条硬信号都必须引用官方页面或原项目");
+    }
+  }
+
+  for (const block of actionBlocks) {
+    const links = extractSectionLinks(block).filter((link) => !isNoiseSectionLink(link));
+    if (links.some((link) => /^(?:原文|来源|链接|详情|点击查看)$/i.test(link.title.trim()))) {
+      issues.push("账号商机来源链接文字必须说明页面证明了什么");
+    }
+    if (new Set(links.map((link) => normalizeOpportunitySourceUrl(link.url))).size !== links.length) {
+      issues.push("账号商机同一行动不得重复引用同一个来源链接");
+    }
+
+    const containsCriticalFact =
+      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i.test(block);
+    if (containsCriticalFact && !hasOfficialLink(links)) {
+      issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策时必须引用对应官方页面");
+    }
+    if (/是否今天能挂闲鱼[:：]\*{0,2}\s*是(?=$|[\s；;，。])/m.test(block)) {
+      if (!hasOfficialLink(links)) {
+        issues.push("账号商机建议今天上架时必须有官方来源支持关键事实");
+      }
+      if (/售后风险[:：]\s*高(?=$|[\s；;，。])/m.test(block)) {
+        issues.push("账号商机售后风险为高时不得建议今天上架");
+      }
+    }
+  }
+
+  if (allowedQualified) {
+    const qualifiedSections = [summary, hardSignals, actionSection, buyerSection, actionSteps].join("\n");
+    for (const link of extractSectionLinks(qualifiedSections)) {
+      if (isNoiseSectionLink(link)) continue;
+      if (!allowedQualified.has(link.url)) {
+        issues.push(`账号商机包含合格候选之外的来源链接: ${link.url}`);
+      }
+    }
+  }
+
+  if (allowedRejected) {
+    const avoidLinks = extractSectionLinks(avoidSection).filter(
+      (link) => !isNoiseSectionLink(link)
+    );
+    for (const link of avoidLinks) {
+      if (!allowedRejected.has(link.url)) {
+        issues.push(`账号商机“今天别碰”包含被拒候选之外的来源链接: ${link.url}`);
+      }
+    }
+    const avoidBody = getSectionBody(avoidSection);
+    const usesDefaultAvoid = /今天没有额外需要点名的高风险方向/.test(avoidBody);
+    if (!usesDefaultAvoid && allowedRejected.size === 0) {
+      issues.push("账号商机没有被拒候选时，“今天别碰”不得点名具体方向");
+    } else if (!usesDefaultAvoid && avoidLinks.length === 0) {
+      issues.push("账号商机“今天别碰”点名具体方向时必须引用被拒候选来源");
+    }
+  }
+
+  return issues;
+}
+
+function collectAccountOpportunityActionShapeIssues(markdown) {
+  const issues = [];
+  const section = extractSection(markdown, /^##\s+今日三步(?:\s|$).*$/im);
+  const lines = getSectionBody(section)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const requiredLabels = ["今天确认", "今天修改", "今天记录"];
+
+  if (lines.length !== 3 || lines.some((line) => !/^[-*+]\s+/.test(line))) {
+    issues.push("账号商机“今日三步”必须恰好是 3 个一级列表项，不得附加段落或子列表");
+  }
+  for (const label of requiredLabels) {
+    if (!lines.some((line) => line.includes(label))) {
+      issues.push(`账号商机“今日三步”缺少“${label}”`);
+    }
+  }
+  if (lines.some((line) => /\[[^\]]+\]\(https?:\/\//i.test(line))) {
+    issues.push("账号商机“今日三步”不得重复来源链接");
+  }
+  if (lines.some((line) => normalizeText(line).length > 110)) {
+    issues.push("账号商机“今日三步”每项最多 110 个字符");
+  }
+  return issues;
+}
+
+function collectAccountOpportunitySafetyIssues(markdown) {
+  const issues = [];
+  let section = "";
+  const warningPattern = /不要|不得|禁止|避免|不能|不应|拒绝|别碰|风险|警惕|停止|不提供|不建议|无法承诺/;
+  const unsafeAdvicePattern =
+    /(?:共享账号|多人共用|合租账号|转卖凭据|售卖\s*API\s*key|购买\s*API\s*key|盗号|黑卡|接码|绕过(?:验证|风控|限制)|规避(?:检测|风控|限制)|破解激活|代过验证)/i;
+
+  for (const rawLine of String(markdown || "").split(/\r?\n/)) {
+    const heading = rawLine.match(/^##\s+(.+)$/);
+    if (heading) section = heading[1].trim();
+    if (!unsafeAdvicePattern.test(rawLine)) continue;
+    const isWarningSection = section === "买家避坑" || section === "今天别碰";
+    if (!isWarningSection && !warningPattern.test(rawLine)) {
+      issues.push("账号商机不得提供共享滥用、凭据转卖、盗号、黑卡、接码、绕过验证或规避风控建议");
+      break;
+    }
+  }
+
+  if (/建议(?:售价|定价)|(?:挂价|卖价|售价)[:：]?\s*[¥￥$]?\s*\d|先挂\s*\d+(?:\.\d+)?\s*元/i.test(markdown)) {
+    issues.push("账号商机不得编造或建议具体卖家售价");
+  }
+  const unsupportedMetricPattern =
+    /闲鱼(?:实时)?销量|搜索热度(?:会|将|必然)|转化率(?:会|将)|保证(?:稳定|可用)|永不封号|无限续杯/i;
+  for (const rawLine of String(markdown || "").split(/\r?\n/)) {
+    if (!unsupportedMetricPattern.test(rawLine)) continue;
+    if (warningPattern.test(rawLine) || /不证明|不可证明|没有证据/.test(rawLine)) continue;
+    issues.push("账号商机不得编造销量、搜索热度、转化率或稳定性承诺");
+    break;
+  }
+  return issues;
+}
+
 export function validateAccountOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
+  allowedSourceUrls = null,
+  allowedRejectedSourceUrls = null,
+  sourceEvidence = [],
+  aivoraLinkPolicy = { allowedUrls: [] },
+  minimumOpportunityCount = 1,
+  maximumOpportunityCount = 2,
 }) {
-  const issues = collectMarkdownIssues(markdown, {
+  const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
+  const issues = collectMarkdownIssues(visibleMarkdown, {
     label: "账号商机页面",
-    minChars: 180,
+    minChars: 300,
     requiredPhrases: [
-      "# 今日AI账号商机",
-      "## 先看信号",
-      "## 今日主推",
-      "## 平替机会",
-      "## 闲鱼新品",
+      "## 30 秒结论",
+      "## 今日硬信号",
+      "## 今日可执行",
+      "## 买家避坑",
       "## 今天别碰",
-      "## 今日动作",
-      "发生了什么",
-      "证据来源",
-      "可信度",
-      "是否今天能挂闲鱼",
-      "今天先挂什么",
-      "今天先测什么",
-      "售后风险",
-      "今天最小动作",
+      "## 今日三步",
+      ...ACCOUNT_OPPORTUNITY_ACTION_FIELDS,
     ],
     forbiddenPhrases: bannedPublicPhrases,
+    forbiddenPatterns: [
+      /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
+      /买家(?:一定|都会|会马上)|用户(?:一定|都会|会马上)|(?:需求|销量|询问量)(?:必然|一定|马上)(?:上涨|增加|爆发)/i,
+      /全球(?:停用|封号)|全面封号|大规模封号/i,
+    ],
   });
 
-  issues.push(
-    ...collectMissingLinkedHeadingIssues(
-      markdown,
-      [{ name: "今日主推", pattern: /^##\s+今日主推(?:\s|$).*$/im }],
-      "账号商机页面"
-    )
-  );
-
-  if (!sourceEvidenceLineHasMarkdownLink(markdown)) {
-    issues.push("账号商机页面证据来源必须使用原始信息源链接");
+  if (/^#\s+\S/m.test(visibleMarkdown)) {
+    issues.push("账号商机正文不得输出一级标题，页面模板会提供唯一 H1");
   }
+
+  issues.push(...collectAccountOpportunitySummaryIssues(visibleMarkdown));
+  const actionFields = collectAccountOpportunityFieldIssues(visibleMarkdown);
+  issues.push(...actionFields.issues);
+  if (actionFields.opportunityCount < minimumOpportunityCount) {
+    issues.push(`账号商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的行动`);
+  }
+  if (actionFields.opportunityCount > maximumOpportunityCount) {
+    issues.push(`账号商机最多只能发布 ${maximumOpportunityCount} 个行动`);
+  }
+  issues.push(...collectAccountOpportunitySourceIssues(visibleMarkdown, {
+    allowedSourceUrls,
+    allowedRejectedSourceUrls,
+    sourceEvidence,
+  }));
+  issues.push(...collectAccountOpportunityActionShapeIssues(visibleMarkdown));
+  issues.push(...collectAccountOpportunitySafetyIssues(visibleMarkdown));
+  issues.push(...collectOpportunityMarketHypothesisIssues(visibleMarkdown));
+
+  const aivoraValidation = validateOpportunityAivoraLinks(
+    visibleMarkdown,
+    aivoraLinkPolicy,
+    { maxLinks: 1 }
+  );
+  issues.push(...aivoraValidation.issues);
 
   return {
     ok: issues.length === 0,
     issues,
+    opportunityCount: actionFields.opportunityCount,
+    aivoraLinkCount: aivoraValidation.linkCount,
   };
 }
