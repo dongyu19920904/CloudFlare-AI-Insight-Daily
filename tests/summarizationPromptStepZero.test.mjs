@@ -57,6 +57,8 @@ test("daily prompt adapts human-writing principles without replacing the digest 
   assert.match(prompt, /普通句子优先控制在 18-32 个显示字符/);
   assert.match(prompt, /原则上不得超过 55 个/);
   assert.match(prompt, /不使用分号串联两个独立判断/);
+  assert.match(prompt, /最多保留 3 个最重要的/);
+  assert.match(prompt, /中文正文使用全角逗号/);
   assert.match(prompt, /严格区分已经开放、邀请测试、预告即将提供、长期愿景、媒体转述和行业猜测/);
   assert.match(prompt, /标题只能写到素材能够直接证明的位置/);
   assert.match(prompt, /不得补成作者或用户已经注册、付款、部署、成功运行/);
@@ -79,6 +81,7 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /6-18 字的.*黄色短结论/);
   assert.match(prompt, /每条通常保留 2 处黄色重点/);
   assert.match(prompt, /链接文案尽量控制在 8-22 个显示字符/);
+  assert.match(prompt, /媒体链接只能写成“报道\/整理”/);
   assert.match(prompt, /使用 3 个完整短句/);
   assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
   assert.match(prompt, /调用成本降了/);

@@ -3,9 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   DAILY_AIVORA_FAQ_CTA,
+  isVolatileDailyMediaUrl,
+  normalizeDailyChinesePunctuation,
   normalizeDailyFaqAivoraCta,
+  normalizeDailyOutputPresentation,
+  normalizeMisleadingDailySourceLabels,
   removeEmptyDailyFunSection,
   removeEmptyDailyTopicSections,
+  removeVolatileDailyImages,
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
@@ -219,4 +224,55 @@ test("removeEmptyDailyTopicSections removes a source-less optional topic section
   assert.match(sanitized, /产品与功能更新/);
   assert.doesNotMatch(sanitized, /社媒精选/);
   assert.match(sanitized, /相关问题/);
+});
+
+test("removeEmptyDailyTopicSections removes an empty heading without consuming the next section", () => {
+  const markdown = `## **⚡ 产品与功能更新**
+## **◎ 行业变化与个人影响**
+
+### 企业寻找 AI 培训
+
+正文包含[招募信息](https://example.com/training)。`;
+
+  const sanitized = removeEmptyDailyTopicSections(markdown);
+
+  assert.doesNotMatch(sanitized, /产品与功能更新/);
+  assert.match(sanitized, /行业变化与个人影响/);
+  assert.match(sanitized, /招募信息/);
+});
+
+test("daily output presentation normalizes Chinese commas without changing URLs or code", () => {
+  const markdown = "模型上线,开发者可测试。[参数页](https://example.com/a,b) `items.join(',')` 当天新增 **326 Stars**,总计 2417。";
+
+  const normalized = normalizeDailyChinesePunctuation(markdown);
+
+  assert.match(normalized, /模型上线，开发者可测试/);
+  assert.match(normalized, /Stars\*\*，总计/);
+  assert.match(normalized, /https:\/\/example\.com\/a,b/);
+  assert.match(normalized, /items\.join\(','\)/);
+});
+
+test("daily output presentation corrects official wording on editorial links", () => {
+  const markdown = "[阿里千问官方公告](https://www.aibase.com/zh/news/30136)与[DeepSeek 官方说明](https://api-docs.deepseek.com/news)";
+
+  const normalized = normalizeMisleadingDailySourceLabels(markdown);
+
+  assert.match(normalized, /\[AIBase 对这项消息的报道\]\(https:\/\/www\.aibase\.com/);
+  assert.match(normalized, /\[DeepSeek 官方说明\]\(https:\/\/api-docs\.deepseek\.com/);
+});
+
+test("daily output presentation removes volatile Telegram CDN images only", () => {
+  const markdown = `正文。
+
+![临时图](https://cdn5.telesco.pe/file/example.jpg "临时图")
+
+![稳定图](https://pbs.twimg.com/media/example.jpg "稳定图")`;
+
+  assert.equal(isVolatileDailyMediaUrl("https://cdn5.telesco.pe/file/example.jpg"), true);
+  assert.equal(isVolatileDailyMediaUrl("https://t.me/example"), false);
+
+  const normalized = removeVolatileDailyImages(markdown);
+  assert.doesNotMatch(normalized, /telesco\.pe/);
+  assert.match(normalized, /pbs\.twimg\.com/);
+  assert.equal(normalizeDailyOutputPresentation(normalized), normalized);
 });

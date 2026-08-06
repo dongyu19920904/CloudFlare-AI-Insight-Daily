@@ -80,6 +80,7 @@ import {
 } from '../opportunityAivoraLinkPolicy.js';
 import { buildOpportunityEvidenceEnrichment } from '../opportunityEvidence.js';
 import {
+    normalizeDailyOutputPresentation,
     removeEmptyDailyFunSection,
     removeEmptyDailyTopicSections,
     sanitizeDuplicateDailySections,
@@ -1464,6 +1465,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyTopicSections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyFunSection(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = normalizeDailyOutputPresentation(dailySummaryMarkdownContent);
     const dailyValidationOptions = {
         minimumTopItems: options.minimumTopItems || 0,
         hardMinimumTopItems: options.hardMinimumTopItems,
@@ -1531,6 +1533,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyTopicSections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyFunSection(repairedDailySummaryMarkdownContent);
+        repairedDailySummaryMarkdownContent = normalizeDailyOutputPresentation(repairedDailySummaryMarkdownContent);
         const repairedValidation = validateGeneratedDaily(
             repairedOutputOfCall3,
             repairedDailySummaryMarkdownContent
@@ -1608,6 +1611,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     }
 
     dailySummaryMarkdownContent = normalizeMarkdownImageSyntax(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = normalizeDailyOutputPresentation(dailySummaryMarkdownContent);
     const dailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
     debugInfo.dailyFunSectionPresent = dailyFunStats.present;
     debugInfo.dailyFunSectionSourceLinks = dailyFunStats.sourceLinkCount;

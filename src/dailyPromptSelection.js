@@ -1,4 +1,5 @@
-import { hasMedia, stripHtml } from "./helpers.js";
+import { stripHtml } from "./helpers.js";
+import { isVolatileDailyMediaUrl } from "./dailySectionSanitizer.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -20,13 +21,15 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     const tag = match[0];
     const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
     const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
-    if (src) addPlaceholder(`![${alt || "image"}](${src})`);
+    if (src && !isVolatileDailyMediaUrl(src)) {
+      addPlaceholder(`![${alt || "image"}](${src})`);
+    }
     if (placeholders.length >= limit) return placeholders;
   }
 
   for (const match of str.matchAll(/<video\b[^>]*src="([^"]+)"[^>]*>/gi)) {
     const src = match[1]?.trim();
-    if (src) {
+    if (src && !isVolatileDailyMediaUrl(src)) {
       addPlaceholder(
         `<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`
       );
@@ -35,6 +38,18 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
   }
 
   return placeholders;
+}
+
+function removeVolatileMediaTagsFromHtml(html) {
+  return String(html || "")
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
+      return src && isVolatileDailyMediaUrl(src) ? "" : tag;
+    })
+    .replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, (tag) => {
+      const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
+      return src && isVolatileDailyMediaUrl(src) ? "" : tag;
+    });
 }
 
 function truncatePromptText(text, maxChars = 500) {
@@ -410,9 +425,10 @@ function buildDailyPromptCandidate(item) {
   if (!item || typeof item !== "object") return null;
 
   const sourceType = inferDailyPromptSourceType(item);
-  const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
-  const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
-  const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
+  const stableContentHtml = removeVolatileMediaTagsFromHtml(item.details?.content_html);
+  const mediaPlaceholders = extractMediaPlaceholdersFromHtml(stableContentHtml);
+  const itemHasMedia = mediaPlaceholders.length > 0;
+  const plainTextContent = truncatePromptText(stripHtml(stableContentHtml));
   let itemText = "";
 
   switch (sourceType) {
@@ -431,7 +447,7 @@ function buildDailyPromptCandidate(item) {
       itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
       break;
     case "socialMedia":
-      itemText = `socialMedia Post by ${item.authors}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${truncatePromptText(stripHtml(item.details?.content_html))}`;
+      itemText = `socialMedia Post by ${item.authors}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
       break;
     default:
       itemText = `Type: ${item.type}\nTitle: ${item.title || "N/A"}\nDescription: ${truncatePromptText(item.description || "N/A")}\nURL: ${item.url || "N/A"}`;

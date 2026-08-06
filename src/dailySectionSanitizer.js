@@ -21,6 +21,99 @@ function normalizeSectionTitle(title) {
     .trim();
 }
 
+const VOLATILE_DAILY_MEDIA_HOSTS = ["telesco.pe"];
+const EDITORIAL_SOURCE_NAMES = new Map([
+  ["aibase.com", "AIBase"],
+  ["36kr.com", "36氪"],
+  ["chinaz.com", "站长之家"],
+  ["jiqizhixin.com", "机器之心"],
+  ["qbitai.com", "量子位"],
+  ["xinzhiyuan.com", "新智元"],
+]);
+
+function getNormalizedHostname(url) {
+  try {
+    return new URL(String(url || "").trim()).hostname
+      .toLowerCase()
+      .replace(/^www\./, "")
+      .replace(/^m\./, "");
+  } catch {
+    return "";
+  }
+}
+
+export function isVolatileDailyMediaUrl(url) {
+  const hostname = getNormalizedHostname(url);
+  return VOLATILE_DAILY_MEDIA_HOSTS.some(
+    (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
+  );
+}
+
+function transformDailyProse(markdown, transform) {
+  const content = String(markdown || "");
+  const protectedPattern = /```[\s\S]*?```|`[^`\r\n]+`|https?:\/\/[^\s)>"']+/g;
+  let output = "";
+  let cursor = 0;
+
+  for (const match of content.matchAll(protectedPattern)) {
+    output += transform(content.slice(cursor, match.index));
+    output += match[0];
+    cursor = match.index + match[0].length;
+  }
+
+  return output + transform(content.slice(cursor));
+}
+
+export function normalizeDailyChinesePunctuation(markdown) {
+  return transformDailyProse(markdown, (text) => text
+    .replace(
+      /([\u3400-\u9fff])(\*{0,2}),(?=(?:\*{0,2})?[\u3400-\u9fffA-Za-z0-9])/g,
+      "$1$2，"
+    )
+    .replace(
+      /([A-Za-z0-9])(\*{0,2}),(?=(?:\*{0,2})?[\u3400-\u9fff])/g,
+      "$1$2，"
+    ));
+}
+
+export function normalizeMisleadingDailySourceLabels(markdown) {
+  return String(markdown || "").replace(
+    /\[([^\]\r\n]+)\]\((https?:\/\/[^\s)]+)(\s+"[^"]*")?\)/g,
+    (fullMatch, label, url, optionalTitle = "", offset, content) => {
+      if (offset > 0 && content[offset - 1] === "!") return fullMatch;
+      if (!/(?:官方|官网)/.test(label)) return fullMatch;
+
+      const sourceName = EDITORIAL_SOURCE_NAMES.get(getNormalizedHostname(url));
+      if (!sourceName) return fullMatch;
+
+      return `[${sourceName} 对这项消息的报道](${url}${optionalTitle})`;
+    }
+  );
+}
+
+export function removeVolatileDailyImages(markdown) {
+  return String(markdown || "")
+    .replace(
+      /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\s*\)[ \t]*(?:\r?\n)?/g,
+      (imageMarkdown, imageUrl) => isVolatileDailyMediaUrl(imageUrl) ? "" : imageMarkdown
+    )
+    .replace(
+      /<img\b[^>]*\bsrc=["'](https?:\/\/[^"']+)["'][^>]*>[ \t]*(?:\r?\n)?/gi,
+      (imageHtml, imageUrl) => isVolatileDailyMediaUrl(imageUrl) ? "" : imageHtml
+    )
+    .replace(/^###\s+\*{0,2}相关配图\*{0,2}\s*(?=\r?\n(?:##\s|$))/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function normalizeDailyOutputPresentation(markdown) {
+  return normalizeDailyChinesePunctuation(
+    normalizeMisleadingDailySourceLabels(
+      removeVolatileDailyImages(markdown)
+    )
+  );
+}
+
 function isRepeatedSectionStory(leftTitle, rightTitle) {
   const left = normalizeSectionTitle(leftTitle);
   const right = normalizeSectionTitle(rightTitle);
@@ -174,11 +267,11 @@ export function removeEmptyDailyFunSection(markdown) {
 }
 
 const OPTIONAL_DAILY_TOPIC_SECTION_PATTERNS = [
-  /^##\s*\*{0,2}.*产品与功能更新.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
-  /^##\s*\*{0,2}.*前沿研究(?:与行业影响)?.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
-  /^##\s*\*{0,2}.*行业(?:变化与个人影响|展望与社会影响).*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
-  /^##\s*\*{0,2}.*开源\s*TOP\s*项目.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
-  /^##\s*\*{0,2}.*社媒精选.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im,
+  /^##[^\r\n]*产品与功能更新[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/im,
+  /^##[^\r\n]*前沿研究(?:与行业影响)?[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/im,
+  /^##[^\r\n]*行业(?:变化与个人影响|展望与社会影响)[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/im,
+  /^##[^\r\n]*开源\s*TOP\s*项目[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/im,
+  /^##[^\r\n]*社媒精选[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/im,
 ];
 
 export function removeEmptyDailyTopicSections(markdown) {

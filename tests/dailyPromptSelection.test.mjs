@@ -424,6 +424,27 @@ test("buildDailyPromptSelection presents media-backed candidates near prompt fro
   assert.equal(result.selectionDiagnostics.selectedMediaInFirstFive, 1);
 });
 
+test("buildDailyPromptSelection does not expose volatile Telegram CDN images", () => {
+  const result = buildDailyPromptSelection({
+    news: [{
+      ...buildNewsItem(1),
+      title: "Moonshot publishes a new AI vision benchmark",
+      description: "A reproducible AI vision benchmark update.",
+      url: "https://t.me/example/1",
+      details: {
+        content_html: '<p>Benchmark details.</p><img src="https://cdn5.telesco.pe/file/example.jpg" alt="benchmark">',
+      },
+    }],
+    project: [],
+    socialMedia: [],
+    paper: [],
+  });
+
+  assert.equal(result.itemsWithMedia, 0);
+  assert.equal(result.mediaCandidates.length, 0);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /Media References|telesco\.pe/);
+});
+
 test("buildDailyPromptSelection keeps a human-facing fun candidate pool outside main ranking", () => {
   const result = buildDailyPromptSelection(
     {
