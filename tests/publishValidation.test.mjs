@@ -110,6 +110,47 @@ test("validateDailyPublication accepts plain TOP headings with source links in i
   assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
+test("validateDailyPublication reports style findings as non-blocking warnings", () => {
+  const pageMarkdown = `## **今日摘要**
+
+\`\`\`
+今天的产品与研究都有可以核实的新变化，读者可以先看来源再决定是否试用。
+\`\`\`
+
+## **🔥 今日焦点 TOP 1**
+
+### 1. 模型开放新的测试能力
+
+**测试范围已经扩大。** [模型官方说明](https://example.com/model)列出了当前开放范围。这意味着开发者可以开始小范围验证，但仍要核对地区和任务限制。
+
+## **⚡ 产品与功能更新**
+
+### 工具新增批量处理入口
+
+**批量入口已经上线。** [产品更新日志](https://example.com/product)说明了支持范围。值得关注的是团队可以先拿非敏感任务检查稳定性。
+
+## **🧪 前沿研究**
+
+### 新评测拆开感知和推理能力
+
+**评测口径变得更细。** [研究页面](https://example.com/research)公布了样本与方法。可以看出总分不能替代具体失败样本的人工复核。
+
+## **❓ 相关问题**
+
+### 这个模型国内怎么用？
+
+先从官方入口确认账号、地区和使用限制，再用低风险任务测试。需要比较公开服务时，可查看 [**爱窝啦·AI账号店**](https://www.aivora.cn/)，商品状态以官网为准。`;
+
+  const result = validateDailyPublication({
+    summaryText: "今天的产品与研究都有可以核实的新变化，读者可以先看来源再决定是否试用。",
+    pageMarkdown,
+    minimumTopItems: 1,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+  assert.match(result.warnings.join("\n"), /Daily writing style repeats generic judgment phrases/);
+});
+
 test("validateDailyPublication rejects a plain TOP item without a source link", () => {
   const pageMarkdown = `## **今日摘要**
 

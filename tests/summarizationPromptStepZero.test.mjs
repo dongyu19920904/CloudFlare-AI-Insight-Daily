@@ -50,6 +50,18 @@ test("daily prompt rejects low-evidence promotions and requires factual media ca
   assert.match(prompt, /所有事实、数字、功能、价格和判断依据必须来自输入素材/);
 });
 
+test("daily prompt adapts human-writing principles without replacing the digest format", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
+
+  assert.match(prompt, /后一句必须增加新事实、新动作、新区别、新影响或读者可以执行的动作/);
+  assert.match(prompt, /严格区分已经开放、邀请测试、预告即将提供、长期愿景、媒体转述和行业猜测/);
+  assert.match(prompt, /标题只能写到素材能够直接证明的位置/);
+  assert.match(prompt, /不得补成作者或用户已经注册、付款、部署、成功运行/);
+  assert.match(prompt, /保留现有短标题、编号、Markdown 链接、图片、列表、表格和 FAQ 结构/);
+  assert.match(prompt, /少用“这意味着”“值得关注”“意义重大”代替具体判断/);
+  assert.doesNotMatch(prompt, /成稿正文严禁冒号/);
+});
+
 test("daily prompt gives plain yellow conclusions and contextual cyan source links distinct roles", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 

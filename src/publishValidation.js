@@ -10,6 +10,7 @@ const COMMON_FAILURE_PATTERNS = [
 
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
+import { collectDailyWritingStyleWarnings } from "./dailyWritingQuality.js";
 import { validateOpportunityAivoraLinks } from "./opportunityAivoraLinkPolicy.js";
 import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import {
@@ -674,6 +675,7 @@ export function validateDailyPublication({
   allowedTopGithubProjectUrls = [],
   enforceTopGithubProjectAllowlist = false,
 }) {
+  const writingStyleWarnings = collectDailyWritingStyleWarnings(pageMarkdown);
   const collectedIssues = [
     ...collectMarkdownIssues(summaryText, {
       label: "日报摘要",
@@ -700,7 +702,10 @@ export function validateDailyPublication({
   ];
 
   const issues = collectedIssues.filter((issue) => !isSoftDailyPublicationIssue(issue));
-  const warnings = collectedIssues.filter(isSoftDailyPublicationIssue);
+  const warnings = [
+    ...collectedIssues.filter(isSoftDailyPublicationIssue),
+    ...writingStyleWarnings,
+  ];
 
   return {
     ok: issues.length === 0,
