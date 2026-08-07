@@ -122,6 +122,35 @@ export function normalizeMisleadingDailySourceLabels(markdown) {
   );
 }
 
+function isDailySourceTagLinkLabel(label) {
+  const compact = String(label || "")
+    .normalize("NFKC")
+    .replace(/[\s·：:，,。.!！?？、“”‘’（）()【】\[\]]+/g, "");
+
+  return /^(?:AIBase对这项消息的报道|实测录屏帖|独家报道|实测分析帖|技术拆解帖|转发的评测分析|频道整理的消息|频道整理的观察|安装实测帖|点评帖|转发分析帖|官方公告|官方说明|官方页面|官方文档|项目主页|项目仓库)$/i.test(compact);
+}
+
+export function normalizeDailyTopEvidenceLinkLabels(markdown) {
+  let output = String(markdown || "");
+
+  for (const item of extractNumberedDailyItems(output)) {
+    const sourceLink = item.sourceLink;
+    if (!sourceLink || !isDailySourceTagLinkLabel(sourceLink.title)) continue;
+
+    const originalLink = `[${sourceLink.title}](${sourceLink.url})`;
+    const factLabel = String(item.title || "").replace(/\s+/g, " ").trim();
+    if (!factLabel || !item.block.includes(originalLink)) continue;
+
+    const normalizedBlock = item.block.replace(
+      originalLink,
+      `[${factLabel}](${sourceLink.url})`
+    );
+    output = output.replace(item.block, normalizedBlock);
+  }
+
+  return output;
+}
+
 export function removeVolatileDailyImages(markdown) {
   return String(markdown || "")
     .replace(
@@ -138,11 +167,11 @@ export function removeVolatileDailyImages(markdown) {
 }
 
 export function normalizeDailyOutputPresentation(markdown) {
-  return normalizeDailyChinesePunctuation(
+  return normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
     normalizeMisleadingDailySourceLabels(
       removeVolatileDailyImages(markdown)
     )
-  );
+  ));
 }
 
 function isRepeatedSectionStory(leftTitle, rightTitle) {
@@ -309,12 +338,17 @@ function extractDailyTopPromotionCandidates(markdown, seenUrls) {
           .trim(),
         body,
         normalizedUrl,
+        highlightCount: (body.match(/\*\*[^*\r\n]+\*\*/g) || []).length,
+        mediaCount: (body.match(/!\[[^\]]*\]\([^\n)]+\)|<(?:img|video)\b/gi) || []).length,
       });
       seenUrls.add(normalizedUrl);
     }
   }
 
-  return candidates;
+  return candidates.sort((left, right) =>
+    right.highlightCount - left.highlightCount ||
+    right.mediaCount - left.mediaCount
+  );
 }
 
 export function ensureUniqueDailyTopSources(markdown) {

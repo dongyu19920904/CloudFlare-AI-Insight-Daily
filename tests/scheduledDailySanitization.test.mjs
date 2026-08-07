@@ -9,6 +9,7 @@ import {
   normalizeDailyChinesePunctuation,
   normalizeDailyFaqAivoraCta,
   normalizeDailyOutputPresentation,
+  normalizeDailyTopEvidenceLinkLabels,
   normalizeMisleadingDailySourceLabels,
   removeEmptyDailyFunSection,
   removeEmptyDailyTopicSections,
@@ -16,6 +17,24 @@ import {
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
+
+test("normalizeDailyTopEvidenceLinkLabels turns source tags into contextual fact links", () => {
+  const markdown = `## **🔥 今日焦点 TOP 2**
+
+### 1. DeepSeek 宣布近期上调 API 价格
+
+**价格准备调整。** 据 AIBase 整理，[AIBase 对这项消息的报道](https://example.com/price)，具体方案待公布。
+
+### 2. Agent 技能库单日新增 593 Stars
+
+**项目热度上涨。** [agent-skills 单日新增 593 Stars](https://github.com/example/skills)，适合工程团队参考。`;
+
+  const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
+
+  assert.match(normalized, /\[DeepSeek 宣布近期上调 API 价格\]\(https:\/\/example\.com\/price\)/);
+  assert.doesNotMatch(normalized, /AIBase 对这项消息的报道/);
+  assert.match(normalized, /\[agent-skills 单日新增 593 Stars\]/);
+});
 
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
