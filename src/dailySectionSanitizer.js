@@ -1,3 +1,5 @@
+import { extractDailyMarkdownLinks, extractNumberedDailyItems } from "./dailyMarkdownItems.js";
+
 function normalizeSectionUrl(url) {
   if (!url) return "";
 
@@ -279,6 +281,84 @@ export function sanitizeDuplicateDailySections(markdown) {
   }
 
   return sanitized.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+const DAILY_TOP_PROMOTION_SECTION_PATTERN = /^##\s*[^\r\n]*(?:产品与功能更新|前沿研究(?:与行业影响)?|行业(?:变化与个人影响|展望与社会影响)|社媒精选)[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/gim;
+
+function extractDailyTopPromotionCandidates(markdown, seenUrls) {
+  const candidates = [];
+
+  for (const sectionMatch of String(markdown || "").matchAll(DAILY_TOP_PROMOTION_SECTION_PATTERN)) {
+    const section = sectionMatch[0];
+    const itemPattern = /^###\s+(?!\d+\.)[^\r\n]+(?:\r?\n|$)[\s\S]*?(?=^###\s+|(?![\s\S]))/gm;
+
+    for (const itemMatch of section.matchAll(itemPattern)) {
+      const block = itemMatch[0].trim();
+      const heading = block.match(/^###\s+([^\r\n]+)/)?.[1]?.trim() || "";
+      const body = block.replace(/^###\s+[^\r\n]+(?:\r?\n|$)/, "").trim();
+      const sourceLink = extractDailyMarkdownLinks(body)[0];
+      const normalizedUrl = normalizeSectionUrl(sourceLink?.url);
+      if (!heading || !sourceLink || !normalizedUrl || seenUrls.has(normalizedUrl)) continue;
+      if (/^(?:github\.com|gitlab\.com)\//i.test(normalizedUrl)) continue;
+
+      candidates.push({
+        block,
+        title: heading
+          .replace(/^\[([^\]]+)\]\(https?:\/\/[^\s)]+\)$/, "$1")
+          .replace(/^\*\*(.+)\*\*$/, "$1")
+          .trim(),
+        body,
+        normalizedUrl,
+      });
+      seenUrls.add(normalizedUrl);
+    }
+  }
+
+  return candidates;
+}
+
+export function ensureUniqueDailyTopSources(markdown) {
+  const content = String(markdown || "");
+  const topMatch = content.match(/^##\s*\*{0,2}.*TOP.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im);
+  if (!topMatch) return content;
+
+  const topSection = topMatch[0];
+  const topHeading = topSection.match(/^##[^\r\n]*/)?.[0] || "";
+  const topItems = extractNumberedDailyItems(topSection);
+  const seenUrls = new Set();
+  const keptItems = [];
+  let duplicateCount = 0;
+
+  for (const item of topItems) {
+    const normalizedUrl = normalizeSectionUrl(item.url);
+    if (normalizedUrl && seenUrls.has(normalizedUrl)) {
+      duplicateCount += 1;
+      continue;
+    }
+    if (normalizedUrl) seenUrls.add(normalizedUrl);
+    keptItems.push(item);
+  }
+
+  if (duplicateCount === 0) return content;
+
+  const promotionCandidates = extractDailyTopPromotionCandidates(content, new Set(seenUrls));
+  if (promotionCandidates.length < duplicateCount) {
+    return content;
+  }
+
+  const promoted = promotionCandidates.slice(0, duplicateCount);
+  const rebuiltBlocks = [
+    ...keptItems.map((item) => ({ title: item.title, body: item.body.trim() })),
+    ...promoted.map((item) => ({ title: item.title, body: item.body })),
+  ].map((item, index) => `### ${index + 1}. ${item.title}\n\n${item.body}`.trim());
+
+  let output = content;
+  for (const candidate of promoted) {
+    output = output.replace(candidate.block, "");
+  }
+  output = output.replace(topSection, `${topHeading}\n\n${rebuiltBlocks.join("\n\n")}`);
+
+  return output.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export function removeEmptyDailyFunSection(markdown) {

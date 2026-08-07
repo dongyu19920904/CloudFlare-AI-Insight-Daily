@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DAILY_AIVORA_FAQ_CTA,
+  ensureUniqueDailyTopSources,
   isLowValueDailyMediaUrl,
   isVolatileDailyMediaUrl,
   normalizeDailyChinesePunctuation,
@@ -15,6 +16,41 @@ import {
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
+
+test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
+  const markdown = `## **🔥 今日焦点 TOP 3**
+
+### 1. 聚合稿里的模型价格
+
+**价格准备调整。** [模型价格消息](https://example.com/digest)。
+
+### 2. 聚合稿里的影像工具
+
+**影像工具发布。** [影像工具消息](https://example.com/digest)。
+
+### 3. 独立模型更新
+
+**模型已经更新。** [独立更新说明](https://example.com/model)。
+
+## **⚡ 产品与功能更新**
+
+### 新工具加入批处理
+
+**批处理已经开放。** [批处理能力说明](https://example.com/batch)。
+
+## **◎ 行业变化与个人影响**
+
+### 企业开始招聘 AI 编辑
+
+**新岗位正在出现。** [招聘页面](https://example.com/job)。`;
+
+  const normalized = ensureUniqueDailyTopSources(markdown);
+
+  assert.equal((normalized.match(/https:\/\/example\.com\/digest/g) || []).length, 1);
+  assert.match(normalized, /^### 3\. 新工具加入批处理$/m);
+  assert.doesNotMatch(normalized, /^### 新工具加入批处理$/m);
+  assert.match(normalized, /^### 企业开始招聘 AI 编辑$/m);
+});
 
 test("normalizeDailyFaqAivoraCta preserves the answer and replaces misleading store copy", () => {
   const markdown = `## **❓ 相关问题**

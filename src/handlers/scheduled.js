@@ -80,6 +80,7 @@ import {
 } from '../opportunityAivoraLinkPolicy.js';
 import { buildOpportunityEvidenceEnrichment } from '../opportunityEvidence.js';
 import {
+    ensureUniqueDailyTopSources,
     isUsableDailyMediaUrl,
     normalizeDailyOutputPresentation,
     removeEmptyDailyFunSection,
@@ -1451,6 +1452,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = ensureUniqueDailyTopSources(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyTopicSections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyFunSection(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = normalizeDailyOutputPresentation(dailySummaryMarkdownContent);
@@ -1523,6 +1525,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             env
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
+        repairedDailySummaryMarkdownContent = ensureUniqueDailyTopSources(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyTopicSections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyFunSection(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = normalizeDailyOutputPresentation(repairedDailySummaryMarkdownContent);
