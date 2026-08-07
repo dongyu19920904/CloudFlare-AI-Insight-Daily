@@ -6,6 +6,10 @@ on:
         description: verify date
         required: true
         default: "2026-03-11"
+      dry_run:
+        description: generate and validate without publishing
+        required: true
+        default: "false"
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -20,11 +24,40 @@ jobs:
             echo "::error::TEST_TRIGGER_SECRET is not configured in GitHub Actions. Refusing to call Worker trigger endpoints."
             exit 1
           fi
-          curl -fsSL -G "https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduled" \
+          DRY_RUN=0
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN=1
+          fi
+
+          curl -fsSL -G "https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduledDaily" \
             --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
             --data-urlencode "date=${DATE}" \
-            | tee trigger.json
+            --data-urlencode "dryRun=${DRY_RUN}" \
+            --data-urlencode "stream=1" \
+            | tee trigger.ndjson
+
+          tail -n 1 trigger.ndjson > trigger-final.json
+          jq . trigger-final.json
+          jq -e '.success == true and .state == "success" and .debug.dailyGenerated == true' trigger-final.json >/dev/null
+
+          if [ "$DRY_RUN" = "1" ]; then
+            jq -e '.debug.dailyWouldPublish == true and .debug.dailyPublished == false' trigger-final.json >/dev/null
+            jq -r '.debug.dailyPreviewMarkdown' trigger-final.json > daily-preview.md
+            test -s daily-preview.md
+          fi
+
+      - name: Upload dry-run preview
+        if: github.event.inputs.dry_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-preview-${{ github.event.inputs.date }}
+          path: |
+            daily-preview.md
+            trigger-final.json
+          if-no-files-found: error
+          retention-days: 3
       - name: Wait for markdown images
+        if: github.event.inputs.dry_run != 'true'
         run: |
           set -euo pipefail
           DATE='${{ github.event.inputs.date }}'
@@ -42,6 +75,7 @@ jobs:
           echo "Images did not recover in time" >&2
           exit 1
       - name: Wait for public page images
+        if: github.event.inputs.dry_run != 'true'
         run: |
           set -euo pipefail
           DATE='${{ github.event.inputs.date }}'

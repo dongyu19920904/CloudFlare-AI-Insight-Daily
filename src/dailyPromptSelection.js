@@ -1,5 +1,5 @@
 import { stripHtml } from "./helpers.js";
-import { isVolatileDailyMediaUrl } from "./dailySectionSanitizer.js";
+import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -21,7 +21,7 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
     const tag = match[0];
     const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
     const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
-    if (src && !isVolatileDailyMediaUrl(src)) {
+    if (src && isUsableDailyMediaUrl(src)) {
       addPlaceholder(`![${alt || "image"}](${src})`);
     }
     if (placeholders.length >= limit) return placeholders;
@@ -29,7 +29,7 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
 
   for (const match of str.matchAll(/<video\b[^>]*src="([^"]+)"[^>]*>/gi)) {
     const src = match[1]?.trim();
-    if (src && !isVolatileDailyMediaUrl(src)) {
+    if (src && isUsableDailyMediaUrl(src)) {
       addPlaceholder(
         `<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`
       );
@@ -40,15 +40,15 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
   return placeholders;
 }
 
-function removeVolatileMediaTagsFromHtml(html) {
+function removeUnusableMediaTagsFromHtml(html) {
   return String(html || "")
     .replace(/<img\b[^>]*>/gi, (tag) => {
       const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
-      return src && isVolatileDailyMediaUrl(src) ? "" : tag;
+      return src && !isUsableDailyMediaUrl(src) ? "" : tag;
     })
     .replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, (tag) => {
       const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
-      return src && isVolatileDailyMediaUrl(src) ? "" : tag;
+      return src && !isUsableDailyMediaUrl(src) ? "" : tag;
     });
 }
 
@@ -425,7 +425,7 @@ function buildDailyPromptCandidate(item) {
   if (!item || typeof item !== "object") return null;
 
   const sourceType = inferDailyPromptSourceType(item);
-  const stableContentHtml = removeVolatileMediaTagsFromHtml(item.details?.content_html);
+  const stableContentHtml = removeUnusableMediaTagsFromHtml(item.details?.content_html);
   const mediaPlaceholders = extractMediaPlaceholdersFromHtml(stableContentHtml);
   const itemHasMedia = mediaPlaceholders.length > 0;
   const plainTextContent = truncatePromptText(stripHtml(stableContentHtml));

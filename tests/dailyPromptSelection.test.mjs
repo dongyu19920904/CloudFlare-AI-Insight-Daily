@@ -445,6 +445,47 @@ test("buildDailyPromptSelection does not expose volatile Telegram CDN images", (
   assert.doesNotMatch(result.selectedContentItems.join("\n"), /Media References|telesco\.pe/);
 });
 
+test("buildDailyPromptSelection rejects profile avatars but keeps article media", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "开发者展示 AI 编程助手的新交互",
+          url: "https://x.com/developer/status/1",
+          details: {
+            content_html: '<p>开发者展示 AI 编程助手。</p><img src="https://pbs.twimg.com/profile_images/123/user_normal.jpg" alt="avatar">',
+          },
+        },
+        {
+          ...buildNewsItem(2),
+          title: "开发者展示 AI 视频模型的新画面",
+          url: "https://x.com/developer/status/2",
+          details: {
+            content_html: '<p>开发者展示 AI 视频模型。</p><img src="https://pbs.twimg.com/media/demo.jpg" alt="video demo">',
+          },
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 2,
+      DAILY_PROMPT_NEWS_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 2,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    },
+  );
+
+  assert.equal(result.itemsWithMedia, 1);
+  assert.equal(result.mediaCandidates.length, 1);
+  assert.equal(result.mediaCandidates[0].url, "https://x.com/developer/status/2");
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /profile_images|user_normal/);
+  assert.match(result.selectedContentItems.join("\n"), /pbs\.twimg\.com\/media\/demo\.jpg/);
+});
+
 test("buildDailyPromptSelection keeps a human-facing fun candidate pool outside main ranking", () => {
   const result = buildDailyPromptSelection(
     {

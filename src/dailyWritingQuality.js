@@ -1,3 +1,5 @@
+import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
+
 const GENERIC_JUDGMENT_PHRASES = [
   "这意味着",
   "值得关注",
@@ -46,6 +48,63 @@ function percentile(values, ratio) {
   return sorted[index];
 }
 
+function countBodySentences(text) {
+  return (maskNonProse(text).match(/[^。！？!?]+[。！？!?]?/g) || [])
+    .map((sentence) => countVisibleCharacters(sentence))
+    .filter((length) => length >= 3).length;
+}
+
+function isGenericSourceOnlyLinkLabel(label) {
+  const compact = String(label || "")
+    .normalize("NFKC")
+    .replace(/[\s·：:，,。.!！?？、“”‘’（）()【】\[\]]+/g, "")
+    .toLowerCase();
+  if (!compact) return true;
+
+  return /^(?:(?:aibase|36氪|机器之心|量子位|新智元|晚点|官方|作者|开发者|媒体|频道)?(?:的)?(?:对这项消息的)?(?:(?:整理|转发)(?:的)?|独家|实测)?(?:原文|来源|详情|报道|公告|通知|推文|原帖|分析帖|频道消息|日报|项目主页|项目仓库|价格表|官方文档|官方页面)(?:显示|称|指出)?|点击查看|了解更多)$/i.test(compact);
+}
+
+export function analyzeDailyPresentationQuality(pageMarkdown) {
+  const topItems = extractNumberedDailyItems(pageMarkdown);
+  let genericSourceLinkCount = 0;
+  let underHighlightedItemCount = 0;
+  let overHighlightedItemCount = 0;
+  let sparseItemCount = 0;
+
+  for (const item of topItems) {
+    const boldSpans = [...item.body.matchAll(/\*\*([^*\r\n]+)\*\*/g)]
+      .map((match) => match[1].trim())
+      .filter(Boolean);
+    const visibleBodyLength = countVisibleCharacters(maskNonProse(item.body));
+    const highlightedLength = boldSpans.reduce(
+      (total, span) => total + countVisibleCharacters(span),
+      0,
+    );
+
+    if (item.bodyLinks.some((link) => isGenericSourceOnlyLinkLabel(link.title))) {
+      genericSourceLinkCount += 1;
+    }
+    if (boldSpans.length < 2) underHighlightedItemCount += 1;
+    if (
+      boldSpans.length > 3 ||
+      (visibleBodyLength > 0 && highlightedLength / visibleBodyLength > 0.25)
+    ) {
+      overHighlightedItemCount += 1;
+    }
+    if (visibleBodyLength < 85 || countBodySentences(item.body) < 3) {
+      sparseItemCount += 1;
+    }
+  }
+
+  return {
+    topItemCount: topItems.length,
+    genericSourceLinkCount,
+    underHighlightedItemCount,
+    overHighlightedItemCount,
+    sparseItemCount,
+  };
+}
+
 export function analyzeDailyReadability(pageMarkdown) {
   const prose = maskNonProse(pageMarkdown);
   const sentenceLengths = (prose.match(/[^。！？!?]+[。！？!?]?/g) || [])
@@ -66,6 +125,7 @@ export function collectDailyWritingStyleWarnings(pageMarkdown) {
   const prose = maskNonProse(pageMarkdown);
   const warnings = [];
   const readability = analyzeDailyReadability(pageMarkdown);
+  const presentation = analyzeDailyPresentationQuality(pageMarkdown);
   const genericJudgmentCount = countPhrases(prose, GENERIC_JUDGMENT_PHRASES);
   const jargonCount = countPhrases(prose, MODEL_JARGON_PHRASES);
   const repeatedWorthTemplateCount = (prose.match(/这是一个值得[^。！？\n]{0,24}(?:信号|时机|机会|窗口)/g) || []).length;
@@ -100,6 +160,26 @@ export function collectDailyWritingStyleWarnings(pageMarkdown) {
   if (readability.semicolonCount >= 4) {
     warnings.push(
       `Daily writing overuses semicolons instead of full stops: ${readability.semicolonCount}`
+    );
+  }
+  if (presentation.genericSourceLinkCount > 0) {
+    warnings.push(
+      `Daily TOP uses generic source-only link labels: ${presentation.genericSourceLinkCount}`
+    );
+  }
+  if (presentation.underHighlightedItemCount >= 2) {
+    warnings.push(
+      `Daily TOP items have too few short highlights: ${presentation.underHighlightedItemCount}`
+    );
+  }
+  if (presentation.overHighlightedItemCount > 0) {
+    warnings.push(
+      `Daily TOP items overuse highlighted text: ${presentation.overHighlightedItemCount}`
+    );
+  }
+  if (presentation.sparseItemCount >= 2) {
+    warnings.push(
+      `Daily TOP items are too sparse for quick reading: ${presentation.sparseItemCount}`
     );
   }
 

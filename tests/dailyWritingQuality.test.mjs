@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  analyzeDailyPresentationQuality,
   analyzeDailyReadability,
   collectDailyWritingStyleWarnings,
 } from "../src/dailyWritingQuality.js";
@@ -20,6 +21,49 @@ canonical: https://news.aivora.cn/2026-08/2026-08-06/
 `);
 
   assert.deepEqual(warnings, []);
+});
+
+test("daily presentation audit flags generic source labels, sparse copy, and weak highlights", () => {
+  const markdown = `
+## **🔥 今日焦点 TOP 10**
+
+### 1. 模型开始主动回应画面变化
+
+**模型会主动开口。** [实测推文](https://x.com/dev/status/1)展示了交互。今天可以先看演示。
+
+### 2. 视频模型增加原生声音
+
+**声音一起生成。** [AIBase 整理的公告](https://example.com/news-2)介绍了功能。开发者可以先核对限制。
+`;
+
+  const stats = analyzeDailyPresentationQuality(markdown);
+  const warnings = collectDailyWritingStyleWarnings(markdown);
+
+  assert.equal(stats.genericSourceLinkCount, 2);
+  assert.equal(stats.underHighlightedItemCount, 2);
+  assert.equal(stats.sparseItemCount, 2);
+  assert.match(warnings.join("\n"), /generic source-only link labels/);
+  assert.match(warnings.join("\n"), /too few short highlights/);
+  assert.match(warnings.join("\n"), /too sparse for quick reading/);
+});
+
+test("daily presentation audit accepts natural fact links and two concise highlights", () => {
+  const markdown = `
+## **🔥 今日焦点 TOP 10**
+
+### 1. 模型开始主动回应画面变化
+
+**模型会主动开口。** 开发者的演示显示，[画面状态变化会直接触发模型回应](https://x.com/dev/status/1)。它还能识别页面里的关键操作。首轮测试覆盖了 **三类任务**。演示目前只证明了单次操作，稳定性仍要另测。今天可以先拿重复表单做一次小范围测试。
+`;
+
+  assert.deepEqual(analyzeDailyPresentationQuality(markdown), {
+    topItemCount: 1,
+    genericSourceLinkCount: 0,
+    underHighlightedItemCount: 0,
+    overHighlightedItemCount: 0,
+    sparseItemCount: 0,
+  });
+  assert.deepEqual(collectDailyWritingStyleWarnings(markdown), []);
 });
 
 test("daily style audit warns on repeated generic judgments without rejecting prose", () => {

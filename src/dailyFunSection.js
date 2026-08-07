@@ -1,15 +1,36 @@
+import { extractDailyMarkdownLinks } from "./dailyMarkdownItems.js";
+
 function normalizeCandidateText(item) {
   return String(item || "").trim();
 }
 
+function normalizeCandidateUrl(url) {
+  if (!url) return "";
+
+  try {
+    const parsed = new URL(String(url).trim());
+    parsed.hash = "";
+    parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+    if (parsed.hostname === "twitter.com") parsed.hostname = "x.com";
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return parsed.href.toLowerCase();
+  } catch {
+    return String(url).trim().toLowerCase().replace(/\/+$/, "");
+  }
+}
+
+function getCandidateUrl(item) {
+  return String(item || "").match(/^(?:Url|URL):\s*(https?:\/\/\S+)/im)?.[1]?.trim() || "";
+}
+
 export function selectStandaloneDailyFunCandidates(
-  selectedContentItems = [],
+  publishedDailyMarkdown = "",
   dailyFunContentItems = [],
   limit = 5,
 ) {
-  const selectedKeys = new Set(
-    (selectedContentItems || [])
-      .map(normalizeCandidateText)
+  const publishedSourceUrls = new Set(
+    extractDailyMarkdownLinks(publishedDailyMarkdown)
+      .map((link) => normalizeCandidateUrl(link.url))
       .filter(Boolean),
   );
   const seen = new Set();
@@ -17,7 +38,12 @@ export function selectStandaloneDailyFunCandidates(
 
   for (const item of dailyFunContentItems || []) {
     const normalized = normalizeCandidateText(item);
-    if (!normalized || selectedKeys.has(normalized) || seen.has(normalized)) continue;
+    const candidateUrl = normalizeCandidateUrl(getCandidateUrl(normalized));
+    if (
+      !normalized ||
+      seen.has(normalized) ||
+      (candidateUrl && publishedSourceUrls.has(candidateUrl))
+    ) continue;
 
     seen.add(normalized);
     candidates.push(normalized);
@@ -35,6 +61,7 @@ export function buildStandaloneDailyFunPromptInput(dateStr, candidateItems = [])
     `你只负责为 ${dateStr} 的 AI日报生成一个栏目：\`## **😄 AI趣闻**\`。`,
     "这是一次独立生成，不要输出日报其它栏目，不要输出解释。",
     "必须从下面候选里选 1 条。标题要二次创作并使用纯文本，不能照搬来源标题，也不能加入链接；原始来源链接必须放在正文的真实细节附近。",
+    "链接文字必须是句子里自然成立的事实短语，说明这个原帖具体展示了什么；不要只写‘实测推文’‘原帖’‘来源’或‘详情’。",
     "正文写 100-180 个中文字符，按 Hook -> What -> Punchline 写：先给具体场景，再交代真实细节，最后一句轻轻一抖。",
     "正文用 `**...**` 标出 2-4 个产品名、真实动作、关键数字或反常结果；每处 2-12 个字符，不能整句加粗。",
     "语境要像 2026 年中文互联网，面向 90 后、00 后 AI 爱好者和程序员；可以借鉴马三立相声的铺垫、错位和冷面包袱结构，但不要模仿口音、台词或固定段子。",

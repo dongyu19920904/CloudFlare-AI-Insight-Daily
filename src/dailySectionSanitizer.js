@@ -49,6 +49,35 @@ export function isVolatileDailyMediaUrl(url) {
   );
 }
 
+export function isLowValueDailyMediaUrl(url) {
+  try {
+    const parsed = new URL(String(url || "").trim());
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const pathname = parsed.pathname.toLowerCase();
+    const segments = pathname.split("/").filter(Boolean);
+    const basename = segments.at(-1) || "";
+
+    if (hostname === "pbs.twimg.com" && segments.includes("profile_images")) {
+      return true;
+    }
+
+    if (segments.some((segment) => /^(?:avatar|avatars|profile|profile-images|profile_images|logo|logos|icon|icons|favicon)$/.test(segment))) {
+      return true;
+    }
+
+    return (
+      /(?:^|[-_])(?:avatar|logo|favicon|icon)(?:[-_.]|$)/i.test(basename) ||
+      /_normal(?:\.[a-z0-9]+)?$/i.test(basename)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isUsableDailyMediaUrl(url) {
+  return Boolean(url) && !isVolatileDailyMediaUrl(url) && !isLowValueDailyMediaUrl(url);
+}
+
 function transformDailyProse(markdown, transform) {
   const content = String(markdown || "");
   const protectedPattern = /```[\s\S]*?```|`[^`\r\n]+`|https?:\/\/[^\s)>"']+/g;
@@ -95,11 +124,11 @@ export function removeVolatileDailyImages(markdown) {
   return String(markdown || "")
     .replace(
       /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\s*\)[ \t]*(?:\r?\n)?/g,
-      (imageMarkdown, imageUrl) => isVolatileDailyMediaUrl(imageUrl) ? "" : imageMarkdown
+      (imageMarkdown, imageUrl) => isUsableDailyMediaUrl(imageUrl) ? imageMarkdown : ""
     )
     .replace(
       /<img\b[^>]*\bsrc=["'](https?:\/\/[^"']+)["'][^>]*>[ \t]*(?:\r?\n)?/gi,
-      (imageHtml, imageUrl) => isVolatileDailyMediaUrl(imageUrl) ? "" : imageHtml
+      (imageHtml, imageUrl) => isUsableDailyMediaUrl(imageUrl) ? imageHtml : ""
     )
     .replace(/^###\s+\*{0,2}相关配图\*{0,2}\s*(?=\r?\n(?:##\s|$))/gm, "")
     .replace(/\n{3,}/g, "\n\n")

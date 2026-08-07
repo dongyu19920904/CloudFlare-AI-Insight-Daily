@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DAILY_AIVORA_FAQ_CTA,
+  isLowValueDailyMediaUrl,
   isVolatileDailyMediaUrl,
   normalizeDailyChinesePunctuation,
   normalizeDailyFaqAivoraCta,
@@ -261,18 +262,23 @@ test("daily output presentation corrects official wording on editorial links", (
   assert.match(normalized, /\[DeepSeek 官方说明\]\(https:\/\/api-docs\.deepseek\.com/);
 });
 
-test("daily output presentation removes volatile Telegram CDN images only", () => {
+test("daily output presentation removes volatile and low-value images", () => {
   const markdown = `正文。
 
 ![临时图](https://cdn5.telesco.pe/file/example.jpg "临时图")
+
+![头像](https://pbs.twimg.com/profile_images/123/user_normal.jpg "头像")
 
 ![稳定图](https://pbs.twimg.com/media/example.jpg "稳定图")`;
 
   assert.equal(isVolatileDailyMediaUrl("https://cdn5.telesco.pe/file/example.jpg"), true);
   assert.equal(isVolatileDailyMediaUrl("https://t.me/example"), false);
+  assert.equal(isLowValueDailyMediaUrl("https://pbs.twimg.com/profile_images/123/user_normal.jpg"), true);
+  assert.equal(isLowValueDailyMediaUrl("https://pbs.twimg.com/media/example.jpg"), false);
 
   const normalized = removeVolatileDailyImages(markdown);
   assert.doesNotMatch(normalized, /telesco\.pe/);
+  assert.doesNotMatch(normalized, /profile_images|user_normal/);
   assert.match(normalized, /pbs\.twimg\.com/);
   assert.equal(normalizeDailyOutputPresentation(normalized), normalized);
 });

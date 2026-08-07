@@ -53,7 +53,7 @@ test("daily prompt rejects low-evidence promotions and requires factual media ca
 test("daily prompt adapts human-writing principles without replacing the digest format", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /每条使用 2-4 个完整短句/);
+  assert.match(prompt, /每条使用 3-5 个完整短句/);
   assert.match(prompt, /普通句子优先控制在 18-32 个显示字符/);
   assert.match(prompt, /原则上不得超过 55 个/);
   assert.match(prompt, /不使用分号串联两个独立判断/);
@@ -79,13 +79,14 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /优先链接官方来源/);
   assert.match(prompt, /二次创作的关键结论句/);
   assert.match(prompt, /6-18 字的.*黄色短结论/);
-  assert.match(prompt, /每条通常保留 2 处黄色重点/);
-  assert.match(prompt, /链接文案尽量控制在 8-22 个显示字符/);
+  assert.match(prompt, /每条通常保留 2-3 处黄色重点/);
+  assert.match(prompt, /链接文案控制在 8-24 个显示字符/);
+  assert.match(prompt, /不能只写“实测推文”/);
   assert.match(prompt, /媒体链接只能写成“报道\/整理”/);
-  assert.match(prompt, /使用 3 个完整短句/);
+  assert.match(prompt, /使用 4 个完整短句/);
   assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
   assert.match(prompt, /调用成本降了/);
-  assert.match(prompt, /\[官方价格表\]\(URL\)/);
+  assert.match(prompt, /\[三档模型都下调了调用费率\]\(URL\)/);
   assert.doesNotMatch(prompt, /### 1\. \[模型降价让开发者调用成本再松一截\]/);
 });
 

@@ -8,10 +8,13 @@ import {
   selectStandaloneDailyFunCandidates,
 } from "../src/dailyFunSection.js";
 
-test("selectStandaloneDailyFunCandidates excludes primary and duplicate items", () => {
-  const primary = [
-    "News Title: Codex 帮音频转 MP4\nUrl: https://x.com/vista8/status/1",
-  ];
+test("selectStandaloneDailyFunCandidates excludes sources used in the published page", () => {
+  const publishedMarkdown = [
+    "## **🔥 今日焦点 TOP 10**",
+    "",
+    "### 1. Codex 帮音频转 MP4",
+    "[开发者展示了音频转换过程](https://twitter.com/vista8/status/1)。",
+  ].join("\n");
   const funItems = [
     "News Title: Codex 帮音频转 MP4\nUrl: https://x.com/vista8/status/1",
     "News Title: 程序员让 AI 改脚本\nUrl: https://x.com/dev/status/2",
@@ -19,12 +22,23 @@ test("selectStandaloneDailyFunCandidates excludes primary and duplicate items", 
     "News Title: AI 把报错解释成小作文\nUrl: https://x.com/dev/status/3",
   ];
 
-  const candidates = selectStandaloneDailyFunCandidates(primary, funItems, 5);
+  const candidates = selectStandaloneDailyFunCandidates(publishedMarkdown, funItems, 5);
 
   assert.deepEqual(candidates, [
     "News Title: 程序员让 AI 改脚本\nUrl: https://x.com/dev/status/2",
     "News Title: AI 把报错解释成小作文\nUrl: https://x.com/dev/status/3",
   ]);
+});
+
+test("selectStandaloneDailyFunCandidates keeps prompt candidates omitted from the final page", () => {
+  const candidates = selectStandaloneDailyFunCandidates(
+    "## **🔥 今日焦点 TOP 10**\n\n### 1. 另一条新闻\n[另一项事实](https://example.com/news)。",
+    ["News Title: 程序员让 AI 改脚本\nUrl: https://x.com/dev/status/2"],
+    5,
+  );
+
+  assert.equal(candidates.length, 1);
+  assert.match(candidates[0], /x\.com\/dev\/status\/2/);
 });
 
 test("buildStandaloneDailyFunPromptInput asks only for the AI fun section", () => {
@@ -38,6 +52,7 @@ test("buildStandaloneDailyFunPromptInput asks only for the AI fun section", () =
   assert.match(prompt, /Hook -> What -> Punchline/);
   assert.match(prompt, /标题.*纯文本/);
   assert.match(prompt, /原始来源链接必须放在正文/);
+  assert.match(prompt, /句子里自然成立的事实短语/);
   assert.match(prompt, /### 二次创作短标题/);
   assert.match(prompt, /标出 2-4 个产品名、真实动作、关键数字或反常结果/);
   assert.match(prompt, /https:\/\/x\.com\/dev\/status\/2/);

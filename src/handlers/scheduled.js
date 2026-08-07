@@ -1,4 +1,4 @@
-﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, hasMedia, replaceIncorrectDomainLinks } from '../helpers.js';
+﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, replaceIncorrectDomainLinks } from '../helpers.js';
 import { normalizeMarkdownImageSyntax } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
@@ -80,11 +80,13 @@ import {
 } from '../opportunityAivoraLinkPolicy.js';
 import { buildOpportunityEvidenceEnrichment } from '../opportunityEvidence.js';
 import {
+    isUsableDailyMediaUrl,
     normalizeDailyOutputPresentation,
     removeEmptyDailyFunSection,
     removeEmptyDailyTopicSections,
     sanitizeDuplicateDailySections,
 } from '../dailySectionSanitizer.js';
+import { ensureDailyMediaCoverage } from '../dailyMediaCoverage.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -123,13 +125,13 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
         const tag = match[0];
         const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
         const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
-        if (src) addPlaceholder(`![${alt || 'image'}](${src})`);
+        if (src && isUsableDailyMediaUrl(src)) addPlaceholder(`![${alt || 'image'}](${src})`);
         if (placeholders.length >= limit) return placeholders;
     }
 
     for (const match of str.matchAll(/<video\b[^>]*src="([^"]+)"[^>]*>/gi)) {
         const src = match[1]?.trim();
-        if (src) addPlaceholder(`<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`);
+        if (src && isUsableDailyMediaUrl(src)) addPlaceholder(`<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`);
         if (placeholders.length >= limit) return placeholders;
     }
 
@@ -742,61 +744,6 @@ function extractMatchTokens(item) {
     return [...tokens];
 }
 
-function scoreMediaCandidate(output, candidate) {
-    const lowerOutput = String(output || '').toLowerCase();
-    let score = 0;
-
-    if (candidate.url && lowerOutput.includes(String(candidate.url).toLowerCase())) score += 20;
-    if (candidate.title && lowerOutput.includes(String(candidate.title).toLowerCase())) score += 12;
-
-    for (const token of candidate.matchTokens || []) {
-        if (token && lowerOutput.includes(token)) {
-            score += token.length >= 6 ? 4 : 2;
-        }
-    }
-
-    if (/(aibase|ai base|openai|karpathy|metanovas|workbuddy|autoclaw|openclaw|skillhub|kimi|tencent|zhipu|netease)/i.test(candidate.searchText || '')) {
-        score += 3;
-    }
-
-    if (/t\.me|okjike\.com/i.test(candidate.url || '')) {
-        score -= 2;
-    } else {
-        score += 1;
-    }
-
-    return score;
-}
-
-function appendFallbackMediaSection(markdown, mediaCandidates, limit = 4) {
-    if (containsRenderedMedia(markdown)) return markdown;
-
-    const ranked = [...(mediaCandidates || [])]
-        .map((candidate) => ({ candidate, score: scoreMediaCandidate(markdown, candidate) }))
-        .filter(({ candidate }) => Array.isArray(candidate.placeholders) && candidate.placeholders.length > 0)
-        .sort((a, b) => b.score - a.score);
-
-    const placeholders = [];
-    const seen = new Set();
-
-    for (const { candidate } of ranked) {
-        for (const placeholder of candidate.placeholders) {
-            if (!seen.has(placeholder)) {
-                seen.add(placeholder);
-                placeholders.push(placeholder);
-                break;
-            }
-        }
-        if (placeholders.length >= limit) break;
-    }
-
-    if (placeholders.length === 0) return markdown;
-
-    const rendered = placeholders.join('\n\n');
-
-    return `${markdown}\n\n### **相关配图**\n\n${rendered}`;
-}
-
 function normalizeMediaUrl(url) {
     if (!url) return '';
     try {
@@ -890,6 +837,9 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         outputHasMediaAfterFallback: false,
         mismatchedTopImagesRemoved: 0,
         fallbackInserted: false,
+        mediaCoverageInserted: 0,
+        mediaCoverageTarget: 0,
+        usableMediaAfterCoverage: 0,
         labelsVersion: 'headings-v2',
         opportunityGenerated: false,
         opportunityPublicPath: null,
@@ -963,9 +913,12 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
         outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
         debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
-        const outputBeforeFallback = outputOfCall2;
-        outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
-        debugInfo.fallbackInserted = outputBeforeFallback !== outputOfCall2;
+        const mediaCoverage = ensureDailyMediaCoverage(outputOfCall2, mediaCandidates);
+        outputOfCall2 = mediaCoverage.markdown;
+        debugInfo.fallbackInserted = mediaCoverage.insertedCount > 0;
+        debugInfo.mediaCoverageInserted = mediaCoverage.insertedCount;
+        debugInfo.mediaCoverageTarget = mediaCoverage.targetCount;
+        debugInfo.usableMediaAfterCoverage = mediaCoverage.usableMediaCount;
         debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
         // 鏇挎崲閿欒鐨勫煙鍚嶉摼鎺?
         outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
@@ -1135,6 +1088,9 @@ function buildBaseDebugInfo(dateStr, mode) {
         outputHasMediaAfterFallback: false,
         mismatchedTopImagesRemoved: 0,
         fallbackInserted: false,
+        mediaCoverageInserted: 0,
+        mediaCoverageTarget: 0,
+        usableMediaAfterCoverage: 0,
         labelsVersion: 'headings-v2',
         dailyGenerated: false,
         dailyPublished: false,
@@ -1247,8 +1203,8 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
         if (!items || items.length === 0) continue;
 
         for (const item of items) {
-            const itemHasMedia = item.details?.content_html && hasMedia(item.details.content_html);
             const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
+            const itemHasMedia = mediaPlaceholders.length > 0;
             const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
             let itemText = "";
 
@@ -1448,12 +1404,15 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
     outputOfCall2 = normalizeMarkdownImageSyntax(outputOfCall2);
     debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
-    const outputBeforeFallback = outputOfCall2;
-    outputOfCall2 = appendFallbackMediaSection(outputOfCall2, mediaCandidates);
-    debugInfo.fallbackInserted = outputBeforeFallback !== outputOfCall2;
     const cleanedOutput = removeMismatchedTopItemImages(outputOfCall2, mediaCandidates);
     outputOfCall2 = cleanedOutput.markdown;
     debugInfo.mismatchedTopImagesRemoved += cleanedOutput.removedCount;
+    const mediaCoverage = ensureDailyMediaCoverage(outputOfCall2, mediaCandidates);
+    outputOfCall2 = mediaCoverage.markdown;
+    debugInfo.fallbackInserted = mediaCoverage.insertedCount > 0;
+    debugInfo.mediaCoverageInserted = mediaCoverage.insertedCount;
+    debugInfo.mediaCoverageTarget = mediaCoverage.targetCount;
+    debugInfo.usableMediaAfterCoverage = mediaCoverage.usableMediaCount;
     debugInfo.outputHasMediaAfterFallback = containsRenderedMedia(outputOfCall2);
     outputOfCall2 = replaceIncorrectDomainLinks(outputOfCall2, env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn');
 
@@ -1509,10 +1468,14 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
         repairedOutputOfCall2 = convertPlaceholdersToMarkdownImages(repairedOutputOfCall2);
         repairedOutputOfCall2 = normalizeMarkdownImageSyntax(repairedOutputOfCall2);
-        repairedOutputOfCall2 = appendFallbackMediaSection(repairedOutputOfCall2, mediaCandidates);
         const cleanedRepairedOutput = removeMismatchedTopItemImages(repairedOutputOfCall2, mediaCandidates);
         repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
         debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.removedCount;
+        const repairedMediaCoverage = ensureDailyMediaCoverage(repairedOutputOfCall2, mediaCandidates);
+        repairedOutputOfCall2 = repairedMediaCoverage.markdown;
+        debugInfo.mediaCoverageInserted = repairedMediaCoverage.insertedCount;
+        debugInfo.mediaCoverageTarget = repairedMediaCoverage.targetCount;
+        debugInfo.usableMediaAfterCoverage = repairedMediaCoverage.usableMediaCount;
         repairedOutputOfCall2 = replaceIncorrectDomainLinks(
             repairedOutputOfCall2,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
@@ -1563,7 +1526,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     const funStatsBeforeStandaloneGeneration = getDailyFunSectionStats(dailySummaryMarkdownContent);
     if (validation.ok && hasDedicatedDailyFunCandidates && !funStatsBeforeStandaloneGeneration.present) {
         const standaloneDailyFunCandidates = selectStandaloneDailyFunCandidates(
-            selectedContentItems,
+            dailySummaryMarkdownContent,
             options.dailyFunContentItems,
             5
         );
@@ -2678,6 +2641,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         await reportScheduledProgress(options, 'daily', 'dry-run-complete', 100);
         debugInfo.dailyWouldPublish = true;
         debugInfo.dailyPublished = false;
+        debugInfo.dailyPreviewSummary = outputOfCall3;
+        debugInfo.dailyPreviewMarkdown = dailySummaryMarkdownContent;
         console.log(`[Scheduled][Daily] Dry-run completed successfully for ${dateStr}; skipping GitHub publish.`);
         return debugInfo;
     }
