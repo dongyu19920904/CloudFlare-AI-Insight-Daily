@@ -36,6 +36,30 @@ test("normalizeDailyTopEvidenceLinkLabels turns source tags into contextual fact
   assert.match(normalized, /\[agent-skills 单日新增 593 Stars\]/);
 });
 
+test("normalizeDailyTopEvidenceLinkLabels catches short source-tag variants", () => {
+  const markdown = `## **🔥 今日焦点 TOP 4**
+
+### 1. 豆包上线全双工模型
+**能力已经开放。** 向阳乔木[实测录屏](https://example.com/1)展示了操作。
+
+### 2. 普通用户很少使用 Agent
+**普及仍有距离。** 频道的[观察帖](https://example.com/2)记录了现象。
+
+### 3. 框架自动识别 CLI 工具
+**配置更省事。** 开发者在[实测推文](https://example.com/3)中给出结果。
+
+### 4. 跑分差距来自论文原表
+**数字需要还原。** 作者的[基准对比分析](https://example.com/4)列出原始数据。`;
+
+  const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
+
+  for (const label of ["实测录屏", "观察帖", "实测推文", "基准对比分析"]) {
+    assert.doesNotMatch(normalized, new RegExp(`\\[${label}\\]`));
+  }
+  assert.match(normalized, /\[豆包上线全双工模型\]\(https:\/\/example\.com\/1\)/);
+  assert.match(normalized, /\[跑分差距来自论文原表\]\(https:\/\/example\.com\/4\)/);
+});
+
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
 
