@@ -148,6 +148,37 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
   assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 3);
 });
 
+test("buildDailyGenerationPromptInput removes duplicate source URLs and fills the TOP gap", () => {
+  const sharedOne = [
+    "News Title: 聚合报道里的模型价格消息",
+    "Url: https://example.com/digest",
+    "Content Summary: 模型价格准备调整。",
+  ].join("\n");
+  const sharedTwo = [
+    "News Title: 聚合报道里的影像工具消息",
+    "Url: https://example.com/digest",
+    "Content Summary: 影像工具发布。",
+  ].join("\n");
+  const news = (index) => [
+    `News Title: 独立消息 ${index}`,
+    `Url: https://example.com/unique-${index}`,
+    `Content Summary: 独立 AI 消息 ${index}。`,
+  ].join("\n");
+  const selectedItems = [
+    sharedOne,
+    sharedTwo,
+    ...Array.from({ length: 8 }, (_, index) => news(index + 1)),
+  ];
+  const funItems = Array.from({ length: 4 }, (_, index) => news(index + 20));
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, funItems);
+
+  assert.equal((promptInput.match(/https:\/\/example\.com\/digest/g) || []).length, 1);
+  assert.match(promptInput, /其中至少使用 1 条补足去重后的 TOP 缺口/);
+  assert.match(promptInput, /本次必须从这里选 1 条补足 TOP/);
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
+});
+
 test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code 更新计划模式",

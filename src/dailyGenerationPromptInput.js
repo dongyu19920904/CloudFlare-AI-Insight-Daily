@@ -91,6 +91,27 @@ function getDailyPromptItemUrl(item) {
   return String(item || "").match(/^Url:\s*(https?:\/\/\S+)/im)?.[1]?.trim().toLowerCase() || "";
 }
 
+function dedupeDailyPromptItemsByUrl(items = []) {
+  const seenUrls = new Set();
+  const seenUnlinkedItems = new Set();
+
+  return (items || []).filter((item) => {
+    const normalizedItem = String(item || "").trim();
+    if (!normalizedItem) return false;
+
+    const url = getDailyPromptItemUrl(normalizedItem);
+    if (url) {
+      if (seenUrls.has(url)) return false;
+      seenUrls.add(url);
+      return true;
+    }
+
+    if (seenUnlinkedItems.has(normalizedItem)) return false;
+    seenUnlinkedItems.add(normalizedItem);
+    return true;
+  });
+}
+
 function getDailySocialFingerprint(item) {
   const content = String(item || "").match(/^Content:\s*(.+)$/im)?.[1] || "";
   return content
@@ -154,7 +175,7 @@ function selectSupplementalDailyTopBackupItems(
   topItemCount,
   limit = 3
 ) {
-  if (topItemCount < DAILY_TOP_TARGET || limit <= 0) return [];
+  if (topItemCount < DAILY_TOP_TARGET - 2 || limit <= 0) return [];
 
   const excludedItems = new Set(
     [...(selectedContentItems || []), ...(supplementalSocialItems || [])]
@@ -188,19 +209,30 @@ function selectSupplementalDailyTopBackupItems(
 }
 
 export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFunContentItems = []) {
-  const primaryItems = (selectedContentItems || [])
+  const dedupedSelectedItems = dedupeDailyPromptItemsByUrl(selectedContentItems);
+  const primaryItems = dedupedSelectedItems
     .filter(Boolean)
     .filter((item) => !isDailyWatchOnlyPromptItem(item))
     .filter((item) => !isDailyPromptHiddenItem(item));
   const allocation = allocateDailyPromptItems(primaryItems);
   const supplementalSocialItems = selectSupplementalDailySocialItems(
-    selectedContentItems,
+    dedupedSelectedItems,
     dailyFunContentItems,
     allocation.reserved.socialMedia
   );
+  const supplementalTopBackupItems = selectSupplementalDailyTopBackupItems(
+    dedupedSelectedItems,
+    dailyFunContentItems,
+    supplementalSocialItems,
+    allocation.topItems.length
+  );
+  const topCapacityFillCount = Math.min(
+    supplementalTopBackupItems.length,
+    Math.max(0, DAILY_TOP_TARGET - allocation.topItems.length)
+  );
 
   return {
-    topItems: allocation.topItems.length,
+    topItems: allocation.topItems.length + topCapacityFillCount,
     reservedProjectItems: allocation.reserved.project.length,
     reservedSocialItems: allocation.reserved.socialMedia.length + supplementalSocialItems.length,
     reservedPaperItems: allocation.reserved.paper.length,
@@ -208,12 +240,12 @@ export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFu
   };
 }
 
-export function countDailyTopEligiblePromptItems(selectedContentItems = []) {
-  return getDailyPromptAllocationStats(selectedContentItems).topItems;
+export function countDailyTopEligiblePromptItems(selectedContentItems = [], dailyFunContentItems = []) {
+  return getDailyPromptAllocationStats(selectedContentItems, dailyFunContentItems).topItems;
 }
 
 export function buildDailyGenerationPromptInput(selectedContentItems = [], dailyFunContentItems = []) {
-  const allSelectedItems = (selectedContentItems || []).filter(Boolean);
+  const allSelectedItems = dedupeDailyPromptItemsByUrl(selectedContentItems);
   const allPrimaryItems = allSelectedItems.filter((item) => !isDailyPromptHiddenItem(item));
   const watchOnlyItems = allPrimaryItems.filter((item) => isDailyWatchOnlyPromptItem(item));
   const primaryItems = allPrimaryItems.filter((item) => !isDailyWatchOnlyPromptItem(item));
@@ -230,6 +262,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     allocation.topItems.length
   );
   const socialSectionItems = [...allocation.reserved.socialMedia, ...supplementalSocialItems];
+  const requiredTopBackupItems = Math.max(0, DAILY_TOP_TARGET - allocation.topItems.length);
   const { project: projectCount, socialMedia: socialCount, paper: paperCount, news: newsCount } = allocation.counts;
   const openSourceReserve = allocation.reserved.project.length;
   const socialReserve = socialSectionItems.length;
@@ -239,7 +272,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
     `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
-    `另有 ${supplementalTopBackupItems.length} 条去重备用素材；只有主候选发生同源拆分或重复时才用于替换。`,
+    `另有 ${supplementalTopBackupItems.length} 条去重备用素材；其中至少使用 ${Math.min(requiredTopBackupItems, supplementalTopBackupItems.length)} 条补足去重后的 TOP 缺口，其余只在主候选发生同源拆分或重复时替换。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
   ].join("\n");
@@ -248,12 +281,17 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     .join("\n\n------\n\n");
   const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面素材可用于今日焦点；也可把未进入 TOP 的新闻用于产品或行业栏目。每个 TOP 候选最多生成一条；即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
+  const selectedItemUrls = new Set(allSelectedItems.map(getDailyPromptItemUrl).filter(Boolean));
   const supplementalSocialKeys = new Set(supplementalSocialItems);
   const supplementalTopBackupKeys = new Set(supplementalTopBackupItems);
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyPromptHiddenItem(item))
     .filter((item) => !selectedItemKeys.has(String(item).trim()))
+    .filter((item) => {
+      const url = getDailyPromptItemUrl(item);
+      return !url || !selectedItemUrls.has(url);
+    })
     .filter((item) => !supplementalSocialKeys.has(String(item).trim()))
     .filter((item) => !supplementalTopBackupKeys.has(String(item).trim()));
 
@@ -262,7 +300,8 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (supplementalTopBackupItems.length > 0) {
     promptParts.push([
       "【今日焦点去重备用素材】",
-      `下面 ${supplementalTopBackupItems.length} 条素材只用于替换今日焦点中的同源重复，不是额外加条目。`,
+      `下面 ${supplementalTopBackupItems.length} 条素材用于补足去重后的候选缺口，或替换今日焦点中的同源重复，不是额外加条目。`,
+      `本次必须从这里选 ${Math.min(requiredTopBackupItems, supplementalTopBackupItems.length)} 条补足 TOP；如果正文又出现重复，再继续选尚未使用的备用素材替换。`,
       `同一个 Source URL 在今日焦点最多出现一次；聚合文章也只能生成一条。发生重复时保留最重要的一条，再从这里补足 TOP ${DAILY_TOP_TARGET}。`,
       "未被用于替换的备用素材不得出现在其他正文栏目；不得为了使用备用素材超过目标条数。",
       "",

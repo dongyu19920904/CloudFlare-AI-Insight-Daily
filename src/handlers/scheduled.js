@@ -2588,7 +2588,10 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.promptSelectedCounts = selectedCounts || {};
     debugInfo.promptSelectionDiagnostics = selectionDiagnostics || null;
     const dailyPromptAllocation = getDailyPromptAllocationStats(selectedContentItems, dailyFunContentItems);
-    const dailyTopEligiblePromptItems = countDailyTopEligiblePromptItems(selectedContentItems);
+    const dailyTopEligiblePromptItems = countDailyTopEligiblePromptItems(
+        selectedContentItems,
+        dailyFunContentItems
+    );
     const minimumTopItems = Math.min(dailyTopEligiblePromptItems, DAILY_TOP_TARGET);
     const hardMinimumTopItems = Math.min(minimumTopItems, DAILY_TOP_EMERGENCY_MIN);
     const minimumOpenSourceItems = Math.min(
