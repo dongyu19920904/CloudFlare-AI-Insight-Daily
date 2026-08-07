@@ -64,9 +64,16 @@ function isGenericSourceOnlyLinkLabel(label) {
   return /^(?:(?:aibase|36氪|机器之心|量子位|新智元|晚点|官方|作者|开发者|媒体|频道)?(?:的)?(?:对这项消息的)?(?:(?:整理|转发)(?:的)?|独家|实测)?(?:原文|来源|详情|报道|公告|通知|推文|原帖|分析帖|频道消息|日报|项目主页|项目仓库|价格表|官方文档|官方页面)(?:显示|称|指出)?|点击查看|了解更多)$/i.test(compact);
 }
 
+function isAwkwardDailyFactLinkLabel(label) {
+  const text = String(label || "").normalize("NFKC").trim();
+  const sourceLed = /^(?:AIBase|36氪|机器之心|量子位|新智元|晚点|Telegram|推特|X\s*平台|GitHub|Hugging\s*Face|官方|作者|开发者|媒体|频道)[^，。；:：]{0,24}(?:报道|整理|公告|介绍|显示|称|指出|说明|发布|原帖|页面|文档|项目页)/i.test(text);
+  return countVisibleCharacters(text) > 28 || sourceLed;
+}
+
 export function analyzeDailyPresentationQuality(pageMarkdown) {
   const topItems = extractNumberedDailyItems(pageMarkdown);
   let genericSourceLinkCount = 0;
+  let awkwardFactLinkCount = 0;
   let underHighlightedItemCount = 0;
   let overHighlightedItemCount = 0;
   let sparseItemCount = 0;
@@ -84,6 +91,9 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
     if (item.bodyLinks.some((link) => isGenericSourceOnlyLinkLabel(link.title))) {
       genericSourceLinkCount += 1;
     }
+    if (item.bodyLinks.some((link) => isAwkwardDailyFactLinkLabel(link.title))) {
+      awkwardFactLinkCount += 1;
+    }
     if (boldSpans.length < 2) underHighlightedItemCount += 1;
     if (
       boldSpans.length > 3 ||
@@ -99,6 +109,7 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
   return {
     topItemCount: topItems.length,
     genericSourceLinkCount,
+    awkwardFactLinkCount,
     underHighlightedItemCount,
     overHighlightedItemCount,
     sparseItemCount,
@@ -165,6 +176,11 @@ export function collectDailyWritingStyleWarnings(pageMarkdown) {
   if (presentation.genericSourceLinkCount > 0) {
     warnings.push(
       `Daily TOP uses generic source-only link labels: ${presentation.genericSourceLinkCount}`
+    );
+  }
+  if (presentation.awkwardFactLinkCount >= 2) {
+    warnings.push(
+      `Daily TOP uses awkward source-led or overlong link anchors: ${presentation.awkwardFactLinkCount}`
     );
   }
   if (presentation.underHighlightedItemCount >= 2) {

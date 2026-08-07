@@ -697,8 +697,11 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
         "- 每条正文不得以链接开头；第一句先写 6-18 字的 `**黄色短结论。**`，第二句或首段中部再把 1 个描述性原始来源链接放在可核实事实上",
+        "- 来源名称写在链接外，例如“据 AIBase 报道”；链接只挂在 8-24 字的核心事实上，例如“[API 价格将在下周上调](URL)”。禁止把整句、来源名称或“报道显示”一起做成链接",
         "- 链接文案要说明点开能验证什么，不能写“原文链接”“点击查看”“了解更多”；输入里有官方公告或项目主页时优先使用，不得编造 URL",
-        "- 每条正文合计用 `**...**` 标出 2-4 处；除开头黄色短结论外，其余重点只标产品名、关键能力、精确数字或限制，每处 2-12 个字符",
+        "- 同一个 Source URL 在今日焦点最多使用一次；一篇聚合稿也只能生成一条，绝不能拆成多条新闻。若有重复，保留最重要的一条并用“今日焦点去重备用素材”补足条数",
+        "- 每条正文写 4 个短句，每句尽量不超过 45 个可见字符，总长约 90-125 字；一个句子只讲一件事，不用分号串联信息",
+        "- 每条正文合计用 `**...**` 标出 2-3 处；除开头黄色短结论外，其余重点只标产品名、关键能力、精确数字或限制，每处 2-12 个字符",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
         "- 今日焦点最多 1 个 GitHub 项目；今日焦点和开源 TOP 中只要出现 GitHub 仓库链接，都必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint，媒体或社媒顺手提到的非日榜仓库不能使用",
@@ -1442,7 +1445,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         ...dailyValidationOptions,
     });
     const getQualityTargetWarnings = (result) => (result?.warnings || [])
-        .filter((warning) => /below target/i.test(warning));
+        .filter((warning) => /below target|reuses the same source URL|must contain at most one GitHub|dense long sentences|generic source-only link labels|awkward source-led or overlong link anchors|too few short highlights|too sparse for quick reading/i.test(warning));
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,

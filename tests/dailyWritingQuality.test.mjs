@@ -40,6 +40,7 @@ test("daily presentation audit flags generic source labels, sparse copy, and wea
   const warnings = collectDailyWritingStyleWarnings(markdown);
 
   assert.equal(stats.genericSourceLinkCount, 2);
+  assert.equal(stats.awkwardFactLinkCount, 1);
   assert.equal(stats.underHighlightedItemCount, 2);
   assert.equal(stats.sparseItemCount, 2);
   assert.match(warnings.join("\n"), /generic source-only link labels/);
@@ -59,11 +60,32 @@ test("daily presentation audit accepts natural fact links and two concise highli
   assert.deepEqual(analyzeDailyPresentationQuality(markdown), {
     topItemCount: 1,
     genericSourceLinkCount: 0,
+    awkwardFactLinkCount: 0,
     underHighlightedItemCount: 0,
     overHighlightedItemCount: 0,
     sparseItemCount: 0,
   });
   assert.deepEqual(collectDailyWritingStyleWarnings(markdown), []);
+});
+
+test("daily presentation audit flags source-led and overlong fact links", () => {
+  const markdown = `
+## **🔥 今日焦点 TOP 10**
+
+### 1. 模型价格准备调整
+
+**价格即将变化。** [AIBase 报道显示，某模型将在下周正式调整 API 调用价格](https://example.com/1)。开发者应先核对账单。当前变化涉及 **三个档位**。正式价格仍以官方页面为准。
+
+### 2. 编程工具加入新模式
+
+**新模式已经开放。** 团队演示了[这项能力如何在复杂代码仓库中自动拆解任务并连续完成多步修改](https://example.com/2)。测试覆盖 **两个仓库**。稳定性仍要继续观察。
+`;
+
+  const stats = analyzeDailyPresentationQuality(markdown);
+  const warnings = collectDailyWritingStyleWarnings(markdown);
+
+  assert.equal(stats.awkwardFactLinkCount, 2);
+  assert.match(warnings.join("\n"), /awkward source-led or overlong link anchors/);
 });
 
 test("daily style audit warns on repeated generic judgments without rejecting prose", () => {

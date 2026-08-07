@@ -118,6 +118,34 @@ test("daily prompt allocation preserves TOP capacity when source volume is low",
   });
 });
 
+test("buildDailyGenerationPromptInput provides distinct TOP backup items without stealing the fun pool", () => {
+  const news = (index) => [
+    `News Title: AI news ${index}`,
+    `Url: https://example.com/news-${index}`,
+    `Content Summary: AI 产品变化 ${index}。`,
+  ].join("\n");
+  const social = (index) => [
+    `socialMedia Post by backup-${index}`,
+    `Url: https://x.com/backup/status/${index}`,
+    `Content: 用户实测出现了不同结果 ${index}。`,
+  ].join("\n");
+  const primaryItems = Array.from({ length: 10 }, (_, index) => news(index + 1));
+
+  const promptInput = buildDailyGenerationPromptInput(
+    primaryItems,
+    [
+      social(1), social(2), social(3),
+      ...Array.from({ length: 6 }, (_, index) => news(index + 11)),
+    ]
+  );
+
+  assert.match(promptInput, /今日焦点去重备用素材/);
+  assert.match(promptInput, /聚合文章也只能生成一条/);
+  assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 3);
+  assert.match(promptInput, /AI趣闻专用候选素材/);
+  assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 3);
+});
+
 test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code 更新计划模式",

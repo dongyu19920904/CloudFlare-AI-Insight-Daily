@@ -100,6 +100,18 @@ function getDailySocialFingerprint(item) {
     .slice(0, 120);
 }
 
+function getDailyPromptItemFingerprint(item) {
+  const text = String(item || "");
+  const title = text.match(/^(?:Project Name|News Title|Papers Title):\s*(.+)$/im)?.[1]
+    || text.match(/^Content:\s*(.+)$/im)?.[1]
+    || "";
+  return title
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "")
+    .slice(0, 120);
+}
+
 function selectSupplementalDailySocialItems(
   selectedContentItems,
   dailyFunContentItems,
@@ -133,6 +145,46 @@ function selectSupplementalDailySocialItems(
   }
 
   return supplementalItems;
+}
+
+function selectSupplementalDailyTopBackupItems(
+  selectedContentItems,
+  dailyFunContentItems,
+  supplementalSocialItems,
+  topItemCount,
+  limit = 3
+) {
+  if (topItemCount < DAILY_TOP_TARGET || limit <= 0) return [];
+
+  const excludedItems = new Set(
+    [...(selectedContentItems || []), ...(supplementalSocialItems || [])]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  );
+  const seenUrls = new Set(
+    (selectedContentItems || []).map(getDailyPromptItemUrl).filter(Boolean)
+  );
+  const seenFingerprints = new Set(
+    (selectedContentItems || []).map(getDailyPromptItemFingerprint).filter(Boolean)
+  );
+  const backupItems = [];
+
+  for (const item of dailyFunContentItems || []) {
+    const normalizedItem = String(item || "").trim();
+    if (!normalizedItem || excludedItems.has(normalizedItem) || isDailyPromptHiddenItem(normalizedItem)) continue;
+    if (classifyDailyPromptItem(normalizedItem) === "project") continue;
+
+    const url = getDailyPromptItemUrl(normalizedItem);
+    const fingerprint = getDailyPromptItemFingerprint(normalizedItem);
+    if ((url && seenUrls.has(url)) || (fingerprint && seenFingerprints.has(fingerprint))) continue;
+
+    backupItems.push(normalizedItem);
+    if (url) seenUrls.add(url);
+    if (fingerprint) seenFingerprints.add(fingerprint);
+    if (backupItems.length >= limit) break;
+  }
+
+  return backupItems;
 }
 
 export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFunContentItems = []) {
@@ -171,6 +223,12 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     dailyFunContentItems,
     allocation.reserved.socialMedia
   );
+  const supplementalTopBackupItems = selectSupplementalDailyTopBackupItems(
+    allSelectedItems,
+    dailyFunContentItems,
+    supplementalSocialItems,
+    allocation.topItems.length
+  );
   const socialSectionItems = [...allocation.reserved.socialMedia, ...supplementalSocialItems];
   const { project: projectCount, socialMedia: socialCount, paper: paperCount, news: newsCount } = allocation.counts;
   const openSourceReserve = allocation.reserved.project.length;
@@ -181,19 +239,36 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
     `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
+    `另有 ${supplementalTopBackupItems.length} 条去重备用素材；只有主候选发生同源拆分或重复时才用于替换。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
   ].join("\n");
   const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面素材可用于今日焦点；也可把未进入 TOP 的新闻用于产品或行业栏目。\n\n${allocation.topItems.join("\n\n------\n\n")}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const supplementalSocialKeys = new Set(supplementalSocialItems);
+  const supplementalTopBackupKeys = new Set(supplementalTopBackupItems);
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyPromptHiddenItem(item))
     .filter((item) => !selectedItemKeys.has(String(item).trim()))
-    .filter((item) => !supplementalSocialKeys.has(String(item).trim()));
+    .filter((item) => !supplementalSocialKeys.has(String(item).trim()))
+    .filter((item) => !supplementalTopBackupKeys.has(String(item).trim()));
 
   const promptParts = [primaryPrompt];
+
+  if (supplementalTopBackupItems.length > 0) {
+    promptParts.push([
+      "【今日焦点去重备用素材】",
+      `下面 ${supplementalTopBackupItems.length} 条素材只用于替换今日焦点中的同源重复，不是额外加条目。`,
+      `同一个 Source URL 在今日焦点最多出现一次；聚合文章也只能生成一条。发生重复时保留最重要的一条，再从这里补足 TOP ${DAILY_TOP_TARGET}。`,
+      "未被用于替换的备用素材不得出现在其他正文栏目；不得为了使用备用素材超过目标条数。",
+      "",
+      supplementalTopBackupItems
+        .map((item, index) => [`去重备用 ${index + 1}:`, item].join("\n"))
+        .join("\n\n------\n\n"),
+      "\n------\n\n",
+    ].join("\n"));
+  }
 
   if (allocation.reserved.project.length > 0) {
     promptParts.push([
