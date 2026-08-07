@@ -243,7 +243,10 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
   ].join("\n");
-  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面素材可用于今日焦点；也可把未进入 TOP 的新闻用于产品或行业栏目。\n\n${allocation.topItems.join("\n\n------\n\n")}\n\n------\n\n`;
+  const numberedTopCandidates = allocation.topItems
+    .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))
+    .join("\n\n------\n\n");
+  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面素材可用于今日焦点；也可把未进入 TOP 的新闻用于产品或行业栏目。每个 TOP 候选最多生成一条；即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const supplementalSocialKeys = new Set(supplementalSocialItems);
   const supplementalTopBackupKeys = new Set(supplementalTopBackupItems);

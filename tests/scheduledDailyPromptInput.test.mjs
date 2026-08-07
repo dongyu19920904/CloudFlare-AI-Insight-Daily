@@ -141,6 +141,8 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
 
   assert.match(promptInput, /今日焦点去重备用素材/);
   assert.match(promptInput, /聚合文章也只能生成一条/);
+  assert.match(promptInput, /TOP 候选 1:/);
+  assert.match(promptInput, /每个 TOP 候选最多生成一条/);
   assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 3);
   assert.match(promptInput, /AI趣闻专用候选素材/);
   assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 3);

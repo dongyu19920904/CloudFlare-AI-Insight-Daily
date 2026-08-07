@@ -67,7 +67,7 @@ function isGenericSourceOnlyLinkLabel(label) {
 function isAwkwardDailyFactLinkLabel(label) {
   const text = String(label || "").normalize("NFKC").trim();
   const sourceLed = /^(?:AIBase|36氪|机器之心|量子位|新智元|晚点|Telegram|推特|X\s*平台|GitHub|Hugging\s*Face|官方|作者|开发者|媒体|频道)[^，。；:：]{0,24}(?:报道|整理|公告|介绍|显示|称|指出|说明|发布|原帖|页面|文档|项目页)/i.test(text);
-  return countVisibleCharacters(text) > 28 || sourceLed;
+  return countVisibleCharacters(text) > 36 || sourceLed;
 }
 
 export function analyzeDailyPresentationQuality(pageMarkdown) {

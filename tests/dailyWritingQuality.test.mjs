@@ -78,7 +78,7 @@ test("daily presentation audit flags source-led and overlong fact links", () => 
 
 ### 2. 编程工具加入新模式
 
-**新模式已经开放。** 团队演示了[这项能力如何在复杂代码仓库中自动拆解任务并连续完成多步修改](https://example.com/2)。测试覆盖 **两个仓库**。稳定性仍要继续观察。
+**新模式已经开放。** 团队演示了[这项能力如何在复杂代码仓库中自动拆解任务、连续完成多步修改、验证结果并生成审查报告](https://example.com/2)。测试覆盖 **两个仓库**。稳定性仍要继续观察。
 `;
 
   const stats = analyzeDailyPresentationQuality(markdown);

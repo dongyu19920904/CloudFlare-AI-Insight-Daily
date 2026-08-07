@@ -680,7 +680,26 @@ function getStandaloneDailyFunSystemPrompt() {
     ].join('\n');
 }
 
+function getDuplicateDailyTopSourceUrls(markdown) {
+    const seen = new Set();
+    const duplicates = new Set();
+
+    for (const item of extractNumberedDailyItems(markdown)) {
+        const url = String(item?.url || '').trim();
+        if (!url) continue;
+        const key = url.toLowerCase();
+        if (seen.has(key)) duplicates.add(url);
+        seen.add(key);
+    }
+
+    return [...duplicates];
+}
+
 function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssues, dateStr) {
+    const duplicateTopSourceUrls = getDuplicateDailyTopSourceUrls(invalidMarkdown);
+    const duplicateSourceChecklist = duplicateTopSourceUrls.length > 0
+        ? duplicateTopSourceUrls.map((url) => `- 必须把 ${url} 在今日焦点中的多条内容合并为 1 条，空出的序号使用去重备用素材补足`).join('\n')
+        : "- 今日焦点中的每个原始来源 URL 最多出现一次";
     return [
         "你上一次输出的日报正文不合格，请立即重写，不要解释原因，不要道歉，不要拒答。",
         `这次重写的目标日期是 ${dateStr}。`,
@@ -715,6 +734,13 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "",
         "下面是上一次不合格输出，仅供你纠错参考：",
         invalidMarkdown || "(空)",
+        "",
+        "输出前做最后一次逐项检查：",
+        duplicateSourceChecklist,
+        `- 今日焦点必须保持 ${DAILY_TOP_TARGET} 条，TOP 候选和去重备用候选都各自最多使用一次`,
+        "- 来源名称必须留在链接外；链接只包住核心事实，不得使用“AIBase 对这项消息的报道”一类来源标签",
+        "- 每条正文必须有 2-3 个短高亮；长句拆成短句，不得通过删除事实来缩短",
+        "检查完成后仍然只输出 Markdown 成稿，不要附检查报告。",
     ].join('\n');
 }
 
