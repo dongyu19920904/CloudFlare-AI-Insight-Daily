@@ -3,26 +3,28 @@ import { getOpportunityLaneById } from "./opportunityPlaybook.js";
 export const accountOpportunityPlaybook = {
   businessProfile: {
     coreBusiness: [
-      "官方 AI 账号与订阅",
-      "API 或合规中转",
+      "海外官方 AI 账号与订阅",
+      "海外 API 或合规中转",
       "教程与 FAQ",
       "代配置和迁移服务",
       "交易风控与售后边界",
     ],
     targetUsers: [
-      "经营 AI 工具的中文卖家",
-      "准备购买 AI 账号、订阅或开发工具的普通用户",
+      "经营海外 AI 工具的中文卖家",
+      "准备购买海外 AI 账号、订阅或开发工具的普通用户",
       "需要降低支付、登录、额度和售后不确定性的买卖双方",
     ],
     tone: "直接、克制、可核验；像经营晨会，不像促销软文",
     editorialRule:
-      "先确认官方硬信号，再决定今天是上新、修改 FAQ、收紧售后边界还是不动作；没有账号经营信号时不发布。",
+      "只处理海外 AI 产品；先确认官方硬信号，再决定今天是上新、修改 FAQ、收紧售后边界还是不动作。",
   },
 
   strategyKernel: {
     formula:
       "真实信号 + 明确供给形态 + 一个最小动作 + 可观察结果 + 售后与合规边界。",
     operatingRules: [
+      "DeepSeek、豆包、Kimi、MiniMax、通义、智谱、文心、腾讯混元、讯飞等国内 AI 产品不进入本栏目",
+      "国内产品与海外产品的比较稿，只有海外产品自身出现可核验新变化时才可采用",
       "模型能力新闻不等于账号商机，必须同时出现价格、套餐、额度、支付、地区、登录、政策或服务状态变化",
       "社交信息只能发现问题，关键产品事实必须回到官方页面",
       "没有强信号时可以不新增商品，只修改 FAQ、教程或售后边界",
@@ -43,8 +45,8 @@ export const accountOpportunityPlaybook = {
   productLanes: [
     {
       id: "account",
-      name: "官方账号与订阅",
-      description: "只讨论来源、功能范围和平台条款能够核验的账号或订阅变化。",
+      name: "海外官方账号与订阅",
+      description: "只讨论海外产品中来源、功能范围和平台条款能够核验的账号或订阅变化。",
       sellFormats: ["官方订阅入口", "正规账号交付", "购买前核验说明"],
       scoringProfile: {
         catalogFit: 30,
@@ -68,7 +70,7 @@ export const accountOpportunityPlaybook = {
     {
       id: "service",
       name: "合规轻服务",
-      description: "固定范围的代配置、迁移说明和问题排查，不代绕过平台限制。",
+      description: "围绕海外 AI 工具提供固定范围的代配置、迁移说明和问题排查，不代绕过平台限制。",
       sellFormats: ["代配置", "迁移说明", "购买前环境核对"],
       scoringProfile: {
         catalogFit: 22,
@@ -304,6 +306,7 @@ export function serializeAccountOpportunityPlaybook(
     `- 编辑原则: ${business.editorialRule}`,
     "",
     "### 经营与风控内核",
+    "- 市场范围: 只处理海外 AI 账号、订阅、API 和开发工具；国内 AI 产品不进入候选、观察或行动",
     `- 总公式: ${strategy.formula}`,
     `- 操作规则: ${(strategy.operatingRules || []).join("；")}`,
     `- 供给形态必须选自: ${(strategy.supplyForms || []).join("、")}`,

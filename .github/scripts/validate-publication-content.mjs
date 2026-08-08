@@ -55,7 +55,7 @@ function parseMinimumTopItems() {
 }
 
 function isAccountOpportunityObservation(markdown) {
-  return /^-\s+今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。\s*$/m.test(
+  return /^-\s+今天没有取得可由官方页面确认的(?:海外 AI )?账号、价格、额度或政策新变化；不新增商品。\s*$/m.test(
     String(markdown || "")
   );
 }

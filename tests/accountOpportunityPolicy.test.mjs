@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import { accountOpportunityPlaybook } from "../src/accountOpportunityPlaybook.js";
 import {
   assessAccountOpportunityEvidence,
+  assessAccountOpportunityMarketScope,
+  buildRejectedAccountOpportunityDigest,
   deriveAccountOpportunityDimensions,
   insertAccountOpportunityAivoraLink,
+  isOfficialAccountOpportunityUrl,
   normalizeAccountOpportunityObservationMarkdown,
   qualifyAccountOpportunityCandidates,
 } from "../src/accountOpportunityUtils.js";
@@ -93,6 +96,111 @@ test("account replay rejects the same product entity from the previous seven day
 
   assert.equal(result.candidates.length, 0);
   assert.match(result.rejectedCandidates[0].rejectionReasons.join("\n"), /同一产品或项目实体/);
+});
+
+test("account market scope accepts supported overseas AI products", () => {
+  const assessment = assessAccountOpportunityMarketScope(makeCandidate());
+
+  assert.equal(assessment.eligible, true);
+  assert.equal(assessment.scope, "overseas");
+});
+
+test("GitHub Copilot pages are official but arbitrary repositories are not", () => {
+  assert.equal(
+    isOfficialAccountOpportunityUrl("https://github.com/features/copilot/plans"),
+    true
+  );
+  assert.equal(
+    isOfficialAccountOpportunityUrl("https://github.com/example/copilot-price-rumor"),
+    false
+  );
+});
+
+test("account market scope rejects domestic AI products even with primary evidence", () => {
+  const domestic = makeCandidate({
+    id: "pricing-quota",
+    entityKey: "name:deepseek",
+    label: "价格、额度与套餐变化信号",
+    supportingItems: [
+      {
+        type: "news",
+        title: "DeepSeek updates API pricing and quota",
+        description: "DeepSeek released an API pricing and quota update",
+        source: "DeepSeek official",
+        url: "https://api-docs.deepseek.com/quick_start/pricing",
+        evidence: {
+          tier: "primary",
+          isPrimary: true,
+          reason: "官方来源",
+          independentKey: "deepseek.com",
+        },
+      },
+    ],
+  });
+  const result = qualifyAccountOpportunityCandidates(
+    [domestic],
+    accountOpportunityPlaybook,
+    null,
+    { allowObservationFallback: true }
+  );
+
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.stats.rejectedForMarketScope, 1);
+  assert.match(
+    result.rejectedCandidates[0].rejectionReasons.join("\n"),
+    /国内 AI 产品不属于海外账号商机经营范围/
+  );
+});
+
+test("domestic comparison stories cannot enter by mentioning an overseas product", () => {
+  const comparison = makeCandidate({
+    entityKey: "name:deepseek",
+    supportingItems: [
+      {
+        type: "news",
+        title: "DeepSeek API 涨价，对比 Claude 套餐",
+        description: "DeepSeek announced an API pricing update and compared it with Claude",
+        source: "Trusted media",
+        url: "https://example.com/deepseek-vs-claude",
+        evidence: {
+          tier: "trusted-media",
+          isPrimary: false,
+          reason: "媒体线索",
+          independentKey: "example.com",
+        },
+      },
+    ],
+  });
+  const scope = assessAccountOpportunityMarketScope(comparison);
+  const result = qualifyAccountOpportunityCandidates(
+    [comparison],
+    accountOpportunityPlaybook,
+    null,
+    { allowObservationFallback: true }
+  );
+
+  assert.equal(scope.scope, "domestic");
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.stats.observationFallback, 0);
+});
+
+test("rejected digest omits domestic and unknown products", () => {
+  const digest = buildRejectedAccountOpportunityDigest([
+    makeCandidate({
+      entityKey: "name:deepseek",
+      rejectionReasons: ["国内 AI 产品不属于海外账号商机经营范围"],
+      supportingItems: [
+        {
+          title: "DeepSeek API 调价",
+          url: "https://example.com/deepseek",
+        },
+      ],
+    }),
+    makeCandidate({ rejectionReasons: ["缺少官方页面"] }),
+  ]);
+
+  assert.doesNotMatch(digest, /DeepSeek/);
+  assert.match(digest, /OpenAI updates ChatGPT subscription quota/);
 });
 
 test("account observation fallback publishes a weak clue only as observation", () => {
@@ -209,9 +317,9 @@ test("account observation normalization fixes the hard-signal boundary and missi
   assert.doesNotMatch(normalized, /社区称额度已经变化/);
   assert.match(
     normalized,
-    /今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。/
+    /今天没有取得可由官方页面确认的海外 AI 账号、价格、额度或政策新变化；不新增商品。/
   );
-  assert.match(normalized, /^### 观察：核对一条账号线索，不新增商品$/m);
+  assert.match(normalized, /^### 观察：核对一条海外账号线索，不新增商品$/m);
   assert.match(normalized, /证据与可信度：\*\* 待核验线索：/);
   const sensitiveClauses = normalized
     .split(/\r?\n|[。；;]/)

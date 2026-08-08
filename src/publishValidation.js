@@ -12,7 +12,10 @@ import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { extractNumberedDailyItems } from "./dailyMarkdownItems.js";
 import { collectDailyWritingStyleWarnings } from "./dailyWritingQuality.js";
 import { validateOpportunityAivoraLinks } from "./opportunityAivoraLinkPolicy.js";
-import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
+import {
+  containsDomesticAccountProduct,
+  isOfficialAccountOpportunityUrl,
+} from "./accountOpportunityUtils.js";
 import {
   classifyOpportunityEvidence,
 } from "./opportunityEvidence.js";
@@ -1295,8 +1298,8 @@ function collectAccountOpportunitySourceIssues(
   for (const line of hardSignalLines) {
     const isObservationConclusion =
       observationMode &&
-      line.includes(
-        "今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。"
+      /今天没有取得可由官方页面确认的(?:海外 AI )?账号、价格、额度或政策新变化；不新增商品。/.test(
+        line
       );
     if (isObservationConclusion) continue;
     const links = extractSectionLinks(line).filter((link) => !isNoiseSectionLink(link));
@@ -1386,8 +1389,8 @@ function collectAccountOpportunityObservationIssues(markdown) {
     issues.push("账号商机观察稿必须在 30 秒结论中明确不新增商品");
   }
   if (
-    !hardSignals.includes(
-      "今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。"
+    !/今天没有取得可由官方页面确认的(?:海外 AI )?账号、价格、额度或政策新变化；不新增商品。/.test(
+      hardSignals
     )
   ) {
     issues.push("账号商机观察稿必须明确没有可由官方页面确认的新变化");
@@ -1460,6 +1463,12 @@ function collectAccountOpportunitySafetyIssues(markdown) {
   return issues;
 }
 
+function collectAccountOpportunityMarketScopeIssues(markdown) {
+  return containsDomesticAccountProduct(markdown)
+    ? ["账号商机只处理海外 AI 产品，正文不得出现国内 AI 产品"]
+    : [];
+}
+
 export function validateAccountOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
@@ -1513,6 +1522,7 @@ export function validateAccountOpportunityPublication({
   }));
   issues.push(...collectAccountOpportunityActionShapeIssues(visibleMarkdown));
   issues.push(...collectAccountOpportunitySafetyIssues(visibleMarkdown));
+  issues.push(...collectAccountOpportunityMarketScopeIssues(visibleMarkdown));
   issues.push(...collectOpportunityMarketHypothesisIssues(visibleMarkdown));
   if (observationMode) {
     issues.push(...collectAccountOpportunityObservationIssues(visibleMarkdown));

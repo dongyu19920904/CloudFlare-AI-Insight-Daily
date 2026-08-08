@@ -8,11 +8,11 @@ const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE = "{{< latest-account-opportunity >}}";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
-  "核验 AI 账号、订阅、API、支付、额度与平台政策变化，给卖家当天动作，也给买家清晰的购买风险边界。";
+  "核验海外 AI 账号、订阅、API、支付、额度与平台政策变化，给卖家当天动作，也给买家清晰的购买风险边界。";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION} 只在证据达到门槛时更新。`;
 const ACCOUNT_OBSERVATION_HARD_SIGNAL =
-  "今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。";
+  "今天没有取得可由官方页面确认的海外 AI 账号、价格、额度或政策新变化；不新增商品。";
 
 const ACCOUNT_SIGNAL_PATTERN =
   /账号|账户|订阅|套餐|会员|席位|额度|配额|用量限制|价格|涨价|降价|支付|账单|绑卡|地区|登录|认证|封号|封禁|冻结|停用|退役|服务状态|故障|API\s*(?:key|价格|额度|限制)|rate\s*limit|subscription|pricing|quota|billing|payment|region|login|account|suspend|outage/i;
@@ -20,19 +20,61 @@ const CONCRETE_CHANGE_PATTERN =
   /上线|发布|更新|开放|新增|调整|变更|修复|涨价|降价|限制|停用|退役|恢复|故障|launch|release|update|change|pricing|limit|retired|deprecated|outage/i;
 const ACCOUNT_PRODUCT_OFFICIAL_HOST_SUFFIXES = [
   "openai.com",
+  "chatgpt.com",
   "anthropic.com",
   "claude.com",
   "google.com",
   "ai.google.dev",
   "deepmind.google",
   "microsoft.com",
+  "docs.github.com",
+  "github.blog",
   "cursor.com",
+  "windsurf.com",
+  "codeium.com",
   "perplexity.ai",
   "x.ai",
+  "grok.com",
   "mistral.ai",
-  "minimax.io",
+  "midjourney.com",
+  "notion.so",
+  "adobe.com",
+  "replit.com",
+  "lovable.dev",
   "meta.com",
 ];
+const DOMESTIC_ACCOUNT_PRODUCT_HOST_SUFFIXES = [
+  "deepseek.com",
+  "doubao.com",
+  "volcengine.com",
+  "minimax.io",
+  "hailuoai.com",
+  "kimi.com",
+  "moonshot.cn",
+  "qwen.ai",
+  "aliyun.com",
+  "bigmodel.cn",
+  "zhipuai.cn",
+  "baidu.com",
+  "tencent.com",
+  "xfyun.cn",
+  "stepfun.com",
+  "baichuan-ai.com",
+  "01.ai",
+];
+const OVERSEAS_ACCOUNT_RULE_IDS = new Set([
+  "gpt-account",
+  "claude-account",
+  "gemini-account",
+]);
+const OVERSEAS_ACCOUNT_PROVIDER_PATTERN =
+  /\b(?:openai|chatgpt|gpt|anthropic|claude|sonnet|opus|gemini|google\s+(?:ai|one)|microsoft\s+copilot|github\s+copilot|cursor|windsurf|codeium|perplexity|grok|xai|x\.ai|mistral|midjourney|notion\s+ai|adobe\s+firefly|replit|lovable|meta\s+ai)\b/i;
+const DOMESTIC_ACCOUNT_PROVIDER_PATTERN =
+  /\bdeepseek\b|深度求索|豆包|字节跳动|火山引擎|\bminimax\b|海螺\s*ai|\bkimi\b|月之暗面|\bqwen\b|通义千问|阿里云百炼|智谱|\bglm\b|文心一言|百度千帆|腾讯元宝|腾讯混元|\bhunyuan\b|讯飞星火|阶跃星辰|\bstepfun\b|百川智能|商汤日日新|零一万物|\b01\.ai\b/i;
+
+export function containsDomesticAccountProduct(value) {
+  return DOMESTIC_ACCOUNT_PROVIDER_PATTERN.test(String(value || ""));
+}
 
 function normalizeDimension(value) {
   return String(value || "")
@@ -59,6 +101,67 @@ function getCandidateEvidenceText(candidate) {
     .join(" ");
 }
 
+function matchesHostSuffix(url, suffixes) {
+  try {
+    const hostname = new URL(String(url || "")).hostname.toLowerCase();
+    return suffixes.some(
+      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getProviderMentionScope(text) {
+  const normalized = String(text || "");
+  const overseasIndex = normalized.search(OVERSEAS_ACCOUNT_PROVIDER_PATTERN);
+  const domesticIndex = normalized.search(DOMESTIC_ACCOUNT_PROVIDER_PATTERN);
+
+  if (domesticIndex >= 0 && (overseasIndex < 0 || domesticIndex <= overseasIndex)) {
+    return "domestic";
+  }
+  if (overseasIndex >= 0) return "overseas";
+  return "unknown";
+}
+
+export function assessAccountOpportunityMarketScope(candidate = {}) {
+  const primaryItem = candidate?.supportingItems?.[0] || {};
+  const entityScope = getProviderMentionScope(candidate?.entityKey);
+  const primaryHostScope = matchesHostSuffix(
+    primaryItem?.url,
+    DOMESTIC_ACCOUNT_PRODUCT_HOST_SUFFIXES
+  )
+    ? "domestic"
+    : isOfficialAccountOpportunityUrl(primaryItem?.url)
+      ? "overseas"
+      : "unknown";
+  const primaryTextScope = getProviderMentionScope(
+    [primaryItem?.title, primaryItem?.source, candidate?.label]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const aggregateScope = getProviderMentionScope(getCandidateEvidenceText(candidate));
+  const decisiveScope = [entityScope, primaryHostScope, primaryTextScope].find(
+    (scope) => scope !== "unknown"
+  );
+  const scope =
+    decisiveScope ||
+    (OVERSEAS_ACCOUNT_RULE_IDS.has(candidate?.id) ? "overseas" : aggregateScope);
+  const eligible = scope === "overseas";
+
+  return {
+    eligible,
+    scope,
+    gaps: eligible
+      ? []
+      : [
+          scope === "domestic"
+            ? "国内 AI 产品不属于海外账号商机经营范围"
+            : "未识别出可核验的海外 AI 账号、订阅或开发工具实体",
+        ],
+  };
+}
+
 function getSupportingEvidenceText(candidate) {
   return (candidate?.supportingItems || [])
     .flatMap((item) => [
@@ -72,10 +175,12 @@ function getSupportingEvidenceText(candidate) {
 }
 
 export function isOfficialAccountOpportunityUrl(url) {
+  if (matchesHostSuffix(url, ACCOUNT_PRODUCT_OFFICIAL_HOST_SUFFIXES)) return true;
   try {
-    const hostname = new URL(String(url || "")).hostname.toLowerCase();
-    return ACCOUNT_PRODUCT_OFFICIAL_HOST_SUFFIXES.some(
-      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
+    const parsed = new URL(String(url || ""));
+    return (
+      parsed.hostname.toLowerCase() === "github.com" &&
+      /^\/features\/copilot(?:\/|$)/i.test(parsed.pathname)
     );
   } catch {
     return false;
@@ -206,6 +311,7 @@ export function qualifyAccountOpportunityCandidates(
 
   for (const candidate of candidates || []) {
     const evidence = assessAccountOpportunityEvidence(candidate);
+    const marketScope = assessAccountOpportunityMarketScope(candidate);
     const dimensions = deriveAccountOpportunityDimensions(candidate, playbook);
     const entityKey = String(candidate?.entityKey || "").toLowerCase();
     const entityToken = getEntitySearchToken(entityKey);
@@ -213,6 +319,9 @@ export function qualifyAccountOpportunityCandidates(
 
     if (!evidence.eligible) {
       rejectionReasons.push(...evidence.gaps);
+    }
+    if (!marketScope.eligible) {
+      rejectionReasons.push(...marketScope.gaps);
     }
     if ((candidate?.score || 0) < minimumScore) {
       rejectionReasons.push(`综合分低于账号商机门槛 ${minimumScore}`);
@@ -248,6 +357,7 @@ export function qualifyAccountOpportunityCandidates(
       commercialSignature: dimensions.accountReplaySignature,
       offerFamily: dimensions.accountOfferFamily,
       accountEvidence: evidence,
+      accountMarketScope: marketScope,
       evidenceStrength: evidence.strength,
       evidenceEligible: evidence.eligible,
       evidenceGaps: evidence.gaps,
@@ -278,6 +388,7 @@ export function qualifyAccountOpportunityCandidates(
         /近 7 天|当天账号候选/.test(reason)
       );
       return (
+        candidate.accountMarketScope?.eligible === true &&
         candidate.accountEvidence?.hasAccountSignal === true &&
         candidate.accountEvidence?.hasConcreteChange === true &&
         hasUsableSource &&
@@ -319,6 +430,11 @@ export function qualifyAccountOpportunityCandidates(
       rejectedForReplay: strictRejectedCandidates.filter((candidate) =>
         candidate.rejectionReasons.some((reason) => /近 7 天|当天账号候选/.test(reason))
       ).length,
+      rejectedForMarketScope: strictRejectedCandidates.filter((candidate) =>
+        candidate.rejectionReasons.some((reason) =>
+          /海外账号商机经营范围|海外 AI 账号/.test(reason)
+        )
+      ).length,
     },
   };
 }
@@ -354,6 +470,7 @@ export function formatAccountOpportunityCandidatesForPrompt(
               "- 强制边界: 只能写核验、FAQ 或售后边界动作，不得写今天上架",
             ]
           : []),
+        "- 经营范围: 仅海外 AI 账号、订阅、API 或开发工具",
         `- 账号证据强度: ${candidate.evidenceStrength}`,
         `- 证据缺口: ${candidate.evidenceGaps.join("；") || "暂无明显缺口"}`,
         `- 供给形态: ${candidate.supplyForm}`,
@@ -384,7 +501,7 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
       fixedSectionsNormalized.push(
         line,
         "",
-        "- **今天发生什么：** 今天只有待核验线索，没有可由官方页面确认的新变化。",
+        "- **今天发生什么：** 今天只有海外 AI 工具待核验线索，没有可由官方页面确认的新变化。",
         "- **今天做什么：** 不新增商品，只核对现有 FAQ 和售后边界。",
         "- **最大风险：** 把社区或媒体线索写成官方事实，造成无法兑现的承诺。",
         ""
@@ -433,7 +550,7 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
       inActionSection = /^##\s+今日可执行(?:\s|$)/.test(line);
     }
     if (inActionSection && /^###\s+/.test(line)) {
-      line = "### 观察：核对一条账号线索，不新增商品";
+      line = "### 观察：核对一条海外账号线索，不新增商品";
     } else if (inActionSection) {
       line = normalizeSensitiveClauses(line);
     }
@@ -463,7 +580,9 @@ export function buildRejectedAccountOpportunityDigest(
   candidates = [],
   maxCandidates = 3
 ) {
-  const visibleCandidates = (candidates || []).slice(0, maxCandidates);
+  const visibleCandidates = (candidates || [])
+    .filter((candidate) => assessAccountOpportunityMarketScope(candidate).eligible)
+    .slice(0, maxCandidates);
   if (visibleCandidates.length === 0) {
     return "今天没有额外需要点名的高风险方向。";
   }

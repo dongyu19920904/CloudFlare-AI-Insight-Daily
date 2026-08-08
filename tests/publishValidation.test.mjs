@@ -1313,6 +1313,51 @@ test("validateAccountOpportunityPublication accepts evidence-first account actio
   assert.equal(result.opportunityCount, 1);
 });
 
+test("validateAccountOpportunityPublication rejects domestic AI products in core actions", () => {
+  const domesticUrl = "https://api-docs.deepseek.com/quick_start/pricing";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountOpportunityMarkdown
+      .replaceAll("OpenAI", "DeepSeek")
+      .replaceAll("ChatGPT", "DeepSeek")
+      .replaceAll("https://openai.com/news/subscription-quota-update", domesticUrl),
+    allowedSourceUrls: [domesticUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: domesticUrl,
+        tier: "primary",
+        isPrimary: true,
+        reason: "官方来源",
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /只处理海外 AI 产品/);
+});
+
+test("account market validation also rejects domestic products in today-do-not-touch", () => {
+  const rejectedUrl = "https://example.com/deepseek-rumor";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountOpportunityMarkdown.replace(
+      "- 今天没有额外需要点名的高风险方向。",
+      `- [DeepSeek 非官方价格转述](${rejectedUrl})：属于国内产品且缺少官方证据，不进入本栏目。`
+    ),
+    allowedSourceUrls: ["https://openai.com/news/subscription-quota-update"],
+    allowedRejectedSourceUrls: [rejectedUrl],
+    sourceEvidence: [
+      {
+        url: "https://openai.com/news/subscription-quota-update",
+        tier: "primary",
+        isPrimary: true,
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /只处理海外 AI 产品/);
+});
+
 test("validateAccountOpportunityPublication rejects linked titles and weak critical facts", () => {
   const weakUrl = "https://example.com/claude-price-rumor";
   const invalid = validAccountOpportunityMarkdown
@@ -1443,7 +1488,7 @@ const validAccountObservationMarkdown = `## 30 秒结论
 
 ## 今日硬信号
 
-- 今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。
+- 今天没有取得可由官方页面确认的海外 AI 账号、价格、额度或政策新变化；不新增商品。
 
 ## 今日可执行
 

@@ -36,6 +36,7 @@ import {
     updateSectionHomeIndexContent,
 } from '../opportunityUtils.js';
 import {
+    assessAccountOpportunityMarketScope,
     buildAccountOpportunityPaths,
     buildRejectedAccountOpportunityDigest,
     DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION,
@@ -2053,16 +2054,21 @@ async function generateAccountOpportunityMarkdown(
         accountOpportunityPlaybook,
         assessmentOptions
     );
+    const overseasPreviewCandidates = previewAssessment.candidates.filter(
+        (candidate) => assessAccountOpportunityMarketScope(candidate).eligible
+    );
+    debugInfo.accountOpportunityOutOfScopePreviewCount =
+        previewAssessment.candidates.length - overseasPreviewCandidates.length;
     const evidenceCacheKey = getOpportunityEvidenceCacheKey(
         dateStr,
-        previewAssessment.candidates
+        overseasPreviewCandidates
     );
     let evidenceEnrichment = await loadOpportunityEvidenceCache(env, evidenceCacheKey);
     if (evidenceEnrichment) {
         debugInfo.accountOpportunityEvidenceEnrichmentCacheHit = true;
     } else {
         evidenceEnrichment = await buildOpportunityEvidenceEnrichment(
-            previewAssessment.candidates.slice(0, 6),
+            overseasPreviewCandidates.slice(0, 6),
             {
                 githubToken: env.GITHUB_TOKEN || env.GH_TOKEN || '',
                 maxGithubRequests: 2,
@@ -2103,10 +2109,22 @@ async function generateAccountOpportunityMarkdown(
     const observationMode =
         accountOpportunityCandidates.length > 0 &&
         accountOpportunityCandidates.every((candidate) => candidate.observationOnly);
-    const rejectedAccountOpportunityCandidates = [
+    const allRejectedAccountOpportunityCandidates = [
         ...accountAssessment.rejectedCandidates,
         ...rawAssessment.rejectedCandidates,
-    ].slice(0, accountOpportunityPlaybook.outputRules.maxDigestCandidates || 4);
+    ];
+    const inScopeRejectedAccountOpportunityCandidates =
+        allRejectedAccountOpportunityCandidates.filter(
+            (candidate) => assessAccountOpportunityMarketScope(candidate).eligible
+        );
+    const rejectedAccountOpportunityCandidates =
+        inScopeRejectedAccountOpportunityCandidates.slice(
+            0,
+            accountOpportunityPlaybook.outputRules.maxDigestCandidates || 4
+        );
+    debugInfo.accountOpportunityOutOfScopeCandidateCount =
+        allRejectedAccountOpportunityCandidates.length -
+        inScopeRejectedAccountOpportunityCandidates.length;
     const validationContext = buildOpportunityValidationContext(
         accountOpportunityCandidates,
         rejectedAccountOpportunityCandidates
