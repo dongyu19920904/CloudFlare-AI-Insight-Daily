@@ -1255,9 +1255,21 @@ function collectAccountOpportunitySourceIssues(
       issues.push("账号商机同一行动不得重复引用同一个来源链接");
     }
 
-    const containsCriticalFact =
-      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i.test(block);
-    if (containsCriticalFact && !hasOfficialLink(links)) {
+    const criticalFactPattern =
+      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i;
+    const criticalFactClauses = block
+      .split(/\r?\n|[。；;]/)
+      .filter((clause) => criticalFactPattern.test(clause));
+    const observationBoundaryPattern =
+      /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不新增/;
+    const hasUnsupportedCriticalFact = criticalFactClauses.some(
+      (clause) => !observationBoundaryPattern.test(clause)
+    );
+    if (
+      criticalFactClauses.length > 0 &&
+      !hasOfficialLink(links) &&
+      (!observationMode || hasUnsupportedCriticalFact)
+    ) {
       issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策时必须引用对应官方页面");
     }
     if (/是否今天能挂闲鱼[:：]\*{0,2}\s*是(?=$|[\s；;，。])/m.test(block)) {

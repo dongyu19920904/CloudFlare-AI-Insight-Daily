@@ -11,6 +11,8 @@ export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
   "核验 AI 账号、订阅、API、支付、额度与平台政策变化，给卖家当天动作，也给买家清晰的购买风险边界。";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION} 只在证据达到门槛时更新。`;
+const ACCOUNT_OBSERVATION_HARD_SIGNAL =
+  "今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。";
 
 const ACCOUNT_SIGNAL_PATTERN =
   /账号|账户|订阅|套餐|会员|席位|额度|配额|用量限制|价格|涨价|降价|支付|账单|绑卡|地区|登录|认证|封号|封禁|冻结|停用|退役|服务状态|故障|API\s*(?:key|价格|额度|限制)|rate\s*limit|subscription|pricing|quota|billing|payment|region|login|account|suspend|outage/i;
@@ -366,6 +368,53 @@ export function formatAccountOpportunityCandidatesForPrompt(
       ].join("\n");
     })
     .join("\n\n");
+}
+
+export function normalizeAccountOpportunityObservationMarkdown(markdown) {
+  const sourceLines = String(markdown || "").split(/\r?\n/);
+  const hardSignalNormalized = [];
+  let skippingHardSignalBody = false;
+
+  for (const line of sourceLines) {
+    if (/^##\s+今日硬信号(?:\s|$)/.test(line)) {
+      hardSignalNormalized.push(line, "", `- ${ACCOUNT_OBSERVATION_HARD_SIGNAL}`, "");
+      skippingHardSignalBody = true;
+      continue;
+    }
+    if (skippingHardSignalBody) {
+      if (!/^##\s+/.test(line)) continue;
+      skippingHardSignalBody = false;
+    }
+    hardSignalNormalized.push(line);
+  }
+
+  const output = [];
+  let inActionSection = false;
+  for (let index = 0; index < hardSignalNormalized.length; index += 1) {
+    const line = hardSignalNormalized[index];
+    if (/^##\s+/.test(line)) {
+      inActionSection = /^##\s+今日可执行(?:\s|$)/.test(line);
+    }
+    output.push(line);
+    if (!inActionSection || !/^###\s+/.test(line)) continue;
+
+    let blockEnd = index + 1;
+    while (
+      blockEnd < hardSignalNormalized.length &&
+      !/^#{2,3}\s+/.test(hardSignalNormalized[blockEnd])
+    ) {
+      blockEnd += 1;
+    }
+    const blockBody = hardSignalNormalized.slice(index + 1, blockEnd).join("\n");
+    if (!/^\*\*判断[:：]\*\*\s*\S/m.test(blockBody)) {
+      output.push(
+        "",
+        "**判断：** 今天只有待核验线索，不新增商品，也不把它写成官方变化。"
+      );
+    }
+  }
+
+  return output.join("\n");
 }
 
 export function buildRejectedAccountOpportunityDigest(

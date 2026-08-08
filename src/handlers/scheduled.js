@@ -42,6 +42,7 @@ import {
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     formatAccountOpportunityCandidatesForPrompt,
     insertAccountOpportunityAivoraLink,
+    normalizeAccountOpportunityObservationMarkdown,
     qualifyAccountOpportunityCandidates,
     updateAccountOpportunityHomeIndexContent,
 } from '../accountOpportunityUtils.js';
@@ -2171,6 +2172,9 @@ async function generateAccountOpportunityMarkdown(
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
         markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown);
+        if (observationMode) {
+            markdown = normalizeAccountOpportunityObservationMarkdown(markdown);
+        }
 
         const insertedAivoraLink = insertAccountOpportunityAivoraLink(
             markdown,

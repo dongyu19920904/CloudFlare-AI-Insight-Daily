@@ -6,6 +6,7 @@ import {
   assessAccountOpportunityEvidence,
   deriveAccountOpportunityDimensions,
   insertAccountOpportunityAivoraLink,
+  normalizeAccountOpportunityObservationMarkdown,
   qualifyAccountOpportunityCandidates,
 } from "../src/accountOpportunityUtils.js";
 
@@ -183,4 +184,23 @@ test("Aivora account link is inserted only from an allowed policy", () => {
   assert.equal(allowed.inserted, true);
   assert.match(allowed.markdown, /爱窝啦·AI账号店/);
   assert.equal((allowed.markdown.match(/aivora\.cn/g) || []).length, 1);
+});
+
+test("account observation normalization fixes the hard-signal boundary and missing judgment", () => {
+  const normalized = normalizeAccountOpportunityObservationMarkdown(`## 今日硬信号
+
+- 社区称额度已经变化。
+
+## 今日可执行
+
+### 观察：核对社区线索
+
+- **证据与可信度：** [社区线索](https://example.com/clue)；可信度：低。`);
+
+  assert.doesNotMatch(normalized, /社区称额度已经变化/);
+  assert.match(
+    normalized,
+    /今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。/
+  );
+  assert.match(normalized, /\*\*判断：\*\* 今天只有待核验线索/);
 });

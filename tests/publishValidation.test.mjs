@@ -1494,6 +1494,53 @@ test("validateAccountOpportunityPublication accepts observation without an inven
   assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
+test("validateAccountOpportunityPublication allows an explicitly unconfirmed sensitive clue in observation mode", () => {
+  const sourceUrl = "https://example.com/account-clue";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountObservationMarkdown.replace(
+      "社区页面只证明有人提出这条线索",
+      "社区页面只证明有人讨论额度变化，尚未获官方确认"
+    ),
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "social",
+        isPrimary: false,
+        reason: "待核验线索",
+      },
+    ],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("validateAccountOpportunityPublication still rejects a positive sensitive claim in observation mode", () => {
+  const sourceUrl = "https://example.com/account-clue";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountObservationMarkdown.replace(
+      "社区页面只证明有人提出这条线索",
+      "社区页面证明官方额度已经翻倍"
+    ),
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "social",
+        isPrimary: false,
+        reason: "待核验线索",
+      },
+    ],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /必须引用对应官方页面/);
+});
+
 test("validateAccountOpportunityPublication forbids listing in observation mode", () => {
   const sourceUrl = "https://example.com/account-clue";
   const result = validateAccountOpportunityPublication({
