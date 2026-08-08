@@ -420,8 +420,12 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
       line = "### 观察：核对一条账号线索，不新增商品";
     } else if (
       inActionSection &&
-      sensitiveFactPattern.test(line) &&
-      !boundaryPattern.test(line)
+      line
+        .split(/[。；;]/)
+        .some(
+          (clause) =>
+            sensitiveFactPattern.test(clause) && !boundaryPattern.test(clause)
+        )
     ) {
       line = /^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/.test(line)
         ? line.replace(/^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/, "$1待核验线索：")

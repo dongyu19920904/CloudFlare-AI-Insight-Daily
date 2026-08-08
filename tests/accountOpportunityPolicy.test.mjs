@@ -200,7 +200,7 @@ test("account observation normalization fixes the hard-signal boundary and missi
 
 ### 观察：核对额度变化
 
-- **证据与可信度：** [社区线索称额度已经翻倍](https://example.com/clue)；可信度：低。`);
+- **证据与可信度：** [社区线索称额度已经翻倍](https://example.com/clue)；可信度：低；仍缺官方确认。`);
 
   assert.equal(
     normalized.match(/^- \*\*(?:今天发生什么|今天做什么|最大风险)：\*\*/gm)?.length,
