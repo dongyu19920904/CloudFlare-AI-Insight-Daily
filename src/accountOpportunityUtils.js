@@ -372,40 +372,72 @@ export function formatAccountOpportunityCandidatesForPrompt(
 
 export function normalizeAccountOpportunityObservationMarkdown(markdown) {
   const sourceLines = String(markdown || "").split(/\r?\n/);
-  const hardSignalNormalized = [];
-  let skippingHardSignalBody = false;
+  const fixedSectionsNormalized = [];
+  let skippingFixedSectionBody = false;
 
   for (const line of sourceLines) {
-    if (/^##\s+今日硬信号(?:\s|$)/.test(line)) {
-      hardSignalNormalized.push(line, "", `- ${ACCOUNT_OBSERVATION_HARD_SIGNAL}`, "");
-      skippingHardSignalBody = true;
+    if (skippingFixedSectionBody) {
+      if (!/^##\s+/.test(line)) continue;
+      skippingFixedSectionBody = false;
+    }
+    if (/^##\s+30\s*秒结论(?:\s|$)/.test(line)) {
+      fixedSectionsNormalized.push(
+        line,
+        "",
+        "- **今天发生什么：** 今天只有待核验线索，没有可由官方页面确认的新变化。",
+        "- **今天做什么：** 不新增商品，只核对现有 FAQ 和售后边界。",
+        "- **最大风险：** 把社区或媒体线索写成官方事实，造成无法兑现的承诺。",
+        ""
+      );
+      skippingFixedSectionBody = true;
       continue;
     }
-    if (skippingHardSignalBody) {
-      if (!/^##\s+/.test(line)) continue;
-      skippingHardSignalBody = false;
+    if (/^##\s+今日硬信号(?:\s|$)/.test(line)) {
+      fixedSectionsNormalized.push(
+        line,
+        "",
+        `- ${ACCOUNT_OBSERVATION_HARD_SIGNAL}`,
+        ""
+      );
+      skippingFixedSectionBody = true;
+      continue;
     }
-    hardSignalNormalized.push(line);
+    fixedSectionsNormalized.push(line);
   }
 
   const output = [];
   let inActionSection = false;
-  for (let index = 0; index < hardSignalNormalized.length; index += 1) {
-    const line = hardSignalNormalized[index];
+  const sensitiveFactPattern =
+    /价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权/i;
+  const boundaryPattern =
+    /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不新增/;
+  for (let index = 0; index < fixedSectionsNormalized.length; index += 1) {
+    let line = fixedSectionsNormalized[index];
     if (/^##\s+/.test(line)) {
       inActionSection = /^##\s+今日可执行(?:\s|$)/.test(line);
+    }
+    if (inActionSection && /^###\s+/.test(line)) {
+      line = "### 观察：核对一条账号线索，不新增商品";
+    } else if (
+      inActionSection &&
+      sensitiveFactPattern.test(line) &&
+      !boundaryPattern.test(line)
+    ) {
+      line = /^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/.test(line)
+        ? line.replace(/^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/, "$1待核验线索：")
+        : `待核验线索：${line}`;
     }
     output.push(line);
     if (!inActionSection || !/^###\s+/.test(line)) continue;
 
     let blockEnd = index + 1;
     while (
-      blockEnd < hardSignalNormalized.length &&
-      !/^#{2,3}\s+/.test(hardSignalNormalized[blockEnd])
+      blockEnd < fixedSectionsNormalized.length &&
+      !/^#{2,3}\s+/.test(fixedSectionsNormalized[blockEnd])
     ) {
       blockEnd += 1;
     }
-    const blockBody = hardSignalNormalized.slice(index + 1, blockEnd).join("\n");
+    const blockBody = fixedSectionsNormalized.slice(index + 1, blockEnd).join("\n");
     if (!/^\*\*判断[:：]\*\*\s*\S/m.test(blockBody)) {
       output.push(
         "",

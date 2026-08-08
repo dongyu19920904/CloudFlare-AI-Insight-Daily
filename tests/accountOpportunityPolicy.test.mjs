@@ -187,20 +187,31 @@ test("Aivora account link is inserted only from an allowed policy", () => {
 });
 
 test("account observation normalization fixes the hard-signal boundary and missing judgment", () => {
-  const normalized = normalizeAccountOpportunityObservationMarkdown(`## 今日硬信号
+  const normalized = normalizeAccountOpportunityObservationMarkdown(`## 30 秒结论
+
+- 多出来的摘要段落。
+- **今天发生什么：** 社区称有变化。
+
+## 今日硬信号
 
 - 社区称额度已经变化。
 
 ## 今日可执行
 
-### 观察：核对社区线索
+### 观察：核对额度变化
 
-- **证据与可信度：** [社区线索](https://example.com/clue)；可信度：低。`);
+- **证据与可信度：** [社区线索称额度已经翻倍](https://example.com/clue)；可信度：低。`);
 
+  assert.equal(
+    normalized.match(/^- \*\*(?:今天发生什么|今天做什么|最大风险)：\*\*/gm)?.length,
+    3
+  );
   assert.doesNotMatch(normalized, /社区称额度已经变化/);
   assert.match(
     normalized,
     /今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。/
   );
+  assert.match(normalized, /^### 观察：核对一条账号线索，不新增商品$/m);
+  assert.match(normalized, /证据与可信度：\*\* 待核验线索：/);
   assert.match(normalized, /\*\*判断：\*\* 今天只有待核验线索/);
 });
