@@ -200,7 +200,7 @@ test("account observation normalization fixes the hard-signal boundary and missi
 
 ### 观察：核对额度变化
 
-- **证据与可信度：** [社区线索称额度已经翻倍](https://example.com/clue)；可信度：低；仍缺官方确认。`);
+- **证据与可信度：** [社区线索称额度已经翻倍](https://example.com/clue)；有人转述套餐为 20 美元；仍缺官方确认。`);
 
   assert.equal(
     normalized.match(/^- \*\*(?:今天发生什么|今天做什么|最大风险)：\*\*/gm)?.length,
@@ -213,5 +213,13 @@ test("account observation normalization fixes the hard-signal boundary and missi
   );
   assert.match(normalized, /^### 观察：核对一条账号线索，不新增商品$/m);
   assert.match(normalized, /证据与可信度：\*\* 待核验线索：/);
+  const sensitiveClauses = normalized
+    .split(/\r?\n|[。；;]/)
+    .filter((clause) => /美元|价格|额度|配额|套餐|支付|地区|登录|政策|条款/.test(clause));
+  assert.ok(
+    sensitiveClauses.every((clause) =>
+      /没有取得|没有|尚未|待核验|仍缺|不承诺|不得|禁止|需核验|不新增/.test(clause)
+    )
+  );
   assert.match(normalized, /\*\*判断：\*\* 今天只有待核验线索/);
 });

@@ -408,9 +408,25 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
   const output = [];
   let inActionSection = false;
   const sensitiveFactPattern =
-    /价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权/i;
+    /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i;
   const boundaryPattern =
-    /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不新增/;
+    /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不得|禁止|需核验|不能确认|无法确认|不新增/;
+  const normalizeSensitiveClauses = (line) =>
+    line
+      .split(/([。；;])/)
+      .map((clause, clauseIndex) => {
+        if (
+          clauseIndex % 2 === 1 ||
+          !sensitiveFactPattern.test(clause) ||
+          boundaryPattern.test(clause)
+        ) {
+          return clause;
+        }
+        return /^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/.test(clause)
+          ? clause.replace(/^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/, "$1待核验线索：")
+          : `待核验线索：${clause}`;
+      })
+      .join("");
   for (let index = 0; index < fixedSectionsNormalized.length; index += 1) {
     let line = fixedSectionsNormalized[index];
     if (/^##\s+/.test(line)) {
@@ -418,18 +434,8 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
     }
     if (inActionSection && /^###\s+/.test(line)) {
       line = "### 观察：核对一条账号线索，不新增商品";
-    } else if (
-      inActionSection &&
-      line
-        .split(/[。；;]/)
-        .some(
-          (clause) =>
-            sensitiveFactPattern.test(clause) && !boundaryPattern.test(clause)
-        )
-    ) {
-      line = /^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/.test(line)
-        ? line.replace(/^(\s*-\s+\*\*[^*]+[:：]\*\*\s*)/, "$1待核验线索：")
-        : `待核验线索：${line}`;
+    } else if (inActionSection) {
+      line = normalizeSensitiveClauses(line);
     }
     output.push(line);
     if (!inActionSection || !/^###\s+/.test(line)) continue;
