@@ -111,3 +111,66 @@ test("validate-publication-content fails a malformed daily page response", () =>
     }
   );
 });
+
+test("validate-publication-content recognizes a bounded account observation edition", () => {
+  const pagePath = writeGitHubContentResponse(`---
+title: 爱窝啦 AI 账号商机 2026/8/8
+date: 2026-08-08T00:00:00+08:00
+---
+
+## 30 秒结论
+
+- **今天发生什么：** 今天只有待核验线索，没有可由官方页面确认的新变化。
+- **今天做什么：** 不新增商品，只核对现有 FAQ 和售后边界。
+- **最大风险：** 把社区或媒体线索写成官方事实，造成无法兑现的承诺。
+
+## 今日硬信号
+
+- 今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。
+
+## 今日可执行
+
+### 观察：核对一条账号线索，不新增商品
+
+**判断：** 今天只有待核验线索，不新增商品，也不把它写成官方变化。
+
+- **证据与可信度：** [媒体页面只证明有人提出这条线索](https://example.com/account-clue)；可信度：低；仍缺官方确认。
+- **供给形态：** 官方订阅。
+- **适合买家与真实需求：** 是否影响现有买家仍是待验证假设，先记录真实询问。
+- **是否今天能挂闲鱼：** 观察；不新增商品。
+- **今天最小动作：** 检查现有 FAQ，把无法追溯到官方页面的句子标记待核验。
+- **售后与合规：** 售后风险：中；待核验线索：不得承诺登录稳定。
+- **不能承诺与停止：** 不承诺线索已经生效；48 小时内没有官方确认就停止跟进。
+
+## 买家避坑
+
+- 购买前要求卖家说明信息来自官方页面还是社区讨论。
+
+## 今天别碰
+
+- 今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 检查官方页面是否出现对应说明。
+- **今天修改：** 标记现有 FAQ 中没有官方依据的句子。
+- **今天记录：** 记录买家是否真的问到这项变化。`);
+
+  const output = execFileSync(
+    "node",
+    [".github/scripts/validate-publication-content.mjs"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        MODE: "account-opportunity",
+        TARGET_DATE: "2026-08-08",
+        PAGE_RESPONSE_PATH: pagePath,
+      },
+    }
+  );
+
+  assert.match(output, /::notice title=Publication content validation::/);
+  assert.match(output, /ok=true/);
+});
