@@ -410,7 +410,7 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
   const sensitiveFactPattern =
     /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i;
   const boundaryPattern =
-    /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不得|禁止|需核验|不能确认|无法确认|不新增/;
+    /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不新增/;
   const normalizeSensitiveClauses = (line) =>
     line
       .split(/([。；;])/)
