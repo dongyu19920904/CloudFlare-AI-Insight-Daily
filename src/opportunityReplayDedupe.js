@@ -424,6 +424,7 @@ export function appendOpportunityReplayMetadata(markdown, candidates = []) {
   const seen = new Set();
 
   for (const candidate of candidates || []) {
+    if (candidate.observationOnly) continue;
     const isUsed = (candidate.supportingItems || []).some((item) =>
       usedSourceKeys.has(normalizeOpportunitySourceUrl(item.url))
     );

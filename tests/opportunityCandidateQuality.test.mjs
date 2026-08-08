@@ -149,6 +149,78 @@ test("seven-day commercial signature blocks a renamed delivery clone", () => {
   );
 });
 
+test("observation fallback keeps evidence but does not relabel a repeated delivery as a new opportunity", () => {
+  const assessment = buildOpportunityCandidateAssessment(
+    {
+      project: [
+        {
+          title: "ClipFactory 发布视频自动化工作流",
+          description: "开源视频内容生产工作流和可复现配置",
+          source: "GitHub Trending",
+          url: "https://github.com/example/clip-factory",
+          published_date: "2026-08-04",
+          details: { content_html: "<p>video content workflow release</p>" },
+        },
+      ],
+    },
+    undefined,
+    {
+      ...strictOptions,
+      allowObservationFallback: true,
+      recentReplayMemory: {
+        commercialSignatures: [
+          {
+            key: "result-delivery:automation-workflow",
+            commercialSignature: "result-delivery:automation-workflow",
+            date: "2026-08-03",
+          },
+        ],
+      },
+    }
+  );
+
+  assert.equal(assessment.candidates.length, 1);
+  assert.equal(assessment.candidates[0].observationOnly, true);
+  assert.equal(assessment.candidates[0].xianyuToday, "观察");
+  assert.match(assessment.candidates[0].observationReasons.join("\n"), /商业模式与交付类型组合/);
+  assert.equal(assessment.stats.strictQualified, 0);
+  assert.equal(assessment.stats.observationFallback, 1);
+});
+
+test("observation fallback still blocks the same entity", () => {
+  const assessment = buildOpportunityCandidateAssessment(
+    {
+      project: [
+        {
+          title: "Toonflow 新版本增加内容工作流",
+          description: "视频内容自动化与脚本工作流更新",
+          source: "GitHub Trending",
+          url: "https://github.com/HBAI-Ltd/Toonflow-app/releases/tag/v2",
+          published_date: "2026-08-04",
+          details: { content_html: "<p>video workflow update</p>" },
+        },
+      ],
+    },
+    undefined,
+    {
+      ...strictOptions,
+      allowObservationFallback: true,
+      recentReplayMemory: {
+        entities: [
+          {
+            key: "github:hbai-ltd/toonflow-app",
+            entity: "github:hbai-ltd/toonflow-app",
+            date: "2026-08-03",
+          },
+        ],
+      },
+    }
+  );
+
+  assert.equal(assessment.candidates.length, 0);
+  assert.equal(assessment.stats.observationFallback, 0);
+});
+
 test("seven-day offer family blocks a different developer project with the same reader delivery", () => {
   const assessment = buildOpportunityCandidateAssessment(
     {

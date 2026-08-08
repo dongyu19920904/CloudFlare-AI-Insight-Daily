@@ -1870,6 +1870,7 @@ async function generateOpportunityMarkdown(
         {
             ...assessmentOptions,
             requireStrongEvidence: true,
+            allowObservationFallback: true,
             supplementalEvidenceBySourceUrl:
                 evidenceEnrichment?.recordsBySourceUrl || {},
         }
@@ -1878,6 +1879,9 @@ async function generateOpportunityMarkdown(
         0,
         opportunityPlaybook.outputRules.maxPromptCandidates || 4
     );
+    const observationMode =
+        opportunityCandidates.length > 0 &&
+        opportunityCandidates.every((candidate) => candidate.observationOnly);
     const rejectedOpportunityCandidates = candidateAssessment.rejectedCandidates.slice(
         0,
         opportunityPlaybook.outputRules.maxDigestCandidates || 3
@@ -1894,6 +1898,7 @@ async function generateOpportunityMarkdown(
     debugInfo.opportunityCandidateAssessment = candidateAssessment.stats;
     debugInfo.opportunityRejectedCandidateCount = candidateAssessment.rejectedCandidates.length;
     debugInfo.opportunityTopScore = opportunityCandidates[0]?.score || 0;
+    debugInfo.opportunityObservationMode = observationMode;
 
     if (opportunityCandidates.length === 0) {
         debugInfo.opportunityQualitySkipped = true;
@@ -1925,14 +1930,16 @@ async function generateOpportunityMarkdown(
     console.log(`[Scheduled][Opportunity] Generating content...`);
     const replayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const opportunityPromptInput = [
-        `## 已通过发布门槛的候选\n\n${opportunityCandidatesText}`,
+        `${observationMode ? '## 仅供观察核验的候选' : '## 已通过发布门槛的候选'}\n\n${opportunityCandidatesText}`,
         replayMemoryPrompt ? `## 近7天商机记忆\n\n${replayMemoryPrompt}` : '',
         `## 候选证据摘要\n\n${opportunitySourceDigest}`,
         `## 弱证据或重复候选（只能用于“今天别碰”）\n\n${buildRejectedOpportunityDigest(rejectedOpportunityCandidates)}`,
     ].filter(Boolean).join('\n\n');
 
     const opportunitySystemPrompt = getSystemPromptAiOpportunity(dateStr, playbookText);
-    const aivoraLinkIntent = buildAivoraOpportunityLinkIntent(opportunityCandidates);
+    const aivoraLinkIntent = observationMode
+        ? { eligible: false, tokens: [], cacheKey: 'observation' }
+        : buildAivoraOpportunityLinkIntent(opportunityCandidates);
     let aivoraLinkPolicy = await loadAivoraOpportunityLinkPolicy(env, dateStr, {
         intent: aivoraLinkIntent,
         maxSemanticPageChecks: 2,
@@ -1971,6 +1978,7 @@ async function generateOpportunityMarkdown(
             aivoraLinkPolicy,
             minimumOpportunityCount: 1,
             maximumOpportunityCount: opportunityPlaybook.outputRules.maxPublishedOpportunities || 4,
+            observationMode,
         });
         markdown = validation.ok
             ? appendOpportunityReplayMetadata(visibleMarkdown, opportunityCandidates)
@@ -2013,6 +2021,7 @@ async function generateOpportunityMarkdown(
         validation,
         candidateAssessment,
         qualitySkipped: false,
+        observationMode,
         validationContext,
         aivoraLinkPolicy,
     };
@@ -2081,12 +2090,16 @@ async function generateAccountOpportunityMarkdown(
         {
             minimumScore:
                 accountOpportunityPlaybook.outputRules.minimumCandidateScore || 52,
+            allowObservationFallback: true,
         }
     );
     const accountOpportunityCandidates = accountAssessment.candidates.slice(
         0,
         accountOpportunityPlaybook.outputRules.maxPromptCandidates || 4
     );
+    const observationMode =
+        accountOpportunityCandidates.length > 0 &&
+        accountOpportunityCandidates.every((candidate) => candidate.observationOnly);
     const rejectedAccountOpportunityCandidates = [
         ...accountAssessment.rejectedCandidates,
         ...rawAssessment.rejectedCandidates,
@@ -2100,6 +2113,7 @@ async function generateAccountOpportunityMarkdown(
     debugInfo.accountOpportunityCandidateAssessment = accountAssessment.stats;
     debugInfo.accountOpportunityRejectedCandidateCount = rejectedAccountOpportunityCandidates.length;
     debugInfo.accountOpportunityTopScore = accountOpportunityCandidates[0]?.score || 0;
+    debugInfo.accountOpportunityObservationMode = observationMode;
 
     if (accountOpportunityCandidates.length === 0) {
         debugInfo.accountOpportunityQualitySkipped = true;
@@ -2128,13 +2142,15 @@ async function generateAccountOpportunityMarkdown(
     console.log(`[Scheduled][AccountOpportunity] Generating content...`);
     const accountReplayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const accountOpportunityPromptInput = [
-        `## 已通过账号商机门槛的候选\n\n${accountOpportunityCandidatesText}`,
+        `${observationMode ? '## 仅供观察核验的账号线索' : '## 已通过账号商机门槛的候选'}\n\n${accountOpportunityCandidatesText}`,
         accountReplayMemoryPrompt ? `## 近7天商机记忆\n\n${accountReplayMemoryPrompt}` : '',
         `## 弱证据、重复或高风险候选（只能用于“今天别碰”）\n\n${buildRejectedAccountOpportunityDigest(rejectedAccountOpportunityCandidates)}`,
     ].filter(Boolean).join('\n\n');
 
     const accountOpportunitySystemPrompt = getSystemPromptAiAccountOpportunity(dateStr, playbookText);
-    const aivoraLinkIntent = buildAivoraOpportunityLinkIntent(accountOpportunityCandidates);
+    const aivoraLinkIntent = observationMode
+        ? { eligible: false, tokens: [], cacheKey: 'account-observation' }
+        : buildAivoraOpportunityLinkIntent(accountOpportunityCandidates);
     const aivoraLinkPolicy = await loadAivoraOpportunityLinkPolicy(
         options.dryRun ? { ...env, DATA_KV: null } : env,
         dateStr,
@@ -2180,6 +2196,7 @@ async function generateAccountOpportunityMarkdown(
             minimumOpportunityCount: 1,
             maximumOpportunityCount:
                 accountOpportunityPlaybook.outputRules.maxPublishedOpportunities || 2,
+            observationMode,
         });
         markdown = validation.ok
             ? appendOpportunityReplayMetadata(
@@ -2225,6 +2242,7 @@ async function generateAccountOpportunityMarkdown(
         validation,
         candidateAssessment: accountAssessment,
         qualitySkipped: false,
+        observationMode,
         validationContext,
     };
 }

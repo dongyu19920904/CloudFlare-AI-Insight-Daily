@@ -121,6 +121,27 @@ test("hidden replay metadata persists entity, business model, delivery type, and
   assert.equal(memory.offerFamilies[0].offerFamily, "workflow-automation");
 });
 
+test("observation candidates do not consume entity or commercial replay slots", () => {
+  const markdown = appendOpportunityReplayMetadata(
+    `## 今日主推
+### 观察：先核验需求
+- **证据与可信度：** [官方仓库](https://github.com/acme/observe-only)`,
+    [
+      {
+        observationOnly: true,
+        entityKey: "github:acme/observe-only",
+        businessModel: "result-delivery",
+        deliveryType: "automation-workflow",
+        commercialSignature: "result-delivery:automation-workflow",
+        offerFamily: "workflow-automation",
+        supportingItems: [{ url: "https://github.com/acme/observe-only" }],
+      },
+    ]
+  );
+
+  assert.doesNotMatch(markdown, /<!-- opportunity-replay:/);
+});
+
 test("partial KV replay memory backfills only missing date sections and old offer-family metadata", () => {
   const memory = {
     sourceUrls: [

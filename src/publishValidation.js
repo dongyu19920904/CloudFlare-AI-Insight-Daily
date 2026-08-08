@@ -1013,6 +1013,26 @@ function collectOpportunityMarketHypothesisIssues(markdown) {
     : [];
 }
 
+function collectOpportunityObservationIssues(markdown) {
+  const issues = [];
+  const directConclusion = getSectionBody(
+    extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im)
+  );
+  const mainSection = extractSection(markdown, /^##\s+今日主推(?:\s|$).*$/im);
+
+  if (!directConclusion.includes("今天没有新的差异化商机，不凑数。")) {
+    issues.push("AI 商机观察稿必须明确今天没有新的差异化商机，不得伪装成新机会");
+  }
+  if (!/^###\s+观察[:：]/m.test(mainSection)) {
+    issues.push("AI 商机观察稿的主推标题必须以“观察：”开头");
+  }
+  if (!/第一单与复购[:：]\*{0,2}[^\n]*尚不进入成交阶段/m.test(mainSection)) {
+    issues.push("AI 商机观察稿必须明确尚不进入成交阶段");
+  }
+
+  return issues;
+}
+
 export function validateOpportunityPublication({
   markdown,
   bannedPublicPhrases = [],
@@ -1022,6 +1042,7 @@ export function validateOpportunityPublication({
   aivoraLinkPolicy = { allowedUrls: [] },
   minimumOpportunityCount = 1,
   maximumOpportunityCount = 4,
+  observationMode = false,
 }) {
   const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
   const issues = collectMarkdownIssues(visibleMarkdown, {
@@ -1075,6 +1096,9 @@ export function validateOpportunityPublication({
   issues.push(...collectOpportunityLengthIssues(visibleMarkdown));
   issues.push(...collectOpportunityActionShapeIssues(visibleMarkdown));
   issues.push(...collectOpportunityMarketHypothesisIssues(visibleMarkdown));
+  if (observationMode) {
+    issues.push(...collectOpportunityObservationIssues(visibleMarkdown));
+  }
 
   if (sourcePolicy.opportunityCount < minimumOpportunityCount) {
     issues.push(`AI 商机至少需要 ${minimumOpportunityCount} 个达到证据门槛的机会`);
@@ -1176,6 +1200,7 @@ function collectAccountOpportunitySourceIssues(
     allowedSourceUrls = null,
     allowedRejectedSourceUrls = null,
     sourceEvidence = [],
+    observationMode = false,
   } = {}
 ) {
   const issues = [];
@@ -1209,6 +1234,12 @@ function collectAccountOpportunitySourceIssues(
     issues.push("账号商机“今日硬信号”至少需要 1 条可核验事实");
   }
   for (const line of hardSignalLines) {
+    const isObservationConclusion =
+      observationMode &&
+      line.includes(
+        "今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。"
+      );
+    if (isObservationConclusion) continue;
     const links = extractSectionLinks(line).filter((link) => !isNoiseSectionLink(link));
     if (links.length === 0 || !links.some(isPrimaryLink)) {
       issues.push("账号商机每条硬信号都必须引用官方页面或原项目");
@@ -1265,6 +1296,36 @@ function collectAccountOpportunitySourceIssues(
     } else if (!usesDefaultAvoid && avoidLinks.length === 0) {
       issues.push("账号商机“今天别碰”点名具体方向时必须引用被拒候选来源");
     }
+  }
+
+  return issues;
+}
+
+function collectAccountOpportunityObservationIssues(markdown) {
+  const issues = [];
+  const summary = getSectionBody(
+    extractSection(markdown, /^##\s+30\s*秒结论(?:\s|$).*$/im)
+  );
+  const hardSignals = getSectionBody(
+    extractSection(markdown, /^##\s+今日硬信号(?:\s|$).*$/im)
+  );
+  const actions = extractSection(markdown, /^##\s+今日可执行(?:\s|$).*$/im);
+
+  if (!/今天做什么[:：]\*{0,2}[^\n]*不新增商品/m.test(summary)) {
+    issues.push("账号商机观察稿必须在 30 秒结论中明确不新增商品");
+  }
+  if (
+    !hardSignals.includes(
+      "今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。"
+    )
+  ) {
+    issues.push("账号商机观察稿必须明确没有可由官方页面确认的新变化");
+  }
+  if (!/^###\s+观察[:：]/m.test(actions)) {
+    issues.push("账号商机观察稿的行动标题必须以“观察：”开头");
+  }
+  if (/是否今天能挂闲鱼[:：]\*{0,2}\s*是(?=$|[\s；;，。])/m.test(actions)) {
+    issues.push("账号商机观察稿不得建议今天上架");
   }
 
   return issues;
@@ -1337,6 +1398,7 @@ export function validateAccountOpportunityPublication({
   aivoraLinkPolicy = { allowedUrls: [] },
   minimumOpportunityCount = 1,
   maximumOpportunityCount = 2,
+  observationMode = false,
 }) {
   const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
   const issues = collectMarkdownIssues(visibleMarkdown, {
@@ -1376,10 +1438,14 @@ export function validateAccountOpportunityPublication({
     allowedSourceUrls,
     allowedRejectedSourceUrls,
     sourceEvidence,
+    observationMode,
   }));
   issues.push(...collectAccountOpportunityActionShapeIssues(visibleMarkdown));
   issues.push(...collectAccountOpportunitySafetyIssues(visibleMarkdown));
   issues.push(...collectOpportunityMarketHypothesisIssues(visibleMarkdown));
+  if (observationMode) {
+    issues.push(...collectAccountOpportunityObservationIssues(visibleMarkdown));
+  }
 
   const aivoraValidation = validateOpportunityAivoraLinks(
     visibleMarkdown,

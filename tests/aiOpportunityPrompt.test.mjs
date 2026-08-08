@@ -80,3 +80,12 @@ test("getSystemPromptAiOpportunity forbids forced account resale and invented cl
   assert.match(prompt, /无已知商标 \/ 内容限制/);
   assert.match(prompt, /同一个来源 URL 在同一条机会里只能出现一次/);
 });
+
+test("getSystemPromptAiOpportunity keeps observation days honest", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-08-08", "### 当前业务");
+
+  assert.match(prompt, /发布模式: 观察/);
+  assert.match(prompt, /今天没有新的差异化商机，不凑数/);
+  assert.match(prompt, /尚不进入成交阶段/);
+  assert.match(prompt, /不得把它写成新机会、上架建议或已确认需求/);
+});

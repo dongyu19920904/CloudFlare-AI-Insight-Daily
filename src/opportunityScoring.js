@@ -1264,6 +1264,35 @@ export function buildOpportunityCandidateAssessment(
     }
   }
 
+  const strictRejectedCandidates = [...rejectedCandidates];
+  if (candidates.length === 0 && options.allowObservationFallback) {
+    const observationIndex = rejectedCandidates.findIndex((candidate) => {
+      const reasons = candidate.rejectionReasons || [];
+      return (
+        candidate.evidenceEligible === true &&
+        candidate.score >= minimumScore &&
+        reasons.length > 0 &&
+        reasons.every((reason) =>
+          /^近7天已经使用同一(?:商业模式与交付类型组合|读者交付家族)$/.test(reason)
+        )
+      );
+    });
+
+    if (observationIndex >= 0) {
+      const rejectedCandidate = rejectedCandidates.splice(observationIndex, 1)[0];
+      candidates.push({
+        ...rejectedCandidate,
+        observationOnly: true,
+        observationReasons: [...rejectedCandidate.rejectionReasons],
+        qualified: true,
+        rejectionReasons: [],
+        xianyuToday: "观察",
+        todaySmallestAction:
+          "只验证这个新实体是否形成不同于近 7 天旧方案的真实需求；未取得目标用户反馈前不启动交付。",
+      });
+    }
+  }
+
   return {
     candidates,
     rejectedCandidates,
@@ -1271,11 +1300,14 @@ export function buildOpportunityCandidateAssessment(
     stats: {
       total: allCandidates.length,
       qualified: candidates.length,
+      strictQualified: candidates.filter((candidate) => !candidate.observationOnly).length,
+      observationFallback: candidates.filter((candidate) => candidate.observationOnly).length,
       rejected: rejectedCandidates.length,
-      rejectedForEvidence: rejectedCandidates.filter((candidate) =>
+      strictRejected: strictRejectedCandidates.length,
+      rejectedForEvidence: strictRejectedCandidates.filter((candidate) =>
         candidate.rejectionReasons.some((reason) => /证据|官方|实证|来源/.test(reason))
       ).length,
-      rejectedForReplay: rejectedCandidates.filter((candidate) =>
+      rejectedForReplay: strictRejectedCandidates.filter((candidate) =>
         candidate.rejectionReasons.some((reason) => /近7天|当天候选/.test(reason))
       ).length,
     },
@@ -1329,6 +1361,13 @@ export function formatOpportunityCandidatesForPrompt(
 
       const commonLines = [
         `### ${index + 1}. ${candidate.label}`,
+        ...(candidate.observationOnly
+          ? [
+              "- 发布模式: 观察；它不是新的差异化商机，只用于核验新实体是否值得下周再评估",
+              `- 观察原因: ${candidate.observationReasons?.join("；") || "近 7 天同类交付已经出现"}`,
+              "- 强制边界: 不得写成今天能卖、立即上架或已经确认付费需求",
+            ]
+          : []),
         `- 证据来源: ${candidate.evidenceSources}`,
         `- 证据强度: ${candidate.evidenceStrength}`,
         `- 证据缺口: ${candidate.evidenceGaps.join("；") || "暂无明显缺口"}`,

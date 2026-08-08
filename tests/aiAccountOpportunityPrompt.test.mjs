@@ -33,3 +33,12 @@ test("account opportunity prompt rejects unsafe or invented trading advice", () 
   assert.match(prompt, /不得生成 aivora\.cn 或 news\.aivora\.cn 链接/);
   assert.match(prompt, /正文没有一级标题/);
 });
+
+test("account opportunity prompt publishes safe observation days without forcing a listing", () => {
+  const prompt = getSystemPromptAiAccountOpportunity("2026-08-08", "### 当前业务");
+
+  assert.match(prompt, /发布模式: 观察/);
+  assert.match(prompt, /今天没有取得可由官方页面确认的账号、价格、额度或政策新变化/);
+  assert.match(prompt, /不新增商品/);
+  assert.match(prompt, /不得新增商品、上架或承诺变化已经生效/);
+});

@@ -265,19 +265,56 @@ export function qualifyAccountOpportunityCandidates(
     }
   }
 
+  const strictRejectedCandidates = [...rejected];
+  if (qualified.length === 0 && options.allowObservationFallback) {
+    const observationScoreFloor = Math.max(40, minimumScore - 12);
+    const observationIndex = rejected.findIndex((candidate) => {
+      const hasUsableSource = (candidate.supportingItems || []).some(
+        (item) => item?.url && item?.evidence?.tier !== "low"
+      );
+      const hasReplayBlock = (candidate.rejectionReasons || []).some((reason) =>
+        /近 7 天|当天账号候选/.test(reason)
+      );
+      return (
+        candidate.accountEvidence?.hasAccountSignal === true &&
+        candidate.accountEvidence?.hasConcreteChange === true &&
+        hasUsableSource &&
+        (candidate.score || 0) >= observationScoreFloor &&
+        !hasReplayBlock
+      );
+    });
+
+    if (observationIndex >= 0) {
+      const rejectedCandidate = rejected.splice(observationIndex, 1)[0];
+      qualified.push({
+        ...rejectedCandidate,
+        observationOnly: true,
+        observationReasons: [...rejectedCandidate.rejectionReasons],
+        qualified: true,
+        rejectionReasons: [],
+        confidence:
+          rejectedCandidate.accountEvidence?.primaryCount > 0 ? "中" : "低",
+        xianyuToday: rejectedCandidate.afterSalesRisk === "高" ? "否" : "观察",
+      });
+    }
+  }
+
   return {
     candidates: qualified,
     rejectedCandidates: rejected,
     stats: {
       total: (candidates || []).length,
       qualified: qualified.length,
+      strictQualified: qualified.filter((candidate) => !candidate.observationOnly).length,
+      observationFallback: qualified.filter((candidate) => candidate.observationOnly).length,
       rejected: rejected.length,
-      rejectedForEvidence: rejected.filter((candidate) =>
+      strictRejected: strictRejectedCandidates.length,
+      rejectedForEvidence: strictRejectedCandidates.filter((candidate) =>
         candidate.rejectionReasons.some((reason) =>
           /官方|原项目|实证|账号|订阅|API|支付|额度|地区|登录|政策|服务状态|当天变化/.test(reason)
         )
       ).length,
-      rejectedForReplay: rejected.filter((candidate) =>
+      rejectedForReplay: strictRejectedCandidates.filter((candidate) =>
         candidate.rejectionReasons.some((reason) => /近 7 天|当天账号候选/.test(reason))
       ).length,
     },
@@ -308,6 +345,13 @@ export function formatAccountOpportunityCandidatesForPrompt(
 
       return [
         `### 候选 ${index + 1}：${candidate.label}`,
+        ...(candidate.observationOnly
+          ? [
+              "- 发布模式: 观察；今天没有可由官方页面确认的新变化，不得新增商品",
+              `- 观察原因: ${candidate.observationReasons?.join("；") || "官方证据尚未达到发布门槛"}`,
+              "- 强制边界: 只能写核验、FAQ 或售后边界动作，不得写今天上架",
+            ]
+          : []),
         `- 账号证据强度: ${candidate.evidenceStrength}`,
         `- 证据缺口: ${candidate.evidenceGaps.join("；") || "暂无明显缺口"}`,
         `- 供给形态: ${candidate.supplyForm}`,

@@ -1382,3 +1382,138 @@ test("validateAccountOpportunityPublication rejects unsupported sales claims but
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /不得编造销量/);
 });
+
+test("validateOpportunityPublication accepts a clearly bounded observation edition", () => {
+  const sourceUrl = "https://github.com/acme/observe-only";
+  const result = validateOpportunityPublication({
+    markdown: `## 直接结论
+
+- **直接答案：** 今天没有新的差异化商机，不凑数。只观察一个新实体是否带来不同需求。
+- **做不做：** 不启动新交付，也不把同类方案换标题重发。
+- **先验证：** 先找三位目标用户核对问题是否真实存在。
+- **何时停：** 三位用户都没有不同需求就停止。
+
+## 今日主推
+
+### 观察：核验新实体是否形成不同需求
+
+**判断：** 项目本身可核验，但近七天已经出现同类交付，今天只做需求观察。
+
+- **证据与可信度：** 中；[官方仓库证明项目与公开说明存在](${sourceUrl})；本次候选输入未提供目标用户付费证据。
+- **鱼塘与笨办法：** 待验证假设：小团队可能需要核对这项能力是否解决不同于旧方案的问题。
+- **最小交付：** 一页需求核对表，不提供部署或代运营。
+- **48小时验证：** 找三位目标用户访谈，记录他们是否提出不同于旧方案的验收结果。
+- **第一单与复购：** 尚不进入成交阶段；只有出现新的可验收需求才重新评估。
+- **风险与停止：** 风险中；若没有不同需求，立即停止，不把旧交付换壳。
+
+## 本周小试
+
+今天没有第二个达到证据门槛的机会，不凑数。
+
+## 今天别碰
+
+今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 核对项目公开说明与可复现范围。
+- **今天制作：** 只做一页需求核对表。
+- **今天询价：** 问三位目标用户是否存在不同验收需求。`,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "primary",
+        isPrimary: true,
+        reason: "原项目",
+      },
+    ],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+const validAccountObservationMarkdown = `## 30 秒结论
+
+- **今天发生什么：** 今天只有待核验线索，没有官方确认的新变化。
+- **今天做什么：** 不新增商品，只核对现有 FAQ 的证据边界。
+- **最大风险：** 把社区讨论误写成官方事实，给售后留下无法兑现的承诺。
+
+## 今日硬信号
+
+- 今天没有取得可由官方页面确认的账号、价格、额度或政策新变化；不新增商品。
+
+## 今日可执行
+
+### 观察：核对一条社区讨论，不新增商品
+
+**判断：** 这只是待核验线索，今天不把它写进商品承诺。
+
+- **证据与可信度：** [社区页面只证明有人提出这条线索](https://example.com/account-clue)；可信度：低；仍缺官方确认。
+- **供给形态：** 官方订阅。
+- **适合买家与真实需求：** 是否影响现有买家仍是待验证假设，先记录真实询问。
+- **是否今天能挂闲鱼：** 观察；不新增商品。
+- **今天最小动作：** 检查现有 FAQ，把无法追溯到官方页面的句子标记待核验。
+- **售后与合规：** 售后风险：中；不得把社区线索当成平台承诺。
+- **不能承诺与停止：** 不承诺线索已经生效；48 小时内没有官方确认就停止跟进。
+
+## 买家避坑
+
+- 购买前要求卖家说明信息来自官方页面还是社区讨论。
+- 无法给出官方依据的承诺，只能当作待核验线索。
+
+## 今天别碰
+
+- 今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 检查官方页面是否出现对应说明。
+- **今天修改：** 标记现有 FAQ 中没有官方依据的句子。
+- **今天记录：** 记录买家是否真的问到这项变化。`;
+
+test("validateAccountOpportunityPublication accepts observation without an invented hard signal", () => {
+  const sourceUrl = "https://example.com/account-clue";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountObservationMarkdown,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "social",
+        isPrimary: false,
+        reason: "待核验线索",
+      },
+    ],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("validateAccountOpportunityPublication forbids listing in observation mode", () => {
+  const sourceUrl = "https://example.com/account-clue";
+  const result = validateAccountOpportunityPublication({
+    markdown: validAccountObservationMarkdown.replace(
+      "是否今天能挂闲鱼：** 观察",
+      "是否今天能挂闲鱼：** 是"
+    ),
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "social",
+        isPrimary: false,
+        reason: "待核验线索",
+      },
+    ],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join("\n"), /不得建议今天上架/);
+});

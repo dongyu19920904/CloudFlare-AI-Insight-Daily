@@ -94,6 +94,61 @@ test("account replay rejects the same product entity from the previous seven day
   assert.match(result.rejectedCandidates[0].rejectionReasons.join("\n"), /同一产品或项目实体/);
 });
 
+test("account observation fallback publishes a weak clue only as observation", () => {
+  const result = qualifyAccountOpportunityCandidates(
+    [
+      makeCandidate({
+        supportingItems: [
+          {
+            type: "news",
+            title: "ChatGPT subscription quota update discussed by users",
+            description: "Users report a possible subscription quota change that still needs official confirmation",
+            source: "Community report",
+            url: "https://example.com/chatgpt-quota-clue",
+            evidence: {
+              tier: "trusted-media",
+              isPrimary: false,
+              reason: "待官方核验的线索",
+              independentKey: "example.com",
+            },
+          },
+        ],
+      }),
+    ],
+    accountOpportunityPlaybook,
+    null,
+    { allowObservationFallback: true }
+  );
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].observationOnly, true);
+  assert.equal(result.candidates[0].confidence, "低");
+  assert.notEqual(result.candidates[0].xianyuToday, "是");
+  assert.equal(result.stats.strictQualified, 0);
+  assert.equal(result.stats.observationFallback, 1);
+});
+
+test("account observation fallback does not bypass seven-day entity replay", () => {
+  const result = qualifyAccountOpportunityCandidates(
+    [makeCandidate()],
+    accountOpportunityPlaybook,
+    {
+      entities: [
+        {
+          key: "name:chatgpt",
+          entity: "name:chatgpt",
+          section: "account-opportunity",
+          date: "2026-08-04",
+        },
+      ],
+    },
+    { allowObservationFallback: true }
+  );
+
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.stats.observationFallback, 0);
+});
+
 test("account replay signature includes supply, pain, and action dimensions", () => {
   const dimensions = deriveAccountOpportunityDimensions(
     makeCandidate(),

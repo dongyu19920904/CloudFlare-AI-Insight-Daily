@@ -179,8 +179,9 @@ jobs:
               output.write(f"quality_skipped={'true' if quality_skipped else 'false'}\n")
 
           if quality_skipped:
-              print("No candidate passed the evidence and replay gates; accepting an intentional quality skip.")
-              raise SystemExit(0)
+              raise SystemExit(
+                  "Worker recorded a quality skip but today's AI opportunity page is still missing"
+              )
 
           if not debug.get("opportunityGenerated"):
               raise SystemExit("Opportunity content was not generated")
