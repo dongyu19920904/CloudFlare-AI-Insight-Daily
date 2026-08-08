@@ -786,6 +786,7 @@ function collectOpportunitySourcePolicyIssues(
     allowedSourceUrls = null,
     allowedRejectedSourceUrls = null,
     sourceEvidence = [],
+    observationMode = false,
   } = {}
 ) {
   const issues = [];
@@ -823,18 +824,25 @@ function collectOpportunitySourcePolicyIssues(
     if (blockLinks.some(linkLabelOverstatesDestination)) {
       issues.push("AI 商机来源链接文字不能把 GitHub 仓库首页描述成 LICENSE、定价页或教程直达页");
     }
-    const containsCriticalFact =
-      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|封号|下线|退役|正式上线|政策|授权|许可(?:证)?|license)/i.test(
-        block
-      );
+    const criticalFactPattern =
+      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|封号|下线|退役|正式上线|政策|授权|许可(?:证)?|license)/i;
+    const criticalFactClauses = block
+      .split(/\r?\n|[。；;]/)
+      .filter((clause) => criticalFactPattern.test(clause));
+    const observationBoundaryPattern =
+      /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不启动|不进入/;
+    const hasUnsupportedCriticalFact = criticalFactClauses.some(
+      (clause) => !observationBoundaryPattern.test(clause)
+    );
     if (
-      containsCriticalFact &&
+      criticalFactClauses.length > 0 &&
       !blockLinks.some((link) => {
         const evidence =
           evidenceByUrl.get(link.url) ||
           classifyOpportunityEvidence({ url: link.url }, "");
         return evidence.isPrimary === true;
-      })
+      }) &&
+      (!observationMode || hasUnsupportedCriticalFact)
     ) {
       issues.push("AI 商机涉及价格、状态、政策或许可事实时必须引用官方或原项目来源");
     }
@@ -948,7 +956,10 @@ const OPPORTUNITY_UNSAFE_AVOID_PATTERNS = [
   /(?:只有|仅有)(?:融资|采访|媒体|报道)[^。！？；\n]{0,48}(?:无|没有|未提供)[^。！？；\n]{0,30}(?:官方|原项目|GitHub|产品主页|产品演示|可复现)/i,
 ];
 
-export function normalizeOpportunityEvidenceBoundaryLanguage(markdown) {
+export function normalizeOpportunityEvidenceBoundaryLanguage(
+  markdown,
+  { observationMode = false } = {}
+) {
   let normalized = String(markdown || "")
     .split("\n")
     .map((line) => {
@@ -985,6 +996,53 @@ export function normalizeOpportunityEvidenceBoundaryLanguage(markdown) {
       return `${sourceLink}——本次候选输入未提供可核验的官方产品或原项目链接，也未提供可复现的交付证据，先不投入。`;
     })
     .join("\n");
+
+  if (observationMode) {
+    const sensitiveFactPattern =
+      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|封号|下线|退役|正式上线|政策|授权|许可(?:证)?|license)/i;
+    const boundaryPattern =
+      /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不启动|不进入/;
+    let inOpportunitySection = false;
+    normalized = normalized
+      .split("\n")
+      .map((line) => {
+        if (/^##\s+/.test(line)) {
+          inOpportunitySection = /^##\s+(?:今日主推|本周小试)(?:\s|$)/.test(line);
+          return line;
+        }
+        if (!inOpportunitySection) return line;
+
+        return line
+          .split(/([。；;])/)
+          .map((clause, clauseIndex) => {
+            if (
+              clauseIndex % 2 === 1 ||
+              !sensitiveFactPattern.test(clause) ||
+              boundaryPattern.test(clause)
+            ) {
+              return clause;
+            }
+            if (/^\s*###\s+/.test(clause)) {
+              return clause.replace(
+                /^(\s*###\s+)(?:观察[:：]\s*)?/,
+                "$1观察：待核验线索："
+              );
+            }
+            if (/^(\s*(?:-\s+)?\*\*[^*]+[:：]\*\*\s*)/.test(clause)) {
+              return clause.replace(
+                /^(\s*(?:-\s+)?\*\*[^*]+[:：]\*\*\s*)/,
+                "$1待核验线索："
+              );
+            }
+            if (/^(\s*[-*+]\s+)/.test(clause)) {
+              return clause.replace(/^(\s*[-*+]\s+)/, "$1待核验线索：");
+            }
+            return `待核验线索：${clause}`;
+          })
+          .join("");
+      })
+      .join("\n");
+  }
 
   return normalized;
 }
@@ -1090,6 +1148,7 @@ export function validateOpportunityPublication({
     allowedSourceUrls,
     allowedRejectedSourceUrls,
     sourceEvidence,
+    observationMode,
   });
   issues.push(...sourcePolicy.issues);
   issues.push(...collectOpportunityGroupedFieldIssues(visibleMarkdown));

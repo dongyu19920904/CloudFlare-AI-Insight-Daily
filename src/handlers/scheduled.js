@@ -1955,7 +1955,9 @@ async function generateOpportunityMarkdown(
             markdown,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
-        markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown);
+        markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown, {
+            observationMode,
+        });
 
         const insertedAivoraLink = insertOpportunityAivoraLink(
             markdown,

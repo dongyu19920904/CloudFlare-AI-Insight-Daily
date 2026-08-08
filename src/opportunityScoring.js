@@ -1266,7 +1266,7 @@ export function buildOpportunityCandidateAssessment(
 
   const strictRejectedCandidates = [...rejectedCandidates];
   if (candidates.length === 0 && options.allowObservationFallback) {
-    const observationIndex = rejectedCandidates.findIndex((candidate) => {
+    let observationIndex = rejectedCandidates.findIndex((candidate) => {
       const reasons = candidate.rejectionReasons || [];
       return (
         candidate.evidenceEligible === true &&
@@ -1278,6 +1278,27 @@ export function buildOpportunityCandidateAssessment(
       );
     });
 
+    if (observationIndex < 0) {
+      const observationScoreFloor = Math.max(40, minimumScore - 12);
+      observationIndex = rejectedCandidates.findIndex((candidate) => {
+        const reasons = candidate.rejectionReasons || [];
+        const evidence = candidate.evidenceAssessment || {};
+        const hasReviewableSource =
+          evidence.primaryCount > 0 ||
+          evidence.reproducibleCount > 0 ||
+          evidence.trustedMediaCount > 0;
+        const hasEntityReplay = reasons.some((reason) =>
+          /同一项目或产品实体/.test(reason)
+        );
+        return (
+          hasReviewableSource &&
+          evidence.hasConcreteChange === true &&
+          (candidate.baseScore || candidate.score || 0) >= observationScoreFloor &&
+          !hasEntityReplay
+        );
+      });
+    }
+
     if (observationIndex >= 0) {
       const rejectedCandidate = rejectedCandidates.splice(observationIndex, 1)[0];
       candidates.push({
@@ -1286,9 +1307,14 @@ export function buildOpportunityCandidateAssessment(
         observationReasons: [...rejectedCandidate.rejectionReasons],
         qualified: true,
         rejectionReasons: [],
+        confidence:
+          rejectedCandidate.evidenceAssessment?.primaryCount > 0 ||
+          rejectedCandidate.evidenceAssessment?.reproducibleCount > 0
+            ? "中"
+            : "低",
         xianyuToday: "观察",
         todaySmallestAction:
-          "只验证这个新实体是否形成不同于近 7 天旧方案的真实需求；未取得目标用户反馈前不启动交付。",
+          "先核对候选对应的官方或原项目入口，再访谈 3 位同一鱼塘用户；一手证据和不同需求都未出现前不启动交付。",
       });
     }
   }

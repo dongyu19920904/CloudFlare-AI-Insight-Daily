@@ -35,6 +35,45 @@ function buildOpportunityMarkdown(sourceUrl = "https://github.com/example/video-
 - **今天询价：** 问五位目标用户是否愿意拿真实脚本试做。`;
 }
 
+function buildOpportunityObservationMarkdown(
+  sourceUrl = "https://www.36kr.com/p/example-observation",
+  criticalSentence = "待核验线索：媒体提到价格可能调整，仍缺官方确认。"
+) {
+  return `## 直接结论
+
+- **直接答案：** 今天没有新的差异化商机，不凑数。只核验一条可信媒体线索。
+- **做不做：** 不启动新交付，也不把线索写成产品事实。
+- **先验证：** 先找官方或原项目入口，再问三位目标用户是否出现不同需求。
+- **何时停：** 48 小时仍无一手证据，或三位用户都没有不同需求就停止。
+
+## 今日主推
+
+### 观察：核验媒体线索是否有一手依据
+
+**判断：** 这不是新机会，只是一次证据核验。
+
+- **证据与可信度：** 低；[可信媒体只证明出现了这条线索](${sourceUrl})；${criticalSentence}
+- **鱼塘与笨办法：** 待验证假设：小团队可能需要核对这项变化是否影响现有流程。
+- **最小交付：** 一页证据和需求核对表，不提供部署或代运营。
+- **48小时验证：** 找到官方入口，并访谈三位目标用户是否提出不同验收结果。
+- **第一单与复购：** 尚不进入成交阶段；只有一手证据和新需求同时出现才重新评估。
+- **风险与停止：** 风险中；没有官方或原项目确认就停止，不把媒体线索换壳成商品。
+
+## 本周小试
+
+今天没有第二个达到证据门槛的机会，不凑数。
+
+## 今天别碰
+
+今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 核对媒体线索对应的官方入口。
+- **今天制作：** 只做一页证据与需求核对表。
+- **今天询价：** 问三位目标用户是否出现不同需求。`;
+}
+
 test("opportunity publication accepts an allowlisted primary source", () => {
   const sourceUrl = "https://github.com/example/video-workflow";
   const result = validateOpportunityPublication({
@@ -45,6 +84,34 @@ test("opportunity publication accepts an allowlisted primary source", () => {
 
   assert.equal(result.ok, true, result.issues.join("\n"));
   assert.equal(result.opportunityCount, 1);
+});
+
+test("opportunity observation accepts a bounded trusted-media clue", () => {
+  const sourceUrl = "https://www.36kr.com/p/example-observation";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityObservationMarkdown(sourceUrl),
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, tier: "trusted-media", isPrimary: false }],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("opportunity observation still rejects an unbounded media price claim", () => {
+  const sourceUrl = "https://www.36kr.com/p/example-observation";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityObservationMarkdown(
+      sourceUrl,
+      "媒体已经确认价格全面上涨。"
+    ),
+    allowedSourceUrls: [sourceUrl],
+    sourceEvidence: [{ url: sourceUrl, tier: "trusted-media", isPrimary: false }],
+    observationMode: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /必须引用官方或原项目来源/);
 });
 
 test("opportunity publication ignores deterministic replay metadata after the action section", () => {
@@ -328,6 +395,36 @@ test("opportunity evidence normalization scopes model absence claims before vali
     /本次候选输入未提供可核验的官方产品或原项目链接，也未提供可复现的交付证据/
   );
   assert.doesNotMatch(normalized, /只有融资和采访信息，无官方产品主页/);
+});
+
+test("opportunity observation normalization bounds every unsupported sensitive clause", () => {
+  const normalized = normalizeOpportunityEvidenceBoundaryLanguage(
+    `## 今日主推
+
+### 观察：核验媒体提到的价格变化
+
+**判断：** 媒体称价格已经调整；授权范围也有变化；仍缺官方确认。
+
+- **证据与可信度：** [可信媒体只证明出现了这条线索](https://www.36kr.com/p/example)；可信度低。
+
+## 今日三步
+
+- **今天确认：** 只核对官方页面。`,
+    { observationMode: true }
+  );
+
+  const sensitiveClauses = normalized
+    .split(/\r?\n|[。；;]/)
+    .filter((clause) => /价格|授权|许可|额度|政策/.test(clause));
+  assert.ok(sensitiveClauses.length >= 3);
+  assert.ok(
+    sensitiveClauses.every((clause) =>
+      /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不启动|不进入/.test(
+        clause
+      )
+    )
+  );
+  assert.match(normalized, /^### 观察：待核验线索：/m);
 });
 
 test("a GitHub repository root cannot be labeled as a direct license page", () => {

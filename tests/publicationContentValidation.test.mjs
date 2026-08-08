@@ -174,3 +174,62 @@ date: 2026-08-08T00:00:00+08:00
   assert.match(output, /::notice title=Publication content validation::/);
   assert.match(output, /ok=true/);
 });
+
+test("validate-publication-content recognizes a bounded opportunity observation edition", () => {
+  const pagePath = writeGitHubContentResponse(`---
+title: 爱窝啦 AI 商机 2026/8/7
+date: 2026-08-07T00:00:00+08:00
+---
+
+## 直接结论
+
+- **直接答案：** 今天没有新的差异化商机，不凑数。只核验一条可信媒体线索。
+- **做不做：** 不启动新交付，也不把线索写成产品事实。
+- **先验证：** 找官方入口，再问三位目标用户是否出现不同需求。
+- **何时停：** 48 小时仍无一手证据就停止。
+
+## 今日主推
+
+### 观察：核验媒体线索是否有一手依据
+
+**判断：** 这不是新机会，只是一次证据核验。
+
+- **证据与可信度：** 低；[可信媒体只证明出现了这条线索](https://www.36kr.com/p/example-observation)；待核验线索：媒体提到价格可能调整，仍缺官方确认。
+- **鱼塘与笨办法：** 待验证假设：小团队可能需要核对这项变化是否影响现有流程。
+- **最小交付：** 一页证据和需求核对表，不提供部署或代运营。
+- **48小时验证：** 找到官方入口，并访谈三位目标用户是否提出不同验收结果。
+- **第一单与复购：** 尚不进入成交阶段；只有一手证据和新需求同时出现才重新评估。
+- **风险与停止：** 风险中；没有官方确认就停止，不把媒体线索换壳成商品。
+
+## 本周小试
+
+今天没有第二个达到证据门槛的机会，不凑数。
+
+## 今天别碰
+
+今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 核对媒体线索对应的官方入口。
+- **今天制作：** 只做一页证据与需求核对表。
+- **今天询价：** 问三位目标用户是否出现不同需求。`);
+
+  const output = execFileSync(
+    "node",
+    [".github/scripts/validate-publication-content.mjs"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        MODE: "opportunity",
+        TARGET_DATE: "2026-08-07",
+        PAGE_RESPONSE_PATH: pagePath,
+      },
+    }
+  );
+
+  assert.match(output, /::notice title=Publication content validation::/);
+  assert.match(output, /ok=true/);
+});

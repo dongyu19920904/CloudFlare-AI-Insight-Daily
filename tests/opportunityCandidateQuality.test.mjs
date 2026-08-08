@@ -77,6 +77,37 @@ test("strict opportunity assessment rejects media-only product claims", () => {
   );
 });
 
+test("observation fallback keeps a trusted-media change as verification only", () => {
+  const assessment = buildOpportunityCandidateAssessment(
+    {
+      news: [
+        {
+          title: "某 AI 工具发布自动化内容整理能力",
+          description: "可信媒体报道工具新增内容整理与工作流配置能力",
+          source: "36氪",
+          url: "https://www.36kr.com/p/example-observation",
+          published_date: "2026-08-07",
+          details: { content_html: "<p>workflow release content automation</p>" },
+        },
+      ],
+    },
+    undefined,
+    {
+      ...strictOptions,
+      allowObservationFallback: true,
+    }
+  );
+
+  assert.equal(assessment.candidates.length, 1);
+  assert.equal(assessment.candidates[0].observationOnly, true);
+  assert.equal(assessment.candidates[0].confidence, "低");
+  assert.equal(assessment.candidates[0].xianyuToday, "观察");
+  assert.match(
+    assessment.candidates[0].observationReasons.join(" | "),
+    /官方|原项目|实证/
+  );
+});
+
 test("seven-day entity replay blocks the same project even with a new headline", () => {
   const assessment = buildOpportunityCandidateAssessment(
     {

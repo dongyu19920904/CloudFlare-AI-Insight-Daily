@@ -60,6 +60,10 @@ function isAccountOpportunityObservation(markdown) {
   );
 }
 
+function isOpportunityObservation(markdown) {
+  return /今天没有新的差异化商机，不凑数。/.test(String(markdown || ""));
+}
+
 function validateByMode(mode, markdown) {
   const body = stripFrontMatter(markdown);
 
@@ -72,7 +76,10 @@ function validateByMode(mode, markdown) {
   }
 
   if (mode === "opportunity") {
-    return validateOpportunityPublication({ markdown: body });
+    return validateOpportunityPublication({
+      markdown: body,
+      observationMode: isOpportunityObservation(body),
+    });
   }
 
   if (mode === "account-opportunity") {
