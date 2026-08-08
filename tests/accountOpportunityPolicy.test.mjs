@@ -184,6 +184,70 @@ test("domestic comparison stories cannot enter by mentioning an overseas product
   assert.equal(result.stats.observationFallback, 0);
 });
 
+test("account rule labels cannot turn a domestic media story into an overseas candidate", () => {
+  const domesticStory = makeCandidate({
+    id: "claude-account",
+    entityKey: "title:梁文锋 告别价格屠夫",
+    label: "Claude 账号与订阅信号",
+    supportingItems: [
+      {
+        type: "news",
+        title: "梁文锋，告别价格屠夫",
+        description: "DeepSeek 涨价后，用户还能买账吗？",
+        source: "36氪",
+        url: "https://www.36kr.com/p/3928804830804097",
+        evidence: {
+          tier: "trusted-media",
+          isPrimary: false,
+          reason: "媒体线索",
+          independentKey: "36kr.com",
+        },
+      },
+    ],
+  });
+  const scope = assessAccountOpportunityMarketScope(domesticStory);
+  const result = qualifyAccountOpportunityCandidates(
+    [domesticStory],
+    accountOpportunityPlaybook,
+    null,
+    { allowObservationFallback: true }
+  );
+
+  assert.equal(scope.scope, "domestic");
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.stats.rejectedForMarketScope, 1);
+  assert.equal(result.stats.observationFallback, 0);
+});
+
+test("mixed domestic and overseas media stories do not establish an overseas trigger", () => {
+  const mixedStory = makeCandidate({
+    id: "claude-account",
+    entityKey: "title:ai价格变化",
+    label: "Claude 账号与订阅信号",
+    supportingItems: [
+      {
+        type: "news",
+        title: "AI 价格变化",
+        description: "Claude 与 DeepSeek 的价格被放在一起比较",
+        source: "Trusted media",
+        url: "https://example.com/ai-price-comparison",
+        evidence: {
+          tier: "trusted-media",
+          isPrimary: false,
+          reason: "媒体线索",
+          independentKey: "example.com",
+        },
+      },
+    ],
+  });
+
+  const scope = assessAccountOpportunityMarketScope(mixedStory);
+
+  assert.equal(scope.eligible, false);
+  assert.equal(scope.scope, "mixed");
+  assert.match(scope.gaps.join("\n"), /无法确认主实体/);
+});
+
 test("rejected digest omits domestic and unknown products", () => {
   const digest = buildRejectedAccountOpportunityDigest([
     makeCandidate({

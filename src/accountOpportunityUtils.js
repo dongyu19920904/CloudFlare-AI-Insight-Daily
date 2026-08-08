@@ -62,15 +62,12 @@ const DOMESTIC_ACCOUNT_PRODUCT_HOST_SUFFIXES = [
   "baichuan-ai.com",
   "01.ai",
 ];
-const OVERSEAS_ACCOUNT_RULE_IDS = new Set([
-  "gpt-account",
-  "claude-account",
-  "gemini-account",
-]);
 const OVERSEAS_ACCOUNT_PROVIDER_PATTERN =
   /\b(?:openai|chatgpt|gpt|anthropic|claude|sonnet|opus|gemini|google\s+(?:ai|one)|microsoft\s+copilot|github\s+copilot|cursor|windsurf|codeium|perplexity|grok|xai|x\.ai|mistral|midjourney|notion\s+ai|adobe\s+firefly|replit|lovable|meta\s+ai)\b/i;
 const DOMESTIC_ACCOUNT_PROVIDER_PATTERN =
   /\bdeepseek\b|深度求索|豆包|字节跳动|火山引擎|\bminimax\b|海螺\s*ai|\bkimi\b|月之暗面|\bqwen\b|通义千问|阿里云百炼|智谱|\bglm\b|文心一言|百度千帆|腾讯元宝|腾讯混元|\bhunyuan\b|讯飞星火|阶跃星辰|\bstepfun\b|百川智能|商汤日日新|零一万物|\b01\.ai\b/i;
+const DOMESTIC_ACCOUNT_CONTEXT_PATTERN =
+  /国产(?:大模型|模型|AI)|国内(?:大模型|AI\s*产品|AI\s*工具|模型厂商|模型)|中国(?:大模型|AI\s*厂商|AI\s*产品)/i;
 
 export function containsDomesticAccountProduct(value) {
   return DOMESTIC_ACCOUNT_PROVIDER_PATTERN.test(String(value || ""));
@@ -101,6 +98,19 @@ function getCandidateEvidenceText(candidate) {
     .join(" ");
 }
 
+function getCandidateSourceEvidenceText(candidate) {
+  return (candidate?.supportingItems || [])
+    .flatMap((item) => [
+      item?.title,
+      item?.description,
+      item?.plainText,
+      item?.source,
+      item?.url,
+    ])
+    .filter(Boolean)
+    .join(" ");
+}
+
 function matchesHostSuffix(url, suffixes) {
   try {
     const hostname = new URL(String(url || "")).hostname.toLowerCase();
@@ -114,13 +124,13 @@ function matchesHostSuffix(url, suffixes) {
 
 function getProviderMentionScope(text) {
   const normalized = String(text || "");
-  const overseasIndex = normalized.search(OVERSEAS_ACCOUNT_PROVIDER_PATTERN);
-  const domesticIndex = normalized.search(DOMESTIC_ACCOUNT_PROVIDER_PATTERN);
+  const hasOverseasProvider = OVERSEAS_ACCOUNT_PROVIDER_PATTERN.test(normalized);
+  const hasDomesticProvider = DOMESTIC_ACCOUNT_PROVIDER_PATTERN.test(normalized);
+  const hasDomesticContext = DOMESTIC_ACCOUNT_CONTEXT_PATTERN.test(normalized);
 
-  if (domesticIndex >= 0 && (overseasIndex < 0 || domesticIndex <= overseasIndex)) {
-    return "domestic";
-  }
-  if (overseasIndex >= 0) return "overseas";
+  if (hasOverseasProvider && (hasDomesticProvider || hasDomesticContext)) return "mixed";
+  if (hasDomesticProvider || hasDomesticContext) return "domestic";
+  if (hasOverseasProvider) return "overseas";
   return "unknown";
 }
 
@@ -135,18 +145,28 @@ export function assessAccountOpportunityMarketScope(candidate = {}) {
     : isOfficialAccountOpportunityUrl(primaryItem?.url)
       ? "overseas"
       : "unknown";
-  const primaryTextScope = getProviderMentionScope(
-    [primaryItem?.title, primaryItem?.source, candidate?.label]
+  const primaryTitleScope = getProviderMentionScope(
+    [primaryItem?.title, primaryItem?.source]
       .filter(Boolean)
       .join(" ")
   );
-  const aggregateScope = getProviderMentionScope(getCandidateEvidenceText(candidate));
-  const decisiveScope = [entityScope, primaryHostScope, primaryTextScope].find(
+  const primaryEvidenceScope = getProviderMentionScope(
+    [
+      primaryItem?.title,
+      primaryItem?.description,
+      primaryItem?.plainText,
+      primaryItem?.source,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const sourceEvidenceScope = getProviderMentionScope(
+    getCandidateSourceEvidenceText(candidate)
+  );
+  const decisiveScope = [entityScope, primaryHostScope, primaryTitleScope].find(
     (scope) => scope !== "unknown"
   );
-  const scope =
-    decisiveScope ||
-    (OVERSEAS_ACCOUNT_RULE_IDS.has(candidate?.id) ? "overseas" : aggregateScope);
+  const scope = decisiveScope || primaryEvidenceScope || sourceEvidenceScope;
   const eligible = scope === "overseas";
 
   return {
@@ -157,6 +177,8 @@ export function assessAccountOpportunityMarketScope(candidate = {}) {
       : [
           scope === "domestic"
             ? "国内 AI 产品不属于海外账号商机经营范围"
+            : scope === "mixed"
+              ? "来源同时涉及国内外产品，无法确认主实体属于海外账号商机"
             : "未识别出可核验的海外 AI 账号、订阅或开发工具实体",
         ],
   };
