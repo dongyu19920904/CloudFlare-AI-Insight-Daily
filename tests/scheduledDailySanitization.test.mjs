@@ -13,10 +13,26 @@ import {
   normalizeMisleadingDailySourceLabels,
   removeEmptyDailyFunSection,
   removeEmptyDailyTopicSections,
+  removeDailyGenerationMetaNotes,
   removeVolatileDailyImages,
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
+
+test("removeDailyGenerationMetaNotes strips candidate-count commentary", () => {
+  const markdown = `## **🔥 今日焦点 TOP 10**
+
+今日合格 AI 相关素材共 6 条（TOP 候选 4、5 属泛生活内容，TOP 候选 7 属商业投资语录），实际只能输出 6 条。
+
+### 1. Claude 增加新能力
+
+**功能更新了。** [官方说明列出变化](https://example.com/claude)。`;
+
+  const normalized = removeDailyGenerationMetaNotes(markdown);
+
+  assert.doesNotMatch(normalized, /今日合格|TOP 候选|实际只能输出/);
+  assert.match(normalized, /^### 1\. Claude 增加新能力$/m);
+});
 
 test("normalizeDailyTopEvidenceLinkLabels turns source tags into contextual fact links", () => {
   const markdown = `## **🔥 今日焦点 TOP 2**

@@ -275,6 +275,8 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `另有 ${supplementalTopBackupItems.length} 条去重备用素材；其中至少使用 ${Math.min(requiredTopBackupItems, supplementalTopBackupItems.length)} 条补足去重后的 TOP 缺口，其余只在主候选发生同源拆分或重复时替换。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
+    `如果某个 TOP 候选明显不与 AI 直接相关，先用去重备用素材替换；备用不足时，可把一个尚未使用的专用区合格素材提升到今日焦点，并从原专用栏目删除。TOP ${DAILY_TOP_TARGET} 优先于可选栏目的条数。`,
+    "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
   ].join("\n");
   const numberedTopCandidates = allocation.topItems
     .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))

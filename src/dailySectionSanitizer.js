@@ -169,12 +169,24 @@ export function removeVolatileDailyImages(markdown) {
     .trim();
 }
 
-export function normalizeDailyOutputPresentation(markdown) {
-  return normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
-    normalizeMisleadingDailySourceLabels(
-      removeVolatileDailyImages(markdown)
+export function removeDailyGenerationMetaNotes(markdown) {
+  return String(markdown || "")
+    .replace(
+      /^\s*(?:今日|本次)?(?:合格\s*)?AI\s*相关素材共\s*\d+\s*条[^\r\n]*(?:实际只能输出|只能输出|最终输出)\s*\d+\s*条[^\r\n]*\r?\n?/gim,
+      ""
     )
-  ));
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function normalizeDailyOutputPresentation(markdown) {
+  return removeDailyGenerationMetaNotes(
+    normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
+      normalizeMisleadingDailySourceLabels(
+        removeVolatileDailyImages(markdown)
+      )
+    ))
+  );
 }
 
 function isRepeatedSectionStory(leftTitle, rightTitle) {
