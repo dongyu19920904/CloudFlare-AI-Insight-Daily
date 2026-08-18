@@ -15,7 +15,7 @@ test("daily prompt uses the V3 topic structure without duplicating the summary",
   assert.match(prompt, /## \*\*◉ 社媒精选\*\*/);
   assert.match(prompt, /至少输出上面五个专业栏目中的三个/);
   assert.match(prompt, /对应栏目不得只写 1 条/);
-  assert.match(prompt, /约 2000-2800 个中文字符/);
+  assert.match(prompt, /约 2200-3000 个中文字符/);
   assert.match(prompt, /不要生成“今日摘要”“3分钟读懂今天”/);
   assert.doesNotMatch(prompt, /## \*\*📌 值得关注\*\*/);
   assert.doesNotMatch(prompt, /## \*\*🔮 AI趋势预测/);
@@ -34,10 +34,12 @@ test("daily prompt preserves date tolerance, dedupe, AI relevance, and GitHub sa
   assert.match(prompt, /今日焦点最多放 1 个 GitHub 项目/);
   assert.match(prompt, /今日焦点和开源栏目中只要链接到 GitHub 仓库/);
   assert.match(prompt, /非日榜仓库即使当天被报道，也不能进入今日焦点/);
-  assert.match(prompt, /先服从输入开头的“栏目候选预算”/);
+  assert.match(prompt, /严格服从输入开头的“栏目候选预算”/);
   assert.match(prompt, /先各预留 2 条给开源 TOP 和社媒精选/);
   assert.match(prompt, /社媒原帖数量不得超过“栏目候选预算”给出的上限/);
-  assert.match(prompt, /主候选 -> 去重备用 -> 尚未使用的专用区素材/);
+  assert.match(prompt, /主候选 -> 去重备用/);
+  assert.match(prompt, /专用区素材不得为了凑满 TOP 回流/);
+  assert.doesNotMatch(prompt, /主候选 -> 去重备用 -> 尚未使用的专用区素材/);
   assert.match(prompt, /候选编号、合格数量、淘汰原因和补位过程属于内部信息/);
 });
 
@@ -85,7 +87,7 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /链接文案控制在 8-24 个显示字符/);
   assert.match(prompt, /不能只写“实测推文”/);
   assert.match(prompt, /媒体链接只能写成“报道\/整理”/);
-  assert.match(prompt, /使用 4 个完整短句/);
+  assert.match(prompt, /使用 4-5 个完整短句/);
   assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
   assert.match(prompt, /调用成本降了/);
   assert.match(prompt, /\[三档模型都下调了调用费率\]\(URL\)/);

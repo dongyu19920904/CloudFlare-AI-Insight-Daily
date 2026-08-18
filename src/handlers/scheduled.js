@@ -82,6 +82,7 @@ import {
 } from '../opportunityAivoraLinkPolicy.js';
 import { buildOpportunityEvidenceEnrichment } from '../opportunityEvidence.js';
 import {
+    enforceDailyTopGithubLimit,
     ensureUniqueDailyTopSources,
     isUsableDailyMediaUrl,
     normalizeDailyOutputPresentation,
@@ -714,7 +715,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 和 \`## **❓ 相关问题**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条`,
         "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
         `- 输入有 ${DAILY_OPEN_SOURCE_MIN} 个以上合格 GitHub 日榜项目或 ${DAILY_SOCIAL_MIN} 条以上合格社媒原帖时，对应栏目至少输出 ${DAILY_OPEN_SOURCE_MIN} 条；不能只挑 1 条敷衍`,
-        `- 修复清单出现 below target 时必须解决：按“TOP 主候选 -> 去重备用 -> 尚未使用的专用区合格素材”补足 ${DAILY_TOP_TARGET} 条；专用区素材一旦提升到 TOP，就从原栏目删除，不能重复使用，也不能原样保留警告`,
+        `- 修复清单出现 below target 时，按“TOP 主候选 -> 去重备用”补足 ${DAILY_TOP_TARGET} 条；专用区素材不得挪回今日焦点，主候选和备用仍不足时按实际强素材数量输出`,
         "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
@@ -722,7 +723,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 来源名称写在链接外，例如“据 AIBase 报道”；链接只挂在 8-24 字的核心事实上，例如“[API 价格将在下周上调](URL)”。禁止把整句、来源名称或“报道显示”一起做成链接",
         "- 链接文案要说明点开能验证什么，不能写“原文链接”“点击查看”“了解更多”；输入里有官方公告或项目主页时优先使用，不得编造 URL",
         "- 同一个 Source URL 在今日焦点最多使用一次；一篇聚合稿也只能生成一条，绝不能拆成多条新闻。若有重复，保留最重要的一条并用“今日焦点去重备用素材”补足条数",
-        "- 每条正文写 4 个短句，每句尽量不超过 45 个可见字符，总长约 90-125 字；一个句子只讲一件事，不用分号串联信息",
+        "- 每条正文写 4-5 个短句，每句尽量不超过 45 个可见字符，总长约 120-170 字；依次交代结论、来源事实、关键数字或限制、读者影响，不用空话补字数",
         "- 每条正文合计用 `**...**` 标出 2-3 处；除开头黄色短结论外，其余重点只标产品名、关键能力、精确数字或限制，每处 2-12 个字符",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
@@ -740,7 +741,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "",
         "输出前做最后一次逐项检查：",
         duplicateSourceChecklist,
-        `- 今日焦点必须保持 ${DAILY_TOP_TARGET} 条，TOP 候选和去重备用候选都各自最多使用一次`,
+        `- 主候选和去重备用合计充足时，今日焦点必须保持 ${DAILY_TOP_TARGET} 条；两者各自最多使用一次，专用区素材不得回流凑数`,
         "- 来源名称必须留在链接外；链接只包住核心事实，不得使用“AIBase 对这项消息的报道”一类来源标签",
         "- 每条正文必须有 2-3 个短高亮；长句拆成短句，不得通过删除事实来缩短",
         "检查完成后仍然只输出 Markdown 成稿，不要附检查报告。",
@@ -1455,6 +1456,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = ensureUniqueDailyTopSources(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = enforceDailyTopGithubLimit(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyTopicSections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = removeEmptyDailyFunSection(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = normalizeDailyOutputPresentation(dailySummaryMarkdownContent);
@@ -1528,6 +1530,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = ensureUniqueDailyTopSources(repairedDailySummaryMarkdownContent);
+        repairedDailySummaryMarkdownContent = enforceDailyTopGithubLimit(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyTopicSections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = removeEmptyDailyFunSection(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = normalizeDailyOutputPresentation(repairedDailySummaryMarkdownContent);

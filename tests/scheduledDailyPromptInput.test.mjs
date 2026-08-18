@@ -86,7 +86,8 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   assert.match(promptInput, /社媒精选专用候选素材/);
   assert.match(promptInput, /产品与行业栏目专用候选素材/);
   assert.match(promptInput, /只准写入后面的开源专用区/);
-  assert.match(promptInput, /尚未使用的专用区合格素材提升到今日焦点/);
+  assert.match(promptInput, /不得挪用专用区素材凑数/);
+  assert.doesNotMatch(promptInput, /尚未使用的专用区合格素材提升到今日焦点/);
   assert.match(promptInput, /候选编号、筛选数量、淘汰原因和补位过程/);
   const selectedItems = [
     project(1), project(2), project(3),

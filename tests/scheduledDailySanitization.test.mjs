@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DAILY_AIVORA_FAQ_CTA,
+  enforceDailyTopGithubLimit,
   ensureUniqueDailyTopSources,
   isLowValueDailyMediaUrl,
   isVolatileDailyMediaUrl,
@@ -109,6 +110,36 @@ test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independen
   assert.match(normalized, /^### 3\. 新工具加入批处理$/m);
   assert.doesNotMatch(normalized, /^### 新工具加入批处理$/m);
   assert.match(normalized, /^### 企业开始招聘 AI 编辑$/m);
+});
+
+test("enforceDailyTopGithubLimit removes extra repositories without blocking the daily", () => {
+  const markdown = `## **🔥 今日焦点 TOP 3**
+
+### 1. 第一个 GitHub 日榜项目
+
+**项目热度上涨。** [第一个项目](https://github.com/example/first)新增关注。
+
+### 2. 第二个 GitHub 日榜项目
+
+**另一个项目也上涨。** [第二个项目](https://github.com/example/second)进入日榜。
+
+### 3. 官方模型更新
+
+**模型能力更新。** [官方公告](https://example.com/model)列出变化。
+
+## **❓ 相关问题**
+
+### 模型更新后怎么用？
+
+以官方公告为准。`;
+
+  const normalized = enforceDailyTopGithubLimit(markdown);
+
+  assert.match(normalized, /^## \*\*🔥 今日焦点 TOP 2\*\*$/m);
+  assert.match(normalized, /^### 1\. 第一个 GitHub 日榜项目$/m);
+  assert.match(normalized, /^### 2\. 官方模型更新$/m);
+  assert.doesNotMatch(normalized, /第二个 GitHub 日榜项目|example\/second/);
+  assert.match(normalized, /^## \*\*❓ 相关问题\*\*$/m);
 });
 
 test("normalizeDailyFaqAivoraCta preserves the answer and replaces misleading store copy", () => {

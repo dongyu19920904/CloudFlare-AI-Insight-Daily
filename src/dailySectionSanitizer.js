@@ -410,6 +410,48 @@ export function ensureUniqueDailyTopSources(markdown) {
   return output.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function isDailyGithubRepositoryUrl(url) {
+  return /^github\.com\/[^/\s]+\/[^/\s]+$/i.test(normalizeSectionUrl(url));
+}
+
+export function enforceDailyTopGithubLimit(markdown, maxProjects = 1) {
+  const content = String(markdown || "");
+  const topMatch = content.match(/^##\s*\*{0,2}.*TOP.*\*{0,2}\s*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im);
+  if (!topMatch) return content;
+
+  const topSection = topMatch[0];
+  const topHeading = topSection.match(/^##[^\r\n]*/)?.[0] || "";
+  const topItems = extractNumberedDailyItems(topSection);
+  const allowedProjects = Math.max(0, Number(maxProjects) || 0);
+  let projectCount = 0;
+  let removedCount = 0;
+  const keptItems = [];
+
+  for (const item of topItems) {
+    if (isDailyGithubRepositoryUrl(item.url)) {
+      projectCount += 1;
+      if (projectCount > allowedProjects) {
+        removedCount += 1;
+        continue;
+      }
+    }
+    keptItems.push(item);
+  }
+
+  if (removedCount === 0) return content;
+
+  const rebuiltHeading = topHeading.replace(/\bTOP\s+\d+\b/i, `TOP ${keptItems.length}`);
+  const rebuiltBlocks = keptItems.map((item, index) =>
+    item.block.trim().replace(/^###\s+\d+\./, `### ${index + 1}.`)
+  );
+  const rebuiltSection = `${rebuiltHeading}\n\n${rebuiltBlocks.join("\n\n")}`.trim();
+
+  return content
+    .replace(topSection, rebuiltSection)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function removeEmptyDailyFunSection(markdown) {
   return String(markdown || "")
     .replace(
