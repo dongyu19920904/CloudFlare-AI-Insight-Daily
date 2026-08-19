@@ -105,6 +105,18 @@ test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels"
   assert.match(normalized, /\[Gemini 免费提供完整 SAT 模拟考试\]\(https:\/\/example\.com\/4\)/);
 });
 
+test("normalizeDailyTopEvidenceLinkLabels removes bold and shortens overlong fact links", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 工业富联利润率只有 4.26%
+**利润主要留在上游。** [工业富联 2026 年上半年营收 5578 亿元，净利率仅 **4.26%**](https://example.com/report)，组装环节利润较薄。`;
+
+  const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
+
+  assert.match(normalized, /\[工业富联利润率只有 4\.26%\]\(https:\/\/example\.com\/report\)/);
+  assert.doesNotMatch(normalized, /\[[^\]]*\*\*[^\]]*\]\(/);
+});
+
 test("ensureDailyTopHighlightDensity adds factual highlights without styling links", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
 
@@ -186,6 +198,18 @@ test("ensureDailyTopHighlightDensity keeps framework names and Chinese words int
   assert.match(normalized, /\*\*有想法、有素材\*\*/);
   assert.match(normalized, /\*\*不需要专业剪辑\*\*就能出成品/);
   assert.doesNotMatch(normalized, /\*\*[^*]*出成\*\*品/);
+});
+
+test("ensureDailyTopHighlightDensity can emphasize account requirements and UI entries", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 豆包手机可以远程操控电脑
+**手机能跨国指挥电脑 Agent。** [实测展示了完整操作过程](https://example.com/doubao)。手机和电脑登录同一账号后，在"工作任务"入口即可连接电脑端。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+
+  assert.match(normalized, /登录\*\*同一账号\*\*后/);
+  assert.match(normalized, /"\*\*工作任务\*\*"/);
 });
 
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {

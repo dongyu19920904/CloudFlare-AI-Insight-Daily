@@ -141,15 +141,21 @@ export function normalizeDailyTopEvidenceLinkLabels(markdown) {
 
   for (const item of extractNumberedDailyItems(output)) {
     const sourceLink = item.sourceLink;
-    if (!sourceLink || !isDailySourceTagLinkLabel(sourceLink.title)) continue;
+    if (!sourceLink) continue;
 
     const originalLink = `[${sourceLink.title}](${sourceLink.url})`;
     const factLabel = String(item.title || "").replace(/\s+/g, " ").trim();
     if (!factLabel || !item.block.includes(originalLink)) continue;
+    const cleanLabel = String(sourceLink.title || "").replace(/\*\*/g, "").trim();
+    const shouldUseFactLabel = (
+      isDailySourceTagLinkLabel(cleanLabel) ||
+      countDailyHighlightCharacters(cleanLabel) > 24
+    );
+    if (!shouldUseFactLabel && cleanLabel === sourceLink.title) continue;
 
     const normalizedBlock = item.block.replace(
       originalLink,
-      `[${factLabel}](${sourceLink.url})`
+      `[${shouldUseFactLabel ? factLabel : cleanLabel}](${sourceLink.url})`
     );
     output = output.replace(item.block, normalizedBlock);
   }
@@ -230,6 +236,8 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
     /(?:一个|一种|一项|首个|首次|同样|现有|当前|主要|关键|真实|独立|开放|完整|原生|结构化)(?:反例|漏洞|限制|风险|结果|能力|接口|范围|成本|费用|利润|反馈|定价|证明)/g,
     3
   );
+  addMatches(/(?:同一|相同)(?:账号|账户|仓库|设备|网络|环境|版本)/g, 3);
+  addMatches(/(?<=")[^"\r\n]{2,12}(?=")/g, 3);
   addMatches(/有[\u3400-\u9fff]{1,4}、有[\u3400-\u9fff]{1,4}/g, 3);
   addMatches(
     /(?:\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月\s*(?:到|至|-)\s*\d{1,2}\s*月)/g,
