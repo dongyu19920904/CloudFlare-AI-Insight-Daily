@@ -61,7 +61,11 @@ function isGenericSourceOnlyLinkLabel(label) {
     .toLowerCase();
   if (!compact) return true;
 
-  return /^(?:(?:aibase|36氪|机器之心|量子位|新智元|晚点|官方|作者|开发者|媒体|频道)?(?:的)?(?:对这项消息的)?(?:(?:整理|转发)(?:的)?|独家|实测)?(?:原文|来源|详情|报道|公告|通知|推文|原帖|分析帖|频道消息|日报|项目主页|项目仓库|价格表|官方文档|官方页面)(?:显示|称|指出)?|点击查看|了解更多)$/i.test(compact);
+  return (
+    /^(?:(?:aibase|36氪|机器之心|量子位|新智元|晚点|官方|作者|开发者|媒体|频道)?(?:的)?(?:对这项消息的)?(?:(?:整理|转发)(?:的)?|独家|实测)?(?:原文|来源|详情|报道|公告|通知|推文|原帖|分析帖|频道消息|日报|项目主页|项目仓库|价格表|官方文档|官方页面)(?:显示|称|指出)?|点击查看|了解更多)$/i.test(compact) ||
+    /^[\u3400-\u9fffA-Za-z0-9._-]{1,16}(?:整理|分享|发布|转发|实测|展示)(?:的)?(?:技术细节|实测记录|截图推文|截图|视频|推文|帖子|内容|介绍|消息|分析|演示)$/i.test(compact) ||
+    /^[\u3400-\u9fffA-Za-z0-9._-]{1,16}(?:的)?(?:技术细节|实测记录|截图推文|频道消息|报道详情)$/i.test(compact)
+  );
 }
 
 function isAwkwardDailyFactLinkLabel(label) {
@@ -94,9 +98,9 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
     if (item.bodyLinks.some((link) => isAwkwardDailyFactLinkLabel(link.title))) {
       awkwardFactLinkCount += 1;
     }
-    if (boldSpans.length < 2) underHighlightedItemCount += 1;
+    if (boldSpans.length < 3) underHighlightedItemCount += 1;
     if (
-      boldSpans.length > 3 ||
+      boldSpans.length > 4 ||
       (visibleBodyLength > 0 && highlightedLength / visibleBodyLength > 0.25)
     ) {
       overHighlightedItemCount += 1;

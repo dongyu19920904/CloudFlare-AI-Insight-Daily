@@ -83,8 +83,11 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /优先链接官方来源/);
   assert.match(prompt, /二次创作的关键结论句/);
   assert.match(prompt, /6-18 字的.*黄色短结论/);
-  assert.match(prompt, /每条通常保留 2-3 处黄色重点/);
+  assert.match(prompt, /今日焦点每条再从来源直接支持的数字、关键能力、限制或反常结果中选 2 个不同重点/);
+  assert.match(prompt, /通常恰好保留 3 处黄色/);
   assert.match(prompt, /链接文案控制在 8-24 个显示字符/);
+  assert.match(prompt, /宝玉在推文中介绍/);
+  assert.match(prompt, /禁止把“宝玉整理的技术细节”/);
   assert.match(prompt, /不能只写“实测推文”/);
   assert.match(prompt, /媒体链接只能写成“报道\/整理”/);
   assert.match(prompt, /使用 4-5 个完整短句/);

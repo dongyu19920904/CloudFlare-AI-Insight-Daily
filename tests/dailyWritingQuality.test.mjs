@@ -48,13 +48,13 @@ test("daily presentation audit flags generic source labels, sparse copy, and wea
   assert.match(warnings.join("\n"), /too sparse for quick reading/);
 });
 
-test("daily presentation audit accepts natural fact links and two concise highlights", () => {
+test("daily presentation audit accepts natural fact links and three concise highlights", () => {
   const markdown = `
 ## **🔥 今日焦点 TOP 10**
 
 ### 1. 模型开始主动回应画面变化
 
-**模型会主动开口。** 开发者的演示显示，[画面状态变化会直接触发模型回应](https://x.com/dev/status/1)。它还能识别页面里的关键操作。首轮测试覆盖了 **三类任务**。演示目前只证明了单次操作，稳定性仍要另测。今天可以先拿重复表单做一次小范围测试。
+**模型会主动开口。** 开发者的演示显示，[画面状态变化会直接触发模型回应](https://x.com/dev/status/1)。它还能识别页面里的 **关键操作**。首轮测试覆盖了 **三类任务**。演示目前只证明了单次操作，稳定性仍要另测。今天可以先拿重复表单做一次小范围测试。
 `;
 
   assert.deepEqual(analyzeDailyPresentationQuality(markdown), {
@@ -66,6 +66,22 @@ test("daily presentation audit accepts natural fact links and two concise highli
     sparseItemCount: 0,
   });
   assert.deepEqual(collectDailyWritingStyleWarnings(markdown), []);
+});
+
+test("daily presentation audit flags author-attribution-only link labels", () => {
+  const markdown = `
+## **🔥 今日焦点 TOP 10**
+
+### 1. Cursor 推出代码托管平台 Origin
+
+**Origin 正式上线。** [宝玉整理的技术细节](https://x.com/dev/status/2)显示，单仓库达到每秒 **22.6 次提交**，全球同步低于 **400 毫秒**。多 Agent 团队可以先用测试仓库验证。
+`;
+
+  const stats = analyzeDailyPresentationQuality(markdown);
+  const warnings = collectDailyWritingStyleWarnings(markdown);
+
+  assert.equal(stats.genericSourceLinkCount, 1);
+  assert.match(warnings.join("\n"), /generic source-only link labels/);
 });
 
 test("daily presentation audit flags source-led and overlong fact links", () => {

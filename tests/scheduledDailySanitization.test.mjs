@@ -77,6 +77,28 @@ test("normalizeDailyTopEvidenceLinkLabels catches short source-tag variants", ()
   assert.match(normalized, /\[跑分差距来自论文原表\]\(https:\/\/example\.com\/4\)/);
 });
 
+test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels", () => {
+  const markdown = `## **🔥 今日焦点 TOP 3**
+
+### 1. Cursor 推出代码托管平台 Origin
+**平台已经上线。** [宝玉整理的技术细节](https://example.com/1)列出性能指标。
+
+### 2. 豆包支持手机遥控电脑 Agent
+**远程任务能跑了。** [宝玉的实测记录](https://example.com/2)展示操作路径。
+
+### 3. 快手校招新增 AI 能力栏
+**招聘要求变化了。** [Gorden Sun 的截图推文](https://example.com/3)展示新字段。`;
+
+  const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
+
+  for (const label of ["宝玉整理的技术细节", "宝玉的实测记录", "Gorden Sun 的截图推文"]) {
+    assert.doesNotMatch(normalized, new RegExp(`\\[${label}\\]`));
+  }
+  assert.match(normalized, /\[Cursor 推出代码托管平台 Origin\]\(https:\/\/example\.com\/1\)/);
+  assert.match(normalized, /\[豆包支持手机遥控电脑 Agent\]\(https:\/\/example\.com\/2\)/);
+  assert.match(normalized, /\[快手校招新增 AI 能力栏\]\(https:\/\/example\.com\/3\)/);
+});
+
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
 
