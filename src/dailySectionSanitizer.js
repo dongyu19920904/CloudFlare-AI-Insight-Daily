@@ -130,6 +130,7 @@ function isDailySourceTagLinkLabel(label) {
   return (
     /^(?:AIBase对这项消息的报道|实测录屏帖|独家报道|实测分析帖|技术拆解帖|转发的评测分析|频道整理的消息|频道整理的观察|安装实测帖|点评帖|转发分析帖|官方公告|官方说明|官方页面|官方文档|项目主页|项目仓库)$/i.test(compact) ||
     (compact.length <= 12 && /(?:帖|推文|报道|消息|观察|分析|录屏|公告|说明|页面|文档|主页|仓库)$/i.test(compact)) ||
+    /^[\u3400-\u9fffA-Za-z0-9._-]{1,20}(?:官方)?(?:推文|帖子|公告|页面|文档|报道)(?:显示|宣布|介绍|说明|称|指出)$/i.test(compact) ||
     /^[\u3400-\u9fffA-Za-z0-9._-]{1,16}(?:整理|分享|发布|转发|实测|展示)(?:的)?(?:技术细节|实测记录|截图推文|截图|视频|推文|帖子|内容|介绍|消息|分析|演示)$/i.test(compact) ||
     /^[\u3400-\u9fffA-Za-z0-9._-]{1,16}(?:的)?(?:技术细节|实测记录|截图推文|频道消息|报道详情)$/i.test(compact)
   );
@@ -215,14 +216,24 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
     /(?:约|近|超|超过|低于|高于|最高|至少|仅)?\s*\d+(?:\.\d+)?\s*(?:%|％|万|亿|千|百|GB|TB|MB|毫秒|秒|分钟|小时|个月|次|项|类|家|颗(?:星)?|Stars?|Star|吉瓦|GW|美元|元|倍|分|个)/gi,
     0
   );
-  addMatches(/\b[A-Z]{2,}(?:\s*[、/]\s*[A-Z]{2,})+\b/g, 1);
+  addMatches(/(?:MITRE\s+ATT&CK|NIST\s+CSF\s+\d(?:\.\d+)?)/gi, 1);
+  addMatches(/(?<![A-Za-z0-9&])\b[A-Z]{2,}(?:\s*[、/]\s*[A-Z]{2,})+\b/g, 1);
   addMatches(
-    /(?:无需|不需要|允许|免费|本地|远程|自动|即时|立即|无缝|严格|穷举|修复|降低|提高|重置|覆盖|收录|统一|推翻|找到|干扰|策略性|支持|开放|上线|发布)[\u3400-\u9fff]{1,8}/g,
+    /(?:无需|不需要)[\u3400-\u9fff]{1,6}(?=就|也|即可|便|，|。|；)/g,
     2
   );
   addMatches(
-    /(?:\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月\s*(?:到|至|-)\s*\d{1,2}\s*月)/g,
+    /(?:允许|免费|本地|远程|自动|即时|立即|无缝|严格|穷举|修复|降低|提高|重置|覆盖|收录|统一|推翻|找到|干扰|策略性|支持|开放|上线|发布)[\u3400-\u9fff]{1,8}(?=[，。；、：:的而并与或就可尚])/g,
+    2
+  );
+  addMatches(
+    /(?:一个|一种|一项|首个|首次|同样|现有|当前|主要|关键|真实|独立|开放|完整|原生|结构化)(?:反例|漏洞|限制|风险|结果|能力|接口|范围|成本|费用|利润|反馈|定价|证明)/g,
     3
+  );
+  addMatches(/有[\u3400-\u9fff]{1,4}、有[\u3400-\u9fff]{1,4}/g, 3);
+  addMatches(
+    /(?:\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月\s*(?:到|至|-)\s*\d{1,2}\s*月)/g,
+    4
   );
 
   const titleTerms = [
@@ -235,7 +246,7 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
 
   for (const term of titleTerms) {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    addMatches(new RegExp(escaped, "gi"), 4);
+    addMatches(new RegExp(escaped, "gi"), 5);
   }
 
   return candidates.sort((left, right) =>

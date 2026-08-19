@@ -80,7 +80,7 @@ test("normalizeDailyTopEvidenceLinkLabels catches short source-tag variants", ()
 });
 
 test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels", () => {
-  const markdown = `## **🔥 今日焦点 TOP 3**
+  const markdown = `## **🔥 今日焦点 TOP 4**
 
 ### 1. Cursor 推出代码托管平台 Origin
 **平台已经上线。** [宝玉整理的技术细节](https://example.com/1)列出性能指标。
@@ -89,7 +89,10 @@ test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels"
 **远程任务能跑了。** [宝玉的实测记录](https://example.com/2)展示操作路径。
 
 ### 3. 快手校招新增 AI 能力栏
-**招聘要求变化了。** [Gorden Sun 的截图推文](https://example.com/3)展示新字段。`;
+**招聘要求变化了。** [Gorden Sun 的截图推文](https://example.com/3)展示新字段。
+
+### 4. Gemini 免费提供完整 SAT 模拟考试
+**完整模拟题已经开放。** [Google Gemini 官方推文显示](https://example.com/4)，用户可以直接开始考试。`;
 
   const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
 
@@ -99,6 +102,7 @@ test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels"
   assert.match(normalized, /\[Cursor 推出代码托管平台 Origin\]\(https:\/\/example\.com\/1\)/);
   assert.match(normalized, /\[豆包支持手机遥控电脑 Agent\]\(https:\/\/example\.com\/2\)/);
   assert.match(normalized, /\[快手校招新增 AI 能力栏\]\(https:\/\/example\.com\/3\)/);
+  assert.match(normalized, /\[Gemini 免费提供完整 SAT 模拟考试\]\(https:\/\/example\.com\/4\)/);
 });
 
 test("ensureDailyTopHighlightDensity adds factual highlights without styling links", () => {
@@ -164,6 +168,24 @@ test("ensureDailyTopHighlightDensity replaces low-value emotional highlights wit
   assert.doesNotMatch(normalized, /\*\*松了一口气\*\*/);
   assert.match(normalized, /\*\*严格证明\*\*/);
   assert.equal((normalized.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 4);
+});
+
+test("ensureDailyTopHighlightDensity keeps framework names and Chinese words intact", () => {
+  const markdown = `## **🔥 今日焦点 TOP 2**
+
+### 1. AI 安全技能库覆盖主流框架
+**技能库已经成形。** [项目映射了六大安全框架](https://example.com/security)，涵盖 MITRE ATT&CK、NIST CSF 2.0，覆盖 **29 个安全领域**。
+
+### 2. AI 视频工具降低科普动画门槛
+**普通用户也能做科普动画。** [演示展示了完整成片](https://example.com/video)。有想法、有素材，不需要专业剪辑就能出成品。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+
+  assert.match(normalized, /\*\*MITRE ATT&CK\*\*/);
+  assert.doesNotMatch(normalized, /ATT&\*\*CK/);
+  assert.match(normalized, /\*\*有想法、有素材\*\*/);
+  assert.match(normalized, /\*\*不需要专业剪辑\*\*就能出成品/);
+  assert.doesNotMatch(normalized, /\*\*[^*]*出成\*\*品/);
 });
 
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {

@@ -84,6 +84,20 @@ test("daily presentation audit flags author-attribution-only link labels", () =>
   assert.match(warnings.join("\n"), /generic source-only link labels/);
 });
 
+test("daily presentation audit flags official-post labels that do not state a fact", () => {
+  const markdown = `
+## **🔥 今日焦点 TOP 10**
+
+### 1. Gemini 免费提供完整 SAT 模拟考试
+
+**模拟题已经开放。** [Google Gemini 官方推文显示](https://x.com/gemini/status/1)，所有用户都能参加 **完整考试**。题目经过 **严格审核**，完成后会给出反馈。
+`;
+
+  const stats = analyzeDailyPresentationQuality(markdown);
+
+  assert.equal(stats.genericSourceLinkCount, 1);
+});
+
 test("daily presentation audit flags source-led and overlong fact links", () => {
   const markdown = `
 ## **🔥 今日焦点 TOP 10**
