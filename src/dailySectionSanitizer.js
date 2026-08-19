@@ -156,6 +156,141 @@ export function normalizeDailyTopEvidenceLinkLabels(markdown) {
   return output;
 }
 
+function countDailyHighlightCharacters(value) {
+  return (String(value || "").match(/[A-Za-z0-9\u3400-\u9fff]/g) || []).length;
+}
+
+function collectDailyHighlightProtectedRanges(body) {
+  return [...String(body || "").matchAll(
+    /\*\*[^*\r\n]+\*\*|!\[[^\]]*\]\([^\r\n]*?\)|\[[^\]]+\]\([^\r\n]*?\)|`[^`\r\n]+`|<[^>]+>/g
+  )].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+function overlapsDailyHighlightRange(start, length, ranges) {
+  const end = start + length;
+  return ranges.some((range) => start < range.end && end > range.start);
+}
+
+function isLowValueDailyHighlight(text) {
+  const compact = String(text || "")
+    .normalize("NFKC")
+    .replace(/[\s。.!！?？、“”‘’]+/g, "");
+
+  return (
+    /^(?:宝玉|dotey|作者|博主|网友|开发者|官方|媒体|频道)$/i.test(compact) ||
+    /^(?:松了一口气|值得关注|值得注意|意义重大|未来可期|很有意思|太离谱了?|令人兴奋)$/i.test(compact)
+  );
+}
+
+function collectDailyHighlightCandidates(body, title, protectedRanges) {
+  const candidates = [];
+  const seen = new Set();
+
+  const addMatches = (pattern, priority) => {
+    for (const match of String(body || "").matchAll(pattern)) {
+      const leadingWhitespace = match[0].search(/\S/);
+      const text = match[0].trim();
+      const index = match.index + Math.max(0, leadingWhitespace);
+      const visibleLength = countDailyHighlightCharacters(text);
+      const key = text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+      if (
+        !text ||
+        visibleLength < 2 ||
+        visibleLength > 16 ||
+        /(?:从|的|了|为|与|和|及|并|可|在|向|对|把|将)$/.test(text) ||
+        seen.has(key) ||
+        overlapsDailyHighlightRange(index, text.length, protectedRanges)
+      ) {
+        continue;
+      }
+      seen.add(key);
+      candidates.push({ index, text, priority, visibleLength });
+    }
+  };
+
+  addMatches(
+    /(?:约|近|超|超过|低于|高于|最高|至少|仅)?\s*\d+(?:\.\d+)?\s*(?:%|％|万|亿|千|百|GB|TB|MB|毫秒|秒|分钟|小时|个月|次|项|类|家|颗(?:星)?|Stars?|Star|吉瓦|GW|美元|元|倍|分|个)/gi,
+    0
+  );
+  addMatches(/\b[A-Z]{2,}(?:\s*[、/]\s*[A-Z]{2,})+\b/g, 1);
+  addMatches(
+    /(?:无需|不需要|允许|免费|本地|远程|自动|即时|立即|无缝|严格|穷举|修复|降低|提高|重置|覆盖|收录|统一|推翻|找到|干扰|策略性|支持|开放|上线|发布)[\u3400-\u9fff]{1,8}/g,
+    2
+  );
+  addMatches(
+    /(?:\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月\s*(?:到|至|-)\s*\d{1,2}\s*月)/g,
+    3
+  );
+
+  const titleTerms = [
+    ...(String(title || "").match(/[A-Za-z][A-Za-z0-9.+/-]{2,}/g) || []),
+  ].filter((term) => !/^(?:agent|stars?|top)$/i.test(term));
+  const chineseEntity = String(title || "").match(
+    /^([\u3400-\u9fff]{2,8}?)(?=手机|推出|发布|上线|新增|支持|开放|登上|反思|免费|可|用)/
+  )?.[1];
+  if (chineseEntity) titleTerms.push(chineseEntity);
+
+  for (const term of titleTerms) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    addMatches(new RegExp(escaped, "gi"), 4);
+  }
+
+  return candidates.sort((left, right) =>
+    left.priority - right.priority ||
+    (left.priority === 2 ? left.visibleLength - right.visibleLength : left.index - right.index)
+  );
+}
+
+export function ensureDailyTopHighlightDensity(markdown, targetCount = 3) {
+  let output = String(markdown || "");
+  const target = Math.max(0, Number(targetCount) || 0);
+
+  for (const item of extractNumberedDailyItems(output)) {
+    let normalizedBody = item.body.replace(
+      /\*\*([^*\r\n]+)\*\*/g,
+      (fullMatch, text) => isLowValueDailyHighlight(text) ? text : fullMatch
+    );
+    const existingHighlights = [...normalizedBody.matchAll(/\*\*([^*\r\n]+)\*\*/g)];
+    let needed = target - existingHighlights.length;
+    if (needed <= 0) {
+      if (normalizedBody !== item.body) {
+        output = output.replace(item.block, item.block.replace(item.body, normalizedBody));
+      }
+      continue;
+    }
+
+    const protectedRanges = collectDailyHighlightProtectedRanges(normalizedBody);
+    const selected = [];
+    for (const candidate of collectDailyHighlightCandidates(normalizedBody, item.title, protectedRanges)) {
+      if (needed <= 0) break;
+      if (selected.some((entry) =>
+        candidate.index < entry.index + entry.text.length &&
+        candidate.index + candidate.text.length > entry.index
+      )) {
+        continue;
+      }
+      selected.push(candidate);
+      needed -= 1;
+    }
+
+    if (selected.length === 0) {
+      if (normalizedBody !== item.body) {
+        output = output.replace(item.block, item.block.replace(item.body, normalizedBody));
+      }
+      continue;
+    }
+    for (const candidate of selected.sort((left, right) => right.index - left.index)) {
+      normalizedBody = `${normalizedBody.slice(0, candidate.index)}**${candidate.text}**${normalizedBody.slice(candidate.index + candidate.text.length)}`;
+    }
+    output = output.replace(item.block, item.block.replace(item.body, normalizedBody));
+  }
+
+  return output;
+}
+
 export function removeVolatileDailyImages(markdown) {
   return String(markdown || "")
     .replace(
@@ -183,11 +318,13 @@ export function removeDailyGenerationMetaNotes(markdown) {
 
 export function normalizeDailyOutputPresentation(markdown) {
   return removeDailyGenerationMetaNotes(
-    normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
-      normalizeMisleadingDailySourceLabels(
-        removeVolatileDailyImages(markdown)
-      )
-    ))
+    ensureDailyTopHighlightDensity(
+      normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
+        normalizeMisleadingDailySourceLabels(
+          removeVolatileDailyImages(markdown)
+        )
+      ))
+    )
   );
 }
 

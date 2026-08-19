@@ -101,7 +101,7 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
     if (boldSpans.length < 3) underHighlightedItemCount += 1;
     if (
       boldSpans.length > 4 ||
-      (visibleBodyLength > 0 && highlightedLength / visibleBodyLength > 0.25)
+      (visibleBodyLength > 0 && highlightedLength / visibleBodyLength > 0.34)
     ) {
       overHighlightedItemCount += 1;
     }

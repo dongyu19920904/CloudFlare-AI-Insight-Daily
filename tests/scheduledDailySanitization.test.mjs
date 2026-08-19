@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   DAILY_AIVORA_FAQ_CTA,
   enforceDailyTopGithubLimit,
+  ensureDailyTopHighlightDensity,
   ensureUniqueDailyTopSources,
   isLowValueDailyMediaUrl,
   isVolatileDailyMediaUrl,
@@ -19,6 +20,7 @@ import {
   sanitizeDuplicateDailySections,
   stripDailyHeadingCountSuffix,
 } from "../src/dailySectionSanitizer.js";
+import { extractNumberedDailyItems } from "../src/dailyMarkdownItems.js";
 
 test("removeDailyGenerationMetaNotes strips candidate-count commentary", () => {
   const markdown = `## **🔥 今日焦点 TOP 10**
@@ -97,6 +99,71 @@ test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels"
   assert.match(normalized, /\[Cursor 推出代码托管平台 Origin\]\(https:\/\/example\.com\/1\)/);
   assert.match(normalized, /\[豆包支持手机遥控电脑 Agent\]\(https:\/\/example\.com\/2\)/);
   assert.match(normalized, /\[快手校招新增 AI 能力栏\]\(https:\/\/example\.com\/3\)/);
+});
+
+test("ensureDailyTopHighlightDensity adds factual highlights without styling links", () => {
+  const markdown = `## **🔥 今日焦点 TOP 3**
+
+### 1. Origin 单仓库并发性能已经公开
+**性能数字出来了。** 宝玉介绍，[Origin 达到每秒 22.6 次提交](https://example.com/1)，全球同步延迟低于 400 毫秒。内置 **自动合并冲突**机制。
+
+### 2. Gemini 上线完整 SAT 模拟考试
+**完整模拟题免费开放。** Google Gemini [公布了考试入口](https://example.com/2)。考后立即获得反馈，并能 **标注强弱项**。
+
+### 3. AI 找到数学猜想反例
+**八十年猜想被推翻。** [十项数学成果已经发布](https://example.com/3)。模型更擅长 **找到反例**，而不是构造证明，当前主要依靠穷举反例。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+  const items = extractNumberedDailyItems(normalized);
+
+  assert.equal(items.length, 3);
+  for (const item of items) {
+    assert.equal((item.body.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 3);
+  }
+  assert.match(normalized, /\*\*低于 400 毫秒\*\*/);
+  assert.match(normalized, /\*\*立即获得反馈\*\*/);
+  assert.match(normalized, /\*\*穷举反例\*\*/);
+  assert.doesNotMatch(normalized, /\*\*\[[^\]]+\]\(/);
+  assert.match(normalized, /\[Origin 达到每秒 22\.6 次提交\]\(https:\/\/example\.com\/1\)/);
+});
+
+test("ensureDailyTopHighlightDensity leaves an already balanced item unchanged", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 模型价格已经下调
+**调用成本降了。** [三档模型都下调调用费率](https://example.com/price)。最高降幅达到 **80%**，批量任务成本降低 **一半以上**。`;
+
+  assert.equal(ensureDailyTopHighlightDensity(markdown), markdown);
+});
+
+test("ensureDailyTopHighlightDensity prefers useful facts over bare dates and author names", () => {
+  const markdown = `## **🔥 今日焦点 TOP 2**
+
+### 1. Cursor 发布代码托管平台 Origin
+**Origin 正式开放体验。** [Origin 面向多 Agent 仓库](https://example.com/origin)，支持从 GitHub 无缝迁移仓库。底层来自 **Graphite 团队**，该团队在 2025 年加入 Cursor。
+
+### 2. 宝玉实测 AI 下棋漏洞
+**旧模型会被故意带偏。** [围棋对局视频展示了漏洞](https://example.com/go)。这说明早期模型存在 **对局漏洞**，可能遭到策略性欺骗。视频摄于 2023 年。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+
+  assert.match(normalized, /\*\*无缝迁移仓库\*\*/);
+  assert.match(normalized, /\*\*策略性欺骗\*\*/);
+  assert.doesNotMatch(normalized, /\*\*2025 年\*\*/);
+  assert.doesNotMatch(normalized, /\*\*宝玉\*\*/);
+});
+
+test("ensureDailyTopHighlightDensity replaces low-value emotional highlights with facts", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. AI 找到数学猜想反例
+**猜想被推翻。** [十项数学成果已经发布](https://example.com/math)。研究者称 **松了一口气**，模型主要依靠 **穷举反例**，而不是构造严格证明。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+
+  assert.doesNotMatch(normalized, /\*\*松了一口气\*\*/);
+  assert.match(normalized, /\*\*严格证明\*\*/);
+  assert.equal((normalized.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 4);
 });
 
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
