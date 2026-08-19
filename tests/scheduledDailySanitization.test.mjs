@@ -212,6 +212,18 @@ test("ensureDailyTopHighlightDensity can emphasize account requirements and UI e
   assert.match(normalized, /"\*\*工作任务\*\*"/);
 });
 
+test("ensureDailyTopHighlightDensity replaces social reactions with a dated limitation", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 旧围棋 AI 被策略带偏
+**旧模型会被故意带偏。** [视频展示了对局过程](https://example.com/go)。作者注明这是 **2023 年**的视频，现在估计不行了。**网友神评：**懂了，我们俩真厉害。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+
+  assert.doesNotMatch(normalized, /\*\*网友神评：\*\*/);
+  assert.match(normalized, /\*\*现在估计不行了\*\*/);
+});
+
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
 

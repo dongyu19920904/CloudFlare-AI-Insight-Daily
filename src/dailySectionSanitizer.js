@@ -184,11 +184,11 @@ function overlapsDailyHighlightRange(start, length, ranges) {
 function isLowValueDailyHighlight(text) {
   const compact = String(text || "")
     .normalize("NFKC")
-    .replace(/[\s。.!！?？、“”‘’]+/g, "");
+    .replace(/[\s。.!！?？、:：、“”‘’]+/g, "");
 
   return (
     /^(?:宝玉|dotey|作者|博主|网友|开发者|官方|媒体|频道)$/i.test(compact) ||
-    /^(?:松了一口气|值得关注|值得注意|意义重大|未来可期|很有意思|太离谱了?|令人兴奋)$/i.test(compact)
+    /^(?:网友神评|神评|热评|评论区热评|松了一口气|值得关注|值得注意|意义重大|未来可期|很有意思|太离谱了?|令人兴奋)$/i.test(compact)
   );
 }
 
@@ -207,7 +207,10 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
         !text ||
         visibleLength < 2 ||
         visibleLength > 16 ||
-        /(?:从|的|了|为|与|和|及|并|可|在|向|对|把|将)$/.test(text) ||
+        (
+          /(?:从|的|了|为|与|和|及|并|可|在|向|对|把|将)$/.test(text) &&
+          !/(?:不行了|失效了)$/.test(text)
+        ) ||
         seen.has(key) ||
         overlapsDailyHighlightRange(index, text.length, protectedRanges)
       ) {
@@ -237,6 +240,7 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
     3
   );
   addMatches(/(?:同一|相同)(?:账号|账户|仓库|设备|网络|环境|版本)/g, 3);
+  addMatches(/(?:现在|目前|当前)(?:估计|可能|也许)?(?:不行了|失效了|不可用|未证实|仍存疑)/g, 3);
   addMatches(/(?<=")[^"\r\n]{2,12}(?=")/g, 3);
   addMatches(/有[\u3400-\u9fff]{1,4}、有[\u3400-\u9fff]{1,4}/g, 3);
   addMatches(
