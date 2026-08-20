@@ -137,6 +137,22 @@ test("daily prompt fills low-volume TOP slots after reserving extra GitHub proje
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, backupItems), 10);
 });
 
+test("daily prompt fills TOP before reserving an optional fun candidate", () => {
+  const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
+  const news = (index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`;
+  const selectedItems = [
+    project(1), project(2), project(3),
+    ...Array.from({ length: 7 }, (_, index) => news(index + 1)),
+  ];
+  const backupItems = [news(20), news(21)];
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, backupItems);
+
+  assert.match(promptInput, /TOP 候选 10:/);
+  assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems, backupItems), 10);
+});
+
 test("buildDailyGenerationPromptInput provides distinct TOP backup items without stealing the fun pool", () => {
   const news = (index) => [
     `News Title: AI news ${index}`,

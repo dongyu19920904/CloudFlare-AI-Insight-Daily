@@ -231,7 +231,11 @@ function selectSupplementalDailyTopBackupItems(
     if (backupItems.length >= limit + 1) break;
   }
 
-  return backupItems.slice(0, Math.min(limit, Math.max(0, backupItems.length - 1)));
+  const neededForTop = Math.max(0, DAILY_TOP_TARGET - topItemCount);
+  const selectableCount = backupItems.length === neededForTop
+    ? backupItems.length
+    : Math.max(0, backupItems.length - 1);
+  return backupItems.slice(0, Math.min(limit, selectableCount));
 }
 
 export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFunContentItems = []) {
