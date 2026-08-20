@@ -373,6 +373,7 @@ function getDailyPromptEntityKey(candidate) {
     ["meta", /\b(meta ai|llama)\b/i],
     ["xai", /\b(xai|grok)\b/i],
     ["apple", /\b(apple|siri|airpods)\b/i],
+    ["xiaomi", /\bxiaomi\b|小米|玄戒/i],
   ];
 
   return majorEntities.find(([, pattern]) => pattern.test(text))?.[0] || "";

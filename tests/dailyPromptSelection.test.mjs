@@ -235,6 +235,46 @@ test("buildDailyPromptSelection keeps one major AI vendor from flooding the prom
   assert.equal(selectedAnthropicItems.length, 1);
 });
 
+test("buildDailyPromptSelection keeps one Xiaomi earnings story", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "小米 Q2 营收破千亿但 AI 业务仍在投入",
+          description: "小米披露季度营收、汽车交付与玄戒芯片进展。",
+          url: "https://example.com/xiaomi-q2-earnings",
+        },
+        {
+          ...buildNewsItem(2),
+          title: "小米手机出货量全球 53 国进前三",
+          description: "同一份小米 Q2 财报的手机与 AIoT 数据。",
+          url: "https://example.com/xiaomi-q2-shipments",
+        },
+        {
+          ...buildNewsItem(3),
+          title: "OpenAI releases a new realtime model",
+          description: "The official release adds low-latency AI voice support.",
+          url: "https://example.com/openai-realtime",
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 3,
+      DAILY_PROMPT_NEWS_ITEMS: 3,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  assert.equal(result.selectedContentItems.filter((item) => /小米|玄戒|xiaomi/i.test(item)).length, 1);
+  assert.match(result.selectedContentItems.join("\n"), /OpenAI releases a new realtime model/);
+});
+
 test("buildDailyPromptSelection keeps one welfare item available for watch section", () => {
   const result = buildDailyPromptSelection({
     news: [
