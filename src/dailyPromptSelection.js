@@ -1,4 +1,4 @@
-import { stripHtml } from "./helpers.js";
+import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
@@ -19,7 +19,7 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
 
   for (const match of str.matchAll(/<img\b[^>]*>/gi)) {
     const tag = match[0];
-    const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
+    const src = normalizeMarkdownMediaUrl(tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]);
     const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
     if (src && isUsableDailyMediaUrl(src)) {
       addPlaceholder(`![${alt || "image"}](${src})`);
@@ -28,7 +28,7 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
   }
 
   for (const match of str.matchAll(/<video\b[^>]*src="([^"]+)"[^>]*>/gi)) {
-    const src = match[1]?.trim();
+    const src = normalizeMarkdownMediaUrl(match[1]);
     if (src && isUsableDailyMediaUrl(src)) {
       addPlaceholder(
         `<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`
@@ -279,7 +279,7 @@ function hasStrongAiRelevanceSignal(text) {
 }
 
 function hasNonAiHeadlineNoise(text) {
-  return /grapheneos|android\s+vpn|vpn\s+leak|任天堂|nintendo|switch\s*\d?|游戏主机|console\s+price|锻炼|健身|周练计划|训练计划|身体还是要练|workout|fitness|exercise\s+plan|training\s+plan/i.test(
+  return /grapheneos|android\s+vpn|vpn\s+leak|任天堂|nintendo|switch\s*\d?|游戏主机|console\s+price|锻炼|健身|健体|强肾|彭祖|周练计划|训练计划|身体还是要练|workout|fitness|exercise\s+plan|training\s+plan|咖啡|瑞幸|库迪|阳台光伏|光伏发电/i.test(
     String(text || "")
   );
 }
@@ -290,6 +290,8 @@ function hasNonAiTopicNoise(text) {
     /grapheneos|android\s+vpn|vpn\s+leak/i.test(normalized) ||
     /(任天堂|nintendo|switch\s*\d?|游戏主机).{0,30}(涨价|价格|price|日本|美国|跟进)/i.test(normalized) ||
     /(涨价|价格|price|日本|美国|跟进).{0,30}(任天堂|nintendo|switch\s*\d?|游戏主机)/i.test(normalized) ||
+    /(咖啡|瑞幸|库迪|阳台光伏|光伏发电|强肾|健体|彭祖).{0,50}(AI|人工智能|大模型|从业者|工具|产品)/i.test(normalized) ||
+    /(AI|人工智能|大模型|从业者|工具|产品).{0,50}(咖啡|瑞幸|库迪|阳台光伏|光伏发电|强肾|健体|彭祖)/i.test(normalized) ||
     /(锻炼|健身|周练计划|训练计划|workout|fitness|exercise\s+plan|training\s+plan).{0,40}(照做|新手|中级|高级|身体|肌肉|减脂|routine|weekly|beginner|intermediate|advanced)/i.test(normalized) ||
     /(照做|新手|中级|高级|身体|肌肉|减脂|routine|weekly|beginner|intermediate|advanced).{0,40}(锻炼|健身|周练计划|训练计划|workout|fitness|exercise\s+plan|training\s+plan)/i.test(normalized)
   );
@@ -314,8 +316,9 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     candidate?.title || "",
     candidate?.description || "",
   ].join(" ");
+  const headline = candidate?.title || "";
 
-  if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(titleAndDescription)) {
+  if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }
 
@@ -325,7 +328,7 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     candidate?.plainText || "",
   ].join(" ");
 
-  if (hasNonAiTopicNoise(topicText) && !hasStrongAiRelevanceSignal(titleAndDescription)) {
+  if (hasNonAiTopicNoise(topicText) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }
 

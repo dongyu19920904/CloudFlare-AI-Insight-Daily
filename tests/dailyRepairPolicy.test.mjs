@@ -26,3 +26,24 @@ test("daily repair adopts a valid repair when it fixes safety or quality", () =>
     repairedQualityWarningCount: 1,
   }), true);
 });
+
+test("daily repair adopts a valid draft that moves closer to the TOP target", () => {
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true,
+    repairedPassed: true,
+    initialQualityWarningCount: 2,
+    repairedQualityWarningCount: 2,
+    initialTopItemCount: 6,
+    repairedTopItemCount: 9,
+    targetTopItemCount: 10,
+  }), true);
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true,
+    repairedPassed: true,
+    initialQualityWarningCount: 1,
+    repairedQualityWarningCount: 1,
+    initialTopItemCount: 10,
+    repairedTopItemCount: 11,
+    targetTopItemCount: 10,
+  }), false);
+});

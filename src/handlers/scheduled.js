@@ -1,5 +1,5 @@
 ﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, replaceIncorrectDomainLinks } from '../helpers.js';
-import { normalizeMarkdownImageSyntax } from '../helpers.js';
+import { normalizeMarkdownImageSyntax, normalizeMarkdownMediaUrl } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
@@ -90,7 +90,7 @@ import {
     removeEmptyDailyTopicSections,
     sanitizeDuplicateDailySections,
 } from '../dailySectionSanitizer.js';
-import { ensureDailyMediaCoverage } from '../dailyMediaCoverage.js';
+import { ensureDailyMediaCoverage, repairDailyMediaReferences } from '../dailyMediaCoverage.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -127,14 +127,14 @@ function extractMediaPlaceholdersFromHtml(html, limit = 3) {
 
     for (const match of str.matchAll(/<img\b[^>]*>/gi)) {
         const tag = match[0];
-        const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]?.trim();
+        const src = normalizeMarkdownMediaUrl(tag.match(/\bsrc=["']([^"']+)["']/i)?.[1]);
         const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
         if (src && isUsableDailyMediaUrl(src)) addPlaceholder(`![${alt || 'image'}](${src})`);
         if (placeholders.length >= limit) return placeholders;
     }
 
     for (const match of str.matchAll(/<video\b[^>]*src="([^"]+)"[^>]*>/gi)) {
-        const src = match[1]?.trim();
+        const src = normalizeMarkdownMediaUrl(match[1]);
         if (src && isUsableDailyMediaUrl(src)) addPlaceholder(`<video controls preload="metadata" playsinline style="max-width:100%; height:auto;" src="${src}"></video>`);
         if (placeholders.length >= limit) return placeholders;
     }
@@ -715,7 +715,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 和 \`## **❓ 相关问题**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条`,
         "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
         `- 输入有 ${DAILY_OPEN_SOURCE_MIN} 个以上合格 GitHub 日榜项目或 ${DAILY_SOCIAL_MIN} 条以上合格社媒原帖时，对应栏目至少输出 ${DAILY_OPEN_SOURCE_MIN} 条；不能只挑 1 条敷衍`,
-        `- 修复清单出现 below target 时，按“TOP 主候选 -> 去重备用”补足 ${DAILY_TOP_TARGET} 条；专用区素材不得挪回今日焦点，主候选和备用仍不足时按实际强素材数量输出`,
+        `- 修复清单出现 below target 时，按“TOP 主候选 -> 去重备用”补足 ${DAILY_TOP_TARGET} 条；输入已做 AI 相关性筛选，主候选和备用合计达到 ${DAILY_TOP_TARGET} 条时不得自行减为 6-9 条；专用区素材不得挪回今日焦点`,
         "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
@@ -775,79 +775,6 @@ function extractMatchTokens(item) {
     }
 
     return [...tokens];
-}
-
-function normalizeMediaUrl(url) {
-    if (!url) return '';
-    try {
-        const parsed = new URL(String(url).trim());
-        parsed.hash = '';
-        return parsed.href;
-    } catch {
-        return String(url).trim();
-    }
-}
-
-function extractMediaUrlsFromText(text) {
-    const content = String(text || '');
-    const urls = [];
-
-    for (const match of content.matchAll(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g)) {
-        urls.push(normalizeMediaUrl(match[1]));
-    }
-
-    for (const match of content.matchAll(/<(?:img|video)\b[^>]*\bsrc="(https?:\/\/[^"]+)"/gi)) {
-        urls.push(normalizeMediaUrl(match[1]));
-    }
-
-    return urls.filter(Boolean);
-}
-
-function buildAllowedMediaBySourceUrl(mediaCandidates) {
-    const allowedBySource = new Map();
-
-    for (const candidate of mediaCandidates || []) {
-        const sourceKey = normalizeReplayUrl(candidate?.url);
-        if (!sourceKey) continue;
-
-        const urls = (candidate.placeholders || []).flatMap((placeholder) =>
-            extractMediaUrlsFromText(placeholder),
-        );
-        if (urls.length === 0) continue;
-
-        const allowed = allowedBySource.get(sourceKey) || new Set();
-        urls.forEach((url) => allowed.add(url));
-        allowedBySource.set(sourceKey, allowed);
-    }
-
-    return allowedBySource;
-}
-
-function removeMismatchedTopItemImages(markdown, mediaCandidates) {
-    const allowedBySource = buildAllowedMediaBySourceUrl(mediaCandidates);
-    if (allowedBySource.size === 0 || !markdown) {
-        return { markdown, removedCount: 0 };
-    }
-
-    let removedCount = 0;
-    let cleanedMarkdown = String(markdown);
-
-    for (const item of extractNumberedDailyItems(markdown)) {
-        const allowed = allowedBySource.get(normalizeReplayUrl(item.url));
-        if (!allowed || allowed.size === 0) continue;
-
-        const cleanedBlock = item.block.replace(
-            /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g,
-            (imageMarkdown, imageUrl) => {
-                if (allowed.has(normalizeMediaUrl(imageUrl))) return imageMarkdown;
-                removedCount += 1;
-                return '';
-            },
-        );
-        cleanedMarkdown = cleanedMarkdown.replace(item.block, cleanedBlock);
-    }
-
-    return { markdown: cleanedMarkdown, removedCount };
 }
 
 export async function handleScheduledCombined(event, env, ctx, specifiedDate = null) {
@@ -1437,9 +1364,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
     outputOfCall2 = normalizeMarkdownImageSyntax(outputOfCall2);
     debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
-    const cleanedOutput = removeMismatchedTopItemImages(outputOfCall2, mediaCandidates);
+    const cleanedOutput = repairDailyMediaReferences(outputOfCall2, mediaCandidates);
     outputOfCall2 = cleanedOutput.markdown;
-    debugInfo.mismatchedTopImagesRemoved += cleanedOutput.removedCount;
+    debugInfo.mismatchedTopImagesRemoved += cleanedOutput.correctedCount + cleanedOutput.removedCount;
     const mediaCoverage = ensureDailyMediaCoverage(outputOfCall2, mediaCandidates);
     outputOfCall2 = mediaCoverage.markdown;
     debugInfo.fallbackInserted = mediaCoverage.insertedCount > 0;
@@ -1503,9 +1430,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
         repairedOutputOfCall2 = convertPlaceholdersToMarkdownImages(repairedOutputOfCall2);
         repairedOutputOfCall2 = normalizeMarkdownImageSyntax(repairedOutputOfCall2);
-        const cleanedRepairedOutput = removeMismatchedTopItemImages(repairedOutputOfCall2, mediaCandidates);
+        const cleanedRepairedOutput = repairDailyMediaReferences(repairedOutputOfCall2, mediaCandidates);
         repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
-        debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.removedCount;
+        debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.correctedCount + cleanedRepairedOutput.removedCount;
         const repairedMediaCoverage = ensureDailyMediaCoverage(repairedOutputOfCall2, mediaCandidates);
         repairedOutputOfCall2 = repairedMediaCoverage.markdown;
         debugInfo.mediaCoverageInserted = repairedMediaCoverage.insertedCount;
@@ -1544,6 +1471,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedPassed: repairedValidation.ok,
             initialQualityWarningCount: initialQualityTargetWarnings.length,
             repairedQualityWarningCount: repairedQualityTargetWarnings.length,
+            initialTopItemCount: extractNumberedDailyItems(dailySummaryMarkdownContent).length,
+            repairedTopItemCount: extractNumberedDailyItems(repairedDailySummaryMarkdownContent).length,
+            targetTopItemCount: options.minimumTopItems || 0,
         });
 
         if (adoptRepair) {

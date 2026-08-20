@@ -1,5 +1,9 @@
 import { extractDailyMarkdownLinks } from "./dailyMarkdownItems.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
+import {
+  normalizeMarkdownImageSyntax,
+  normalizeMarkdownMediaUrl,
+} from "./helpers.js";
 
 function normalizeSourceUrl(url) {
   if (!url) return "";
@@ -21,10 +25,10 @@ function extractMediaUrls(text) {
   const urls = [];
 
   for (const match of content.matchAll(/!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\s*\)/g)) {
-    urls.push(match[1]);
+    urls.push(normalizeMarkdownMediaUrl(match[1]));
   }
   for (const match of content.matchAll(/<(?:img|video)\b[^>]*\bsrc=["'](https?:\/\/[^"']+)["'][^>]*>/gi)) {
-    urls.push(match[1]);
+    urls.push(normalizeMarkdownMediaUrl(match[1]));
   }
 
   return urls.filter(isUsableDailyMediaUrl);
@@ -37,9 +41,11 @@ function buildCandidateMap(mediaCandidates) {
     const sourceKey = normalizeSourceUrl(candidate?.url);
     if (!sourceKey) continue;
 
-    const placeholders = (candidate?.placeholders || []).filter(
+    const placeholders = (candidate?.placeholders || [])
+      .map((placeholder) => normalizeMarkdownImageSyntax(placeholder))
+      .filter(
       (placeholder) => extractMediaUrls(placeholder).length > 0,
-    );
+      );
     if (placeholders.length === 0) continue;
 
     bySource.set(sourceKey, {
@@ -92,6 +98,51 @@ function appendMediaToBlock(block, placeholder) {
 
 export function countUsableDailyMedia(markdown) {
   return new Set(extractMediaUrls(markdown).map(normalizeSourceUrl)).size;
+}
+
+export function repairDailyMediaReferences(markdown, mediaCandidates) {
+  const content = String(markdown || "");
+  const candidatesBySource = buildCandidateMap(mediaCandidates);
+  if (!content || candidatesBySource.size === 0) {
+    return { markdown: content, correctedCount: 0, removedCount: 0 };
+  }
+
+  const blockPattern = /^###\s+[^\r\n]+(?:\r?\n|$)[\s\S]*?(?=^###\s+|^##\s+|(?![\s\S]))/gm;
+  let correctedCount = 0;
+  let removedCount = 0;
+  const updated = content.replace(blockPattern, (block) => {
+    const candidate = getMatchingCandidate(block, candidatesBySource);
+    if (!candidate) return block;
+
+    const replacements = candidate.placeholders.map((placeholder) =>
+      normalizePlaceholderCaption(placeholder, candidate)
+    );
+    const allowedUrls = new Set(
+      replacements.flatMap(extractMediaUrls).map(normalizeSourceUrl)
+    );
+    let replacementIndex = 0;
+
+    return block.replace(
+      /!\[([^\]]*)\]\(\s*(https?:\/\/[^\s)"']+)(?:\s+(["'][^)\r\n]*["']))?\s*\)/g,
+      (imageMarkdown, alt, imageUrl) => {
+        const normalizedImageUrl = normalizeSourceUrl(normalizeMarkdownMediaUrl(imageUrl));
+        if (allowedUrls.has(normalizedImageUrl)) {
+          return normalizeMarkdownImageSyntax(imageMarkdown);
+        }
+
+        const replacement = replacements[replacementIndex++] || "";
+        if (replacement) {
+          correctedCount += 1;
+          return replacement;
+        }
+
+        removedCount += 1;
+        return "";
+      }
+    );
+  });
+
+  return { markdown: updated, correctedCount, removedCount };
 }
 
 export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 6) {

@@ -154,10 +154,22 @@ export function convertPlaceholdersToMarkdownImages(text) {
 export function normalizeMarkdownImageSyntax(text) {
     if (!text) return text || '';
 
-    return String(text).replace(
+    const separatedTitle = String(text).replace(
         /(!\[[^\]\r\n]*\]\(\s*https?:\/\/[^\s)"']+)(["'])([^)\r\n]*?)\2\)/g,
         '$1 $2$3$2)'
     );
+
+    return separatedTitle.replace(
+        /(!\[[^\]\r\n]*\]\(\s*)(https?:\/\/[^\s)"']+)/g,
+        (match, prefix, url) => `${prefix}${normalizeMarkdownMediaUrl(url)}`
+    );
+}
+
+export function normalizeMarkdownMediaUrl(url) {
+    return String(url || '')
+        .trim()
+        .replace(/\\u0026/gi, '&')
+        .replace(/&#x0*26;|&#0*38;|&amp;/gi, '&');
 }
 
 /**

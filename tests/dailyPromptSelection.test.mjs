@@ -350,6 +350,33 @@ test("buildDailyPromptSelection filters lifestyle filler even when body mentions
         },
         {
           type: "news",
+          title: "男人终极训练与强肾健体课程",
+          description: "彭祖健体训练，正文顺手提到 AI 从业者久坐。",
+          source: "Lifestyle",
+          url: "https://example.com/fitness-course",
+          published_date: "2026-08-20",
+          details: { content_html: "<p>健体课程，AI 只是顺带提及。</p>" },
+        },
+        {
+          type: "news",
+          title: "中国咖啡一哥换对手了",
+          description: "瑞幸与库迪的咖啡市场竞争。",
+          source: "Business",
+          url: "https://example.com/coffee",
+          published_date: "2026-08-20",
+          details: { content_html: "<p>咖啡行业文章提到门店用 AI 排班。</p>" },
+        },
+        {
+          type: "news",
+          title: "德国电价上涨后阳台光伏走红",
+          description: "家庭光伏发电与能源价格。",
+          source: "Energy",
+          url: "https://example.com/solar",
+          published_date: "2026-08-20",
+          details: { content_html: "<p>能源报道顺手提及 AI 数据中心。</p>" },
+        },
+        {
+          type: "news",
           title: "OpenAI ships a new agent workflow",
           description: "A concrete AI agent product update for developers.",
           source: "AI Base",
@@ -377,7 +404,8 @@ test("buildDailyPromptSelection filters lifestyle filler even when body mentions
   assert.match(promptText, /OpenAI ships a new agent workflow/);
   assert.doesNotMatch(promptText, /周练计划/);
   assert.doesNotMatch(promptText, /workout-plan/);
-  assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 1);
+  assert.doesNotMatch(promptText, /强肾健体|咖啡一哥|阳台光伏/);
+  assert.equal(result.selectionDiagnostics.rejectedNonAiCount, 4);
 });
 
 test("buildDailyPromptSelection presents media-backed candidates near prompt front", () => {

@@ -173,7 +173,7 @@ function selectSupplementalDailyTopBackupItems(
   dailyFunContentItems,
   supplementalSocialItems,
   topItemCount,
-  limit = 3
+  limit = 5
 ) {
   if (topItemCount < DAILY_TOP_TARGET - 2 || limit <= 0) return [];
 
@@ -275,7 +275,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `另有 ${supplementalTopBackupItems.length} 条去重备用素材；其中至少使用 ${Math.min(requiredTopBackupItems, supplementalTopBackupItems.length)} 条补足去重后的 TOP 缺口，其余只在主候选发生同源拆分或重复时替换。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
-    `如果某个 TOP 候选明显不与 AI 直接相关，只能用去重备用素材替换；备用仍不足时按实际强素材数量输出，不得挪用专用区素材凑数。`,
+    `TOP 主候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重备用素材替换。主候选与备用合计达到 ${DAILY_TOP_TARGET} 条时必须写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有两者合计确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
     "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
   ].join("\n");
   const numberedTopCandidates = allocation.topItems

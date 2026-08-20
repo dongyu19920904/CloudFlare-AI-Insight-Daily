@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   countUsableDailyMedia,
   ensureDailyMediaCoverage,
+  repairDailyMediaReferences,
 } from "../src/dailyMediaCoverage.js";
 
 function candidate(index, imageUrl) {
@@ -66,4 +67,38 @@ test("ensureDailyMediaCoverage ignores profile avatars and does not create a gal
   assert.equal(result.insertedCount, 0);
   assert.equal(result.targetCount, 0);
   assert.doesNotMatch(result.markdown, /相关配图|profile_images/);
+});
+
+test("repairDailyMediaReferences restores exact source images in non-TOP sections", () => {
+  const markdown = `## **◉ 社媒精选**
+
+### RSS 阅读站调用费
+
+[原帖披露了调用费用](https://x.com/vista8/status/1)。
+
+![费用截图](https://pbs.twimg.com/media/wrong-id.jpg "费用截图")
+
+### 手机控制电脑
+
+[原帖展示了跨端控制](https://x.com/op7418/status/2)。
+
+![控制截图](https://pbs.twimg.com/media/phone?format=jpg\\u0026#x26;name=orig "控制截图")`;
+  const result = repairDailyMediaReferences(markdown, [
+    {
+      title: "RSS 阅读站调用费",
+      url: "https://x.com/vista8/status/1",
+      placeholders: ["![Tweet Image](https://pbs.twimg.com/media/exact-cost.jpg)"],
+    },
+    {
+      title: "手机控制电脑",
+      url: "https://x.com/op7418/status/2",
+      placeholders: ["![Tweet Image](https://pbs.twimg.com/media/exact-phone?format=jpg&#x26;name=orig)"],
+    },
+  ]);
+
+  assert.equal(result.correctedCount, 2);
+  assert.equal(result.removedCount, 0);
+  assert.match(result.markdown, /exact-cost\.jpg/);
+  assert.match(result.markdown, /exact-phone\?format=jpg&name=orig/);
+  assert.doesNotMatch(result.markdown, /wrong-id|\\u0026|#x26/);
 });
