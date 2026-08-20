@@ -142,13 +142,15 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
     ]
   );
 
-  assert.match(promptInput, /今日焦点去重备用素材/);
+  assert.match(promptInput, /今日焦点去重替换素材/);
   assert.match(promptInput, /聚合文章也只能生成一条/);
   assert.match(promptInput, /TOP 候选 1:/);
-  assert.match(promptInput, /每个 TOP 候选最多生成一条/);
+  assert.match(promptInput, /TOP 候选 10:/);
+  assert.match(promptInput, /每个明确 TOP 候选都必须在今日焦点中一对一生成一条/);
   assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 5);
   assert.match(promptInput, /AI趣闻专用候选素材/);
   assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 1);
+  assert.match(promptInput, /组成 10 条明确 TOP 候选/);
   assert.match(promptInput, /不得凭主观判断自行减为 6-9 条/);
 });
 
@@ -178,8 +180,9 @@ test("buildDailyGenerationPromptInput removes duplicate source URLs and fills th
   const promptInput = buildDailyGenerationPromptInput(selectedItems, funItems);
 
   assert.equal((promptInput.match(/https:\/\/example\.com\/digest/g) || []).length, 1);
-  assert.match(promptInput, /其中至少使用 1 条补足去重后的 TOP 缺口/);
-  assert.match(promptInput, /本次必须从这里选 1 条补足 TOP/);
+  assert.match(promptInput, /已从补位池提取 1 条，与原主候选组成 10 条明确 TOP 候选/);
+  assert.match(promptInput, /TOP 候选 10:/);
+  assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 3);
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
 });
 
