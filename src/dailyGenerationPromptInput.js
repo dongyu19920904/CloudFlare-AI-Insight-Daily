@@ -40,9 +40,13 @@ function allocateDailyPromptItems(items = []) {
     paper: primaryItems.filter((item) => classifyDailyPromptItem(item) === "paper"),
     news: primaryItems.filter((item) => classifyDailyPromptItem(item) === "news"),
   };
-  let reserveBudget = Math.max(0, primaryItems.length - DAILY_TOP_TARGET);
+  const forcedProjectReserveCount = Math.max(0, buckets.project.length - 1);
+  let reserveBudget = Math.max(
+    0,
+    primaryItems.length - DAILY_TOP_TARGET - forcedProjectReserveCount
+  );
   const reserveCounts = {
-    project: 0,
+    project: forcedProjectReserveCount,
     socialMedia: 0,
     paper: 0,
     news: 0,
@@ -68,7 +72,9 @@ function allocateDailyPromptItems(items = []) {
   reserveOne("news", 2);
 
   const reserved = {
-    project: buckets.project.slice(0, reserveCounts.project),
+    project: reserveCounts.project >= buckets.project.length
+      ? buckets.project
+      : buckets.project.slice(1, reserveCounts.project + 1),
     socialMedia: buckets.socialMedia.slice(0, reserveCounts.socialMedia),
     paper: buckets.paper.slice(0, reserveCounts.paper),
     news: reserveCounts.news > 0 ? buckets.news.slice(-reserveCounts.news) : [],
@@ -175,7 +181,7 @@ function selectSupplementalDailyTopBackupItems(
   topItemCount,
   limit = 5
 ) {
-  if (topItemCount < DAILY_TOP_TARGET - 2 || limit <= 0) return [];
+  if (topItemCount <= 0 || limit <= 0) return [];
 
   const excludedItems = new Set(
     [...(selectedContentItems || []), ...(supplementalSocialItems || [])]
@@ -202,10 +208,10 @@ function selectSupplementalDailyTopBackupItems(
     backupItems.push(normalizedItem);
     if (url) seenUrls.add(url);
     if (fingerprint) seenFingerprints.add(fingerprint);
-    if (backupItems.length >= limit) break;
+    if (backupItems.length >= limit + 1) break;
   }
 
-  return backupItems;
+  return backupItems.slice(0, Math.min(limit, Math.max(0, backupItems.length - 1)));
 }
 
 export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFunContentItems = []) {

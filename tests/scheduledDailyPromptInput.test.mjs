@@ -106,19 +106,35 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
 });
 
-test("daily prompt allocation preserves TOP capacity when source volume is low", () => {
+test("daily prompt allocation keeps at most one GitHub project in a low-volume TOP", () => {
   const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
   const social = (index) => `socialMedia Post by user-${index}\nUrl: https://x.com/user/status/${index}`;
   const news = (index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`;
   const selectedItems = [project(1), project(2), social(1), social(2), news(1), news(2), news(3), news(4)];
 
   assert.deepEqual(getDailyPromptAllocationStats(selectedItems), {
-    topItems: 8,
-    reservedProjectItems: 0,
+    topItems: 7,
+    reservedProjectItems: 1,
     reservedSocialItems: 0,
     reservedPaperItems: 0,
     reservedNewsItems: 0,
   });
+});
+
+test("daily prompt fills low-volume TOP slots after reserving extra GitHub projects", () => {
+  const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
+  const news = (index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`;
+  const selectedItems = [project(1), project(2), project(3), ...Array.from({ length: 6 }, (_, index) => news(index + 1))];
+  const backupItems = Array.from({ length: 5 }, (_, index) => news(index + 20));
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, backupItems);
+  const topCandidates = promptInput.match(/【今日焦点候选素材】[\s\S]*?(?=【今日焦点去重替换素材】|【开源 TOP 项目专用候选素材】)/)?.[0] || "";
+  const openSourceCandidates = promptInput.match(/【开源 TOP 项目专用候选素材】[\s\S]*?(?=【|$)/)?.[0] || "";
+
+  assert.match(topCandidates, /TOP 候选 10:/);
+  assert.equal((topCandidates.match(/^Project Name:/gm) || []).length, 1);
+  assert.equal((openSourceCandidates.match(/^Project Name:/gm) || []).length, 2);
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems, backupItems), 10);
 });
 
 test("buildDailyGenerationPromptInput provides distinct TOP backup items without stealing the fun pool", () => {
@@ -182,7 +198,7 @@ test("buildDailyGenerationPromptInput removes duplicate source URLs and fills th
   assert.equal((promptInput.match(/https:\/\/example\.com\/digest/g) || []).length, 1);
   assert.match(promptInput, /已从补位池提取 1 条，与原主候选组成 10 条明确 TOP 候选/);
   assert.match(promptInput, /TOP 候选 10:/);
-  assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 3);
+  assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 2);
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
 });
 
