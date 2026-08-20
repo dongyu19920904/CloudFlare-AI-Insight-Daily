@@ -5,6 +5,8 @@ import {
   normalizeMarkdownMediaUrl,
 } from "./helpers.js";
 
+const MIN_SOCIAL_MEDIA_BLOCKS_WITH_MEDIA = 2;
+
 function normalizeSourceUrl(url) {
   if (!url) return "";
 
@@ -90,10 +92,10 @@ function normalizePlaceholderCaption(placeholder, candidate) {
 function appendMediaToBlock(block, placeholder) {
   const content = String(block || "").trimEnd();
   const separatorMatch = content.match(/\n---\s*$/);
-  if (!separatorMatch) return `${content}\n\n${placeholder}`;
+  if (!separatorMatch) return `${content}\n\n${placeholder}\n\n`;
 
   const body = content.slice(0, separatorMatch.index).trimEnd();
-  return `${body}\n\n${placeholder}\n\n---`;
+  return `${body}\n\n${placeholder}\n\n---\n\n`;
 }
 
 export function countUsableDailyMedia(markdown) {
@@ -159,25 +161,44 @@ export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 
 
   const blockPattern = /^###\s+[^\r\n]+(?:\r?\n|$)[\s\S]*?(?=^###\s+|^##\s+|(?![\s\S]))/gm;
   const eligibleSourceKeys = new Set();
+  const eligibleSocialSourceKeys = new Set();
+  let socialMediaBlockCount = 0;
 
   for (const match of content.matchAll(blockPattern)) {
-    if (/(?:相关问题|FAQ)/i.test(getSectionHeading(content, match.index || 0))) continue;
+    const sectionHeading = getSectionHeading(content, match.index || 0);
+    if (/(?:相关问题|FAQ)/i.test(sectionHeading)) continue;
     const candidate = getMatchingCandidate(match[0], candidatesBySource);
-    if (candidate) eligibleSourceKeys.add(normalizeSourceUrl(candidate.url));
+    if (!candidate) continue;
+
+    const sourceKey = normalizeSourceUrl(candidate.url);
+    eligibleSourceKeys.add(sourceKey);
+    if (/社媒精选/.test(sectionHeading)) {
+      eligibleSocialSourceKeys.add(sourceKey);
+      if (extractMediaUrls(match[0]).length > 0) socialMediaBlockCount += 1;
+    }
   }
 
   const targetCount = Math.min(Math.max(0, Number(maxImages) || 0), eligibleSourceKeys.size);
+  const socialTargetCount = Math.min(
+    MIN_SOCIAL_MEDIA_BLOCKS_WITH_MEDIA,
+    eligibleSocialSourceKeys.size,
+  );
   const usedMediaUrls = new Set(extractMediaUrls(content).map(normalizeSourceUrl));
   let usableMediaCount = usedMediaUrls.size;
   let insertedCount = 0;
 
-  if (usableMediaCount >= targetCount) {
+  if (usableMediaCount >= targetCount && socialMediaBlockCount >= socialTargetCount) {
     return { markdown: content, insertedCount, targetCount, usableMediaCount };
   }
 
   const updated = content.replace(blockPattern, (block, offset) => {
-    if (usableMediaCount >= targetCount) return block;
-    if (/(?:相关问题|FAQ)/i.test(getSectionHeading(content, offset))) return block;
+    const sectionHeading = getSectionHeading(content, offset);
+    if (/(?:相关问题|FAQ)/i.test(sectionHeading)) return block;
+
+    const isSocialBlock = /社媒精选/.test(sectionHeading);
+    const needsGlobalCoverage = usableMediaCount < targetCount;
+    const needsSocialCoverage = isSocialBlock && socialMediaBlockCount < socialTargetCount;
+    if (!needsGlobalCoverage && !needsSocialCoverage) return block;
     if (extractMediaUrls(block).length > 0) return block;
 
     const candidate = getMatchingCandidate(block, candidatesBySource);
@@ -192,6 +213,7 @@ export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 
       usedMediaUrls.add(normalizeSourceUrl(url));
     }
     usableMediaCount = usedMediaUrls.size;
+    if (isSocialBlock) socialMediaBlockCount += 1;
     insertedCount += 1;
     return appendMediaToBlock(block, normalizePlaceholderCaption(placeholder, candidate));
   });
