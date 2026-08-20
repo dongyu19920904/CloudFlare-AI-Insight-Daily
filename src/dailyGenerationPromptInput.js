@@ -139,6 +139,17 @@ function getDailyPromptItemFingerprint(item) {
     .slice(0, 120);
 }
 
+function getDailyPromptItemEventKey(item) {
+  const text = String(item || "").toLowerCase();
+  if (
+    /(小米|xiaomi|玄戒)/i.test(text) &&
+    /(q2|二季度|季度|财报|营收|净利润|出货量|aiot|汽车业务)/i.test(text)
+  ) {
+    return "xiaomi-quarterly-results";
+  }
+  return "";
+}
+
 function selectSupplementalDailySocialItems(
   selectedContentItems,
   dailyFunContentItems,
@@ -194,6 +205,9 @@ function selectSupplementalDailyTopBackupItems(
   const seenFingerprints = new Set(
     (selectedContentItems || []).map(getDailyPromptItemFingerprint).filter(Boolean)
   );
+  const seenEventKeys = new Set(
+    (selectedContentItems || []).map(getDailyPromptItemEventKey).filter(Boolean)
+  );
   const backupItems = [];
 
   for (const item of dailyFunContentItems || []) {
@@ -203,11 +217,17 @@ function selectSupplementalDailyTopBackupItems(
 
     const url = getDailyPromptItemUrl(normalizedItem);
     const fingerprint = getDailyPromptItemFingerprint(normalizedItem);
-    if ((url && seenUrls.has(url)) || (fingerprint && seenFingerprints.has(fingerprint))) continue;
+    const eventKey = getDailyPromptItemEventKey(normalizedItem);
+    if (
+      (url && seenUrls.has(url)) ||
+      (fingerprint && seenFingerprints.has(fingerprint)) ||
+      (eventKey && seenEventKeys.has(eventKey))
+    ) continue;
 
     backupItems.push(normalizedItem);
     if (url) seenUrls.add(url);
     if (fingerprint) seenFingerprints.add(fingerprint);
+    if (eventKey) seenEventKeys.add(eventKey);
     if (backupItems.length >= limit + 1) break;
   }
 
@@ -294,6 +314,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面每个明确 TOP 候选都必须在今日焦点中一对一生成一条；不得丢弃，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const selectedItemUrls = new Set(allSelectedItems.map(getDailyPromptItemUrl).filter(Boolean));
+  const selectedEventKeys = new Set(allSelectedItems.map(getDailyPromptItemEventKey).filter(Boolean));
   const supplementalSocialKeys = new Set(supplementalSocialItems);
   const supplementalTopBackupKeys = new Set(supplementalTopBackupItems);
   const funOnlyItems = (dailyFunContentItems || [])
@@ -303,6 +324,10 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     .filter((item) => {
       const url = getDailyPromptItemUrl(item);
       return !url || !selectedItemUrls.has(url);
+    })
+    .filter((item) => {
+      const eventKey = getDailyPromptItemEventKey(item);
+      return !eventKey || !selectedEventKeys.has(eventKey);
     })
     .filter((item) => !supplementalSocialKeys.has(String(item).trim()))
     .filter((item) => !supplementalTopBackupKeys.has(String(item).trim()));

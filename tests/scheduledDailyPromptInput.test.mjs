@@ -202,6 +202,37 @@ test("buildDailyGenerationPromptInput removes duplicate source URLs and fills th
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
 });
 
+test("buildDailyGenerationPromptInput does not reintroduce the same Xiaomi quarter from backups", () => {
+  const news = (index) => [
+    `News Title: 独立 AI 消息 ${index}`,
+    `Url: https://example.com/ai-${index}`,
+    `Content Summary: 独立 AI 产品变化 ${index}。`,
+  ].join("\n");
+  const selectedItems = [
+    [
+      "News Title: 小米 Q2 净利润下滑但玄戒芯片出货破百万",
+      "Url: https://example.com/xiaomi-q2-profit",
+      "Content Summary: 小米二季度财报披露营收、净利润和汽车业务数据。",
+    ].join("\n"),
+    ...Array.from({ length: 8 }, (_, index) => news(index + 1)),
+  ];
+  const funItems = [
+    [
+      "News Title: 小米手机出货量全球 53 国进前三",
+      "Url: https://example.com/xiaomi-q2-shipments",
+      "Content Summary: 同一份小米 Q2 财报披露手机与 AIoT 收入。",
+    ].join("\n"),
+    news(20),
+    news(21),
+  ];
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, funItems);
+
+  assert.doesNotMatch(promptInput, /xiaomi-q2-shipments/);
+  assert.match(promptInput, /TOP 候选 10:[\s\S]*ai-20/);
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
+});
+
 test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code 更新计划模式",
