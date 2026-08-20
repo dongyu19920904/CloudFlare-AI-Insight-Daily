@@ -235,6 +235,85 @@ test("buildDailyPromptSelection keeps one major AI vendor from flooding the prom
   assert.equal(selectedAnthropicItems.length, 1);
 });
 
+test("project and welfare reserves do not crowd out a vendor's substantive news", () => {
+  const anthropicProject = buildProjectItem(1);
+  anthropicProject.title = "Anthropic security skills";
+  anthropicProject.description = "Claude agent security skills for daily development workflows.";
+
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "Google offers a free Gemini SAT practice test",
+          description: "Students can take a free practice test in Gemini.",
+          url: "https://example.com/google-free-sat",
+        },
+        {
+          ...buildNewsItem(2),
+          title: "Google expands Gemini university plans globally",
+          description: "Gemini adds higher limits and storage for university students.",
+          url: "https://example.com/google-student-plan",
+        },
+        {
+          ...buildNewsItem(3),
+          title: "Anthropic updates Claude developer tools",
+          description: "Claude adds a new coding workflow for developers.",
+          url: "https://example.com/anthropic-tools",
+        },
+      ],
+      project: [anthropicProject],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 4,
+      DAILY_PROMPT_NEWS_ITEMS: 3,
+      DAILY_PROMPT_PROJECT_ITEMS: 1,
+      DAILY_PROMPT_PROJECT_HARD_CAP: 1,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  const promptText = result.selectedContentItems.join("\n");
+  assert.match(promptText, /Anthropic security skills/);
+  assert.match(promptText, /Anthropic updates Claude developer tools/);
+  assert.match(promptText, /Google offers a free Gemini SAT practice test/);
+  assert.match(promptText, /Google expands Gemini university plans globally/);
+});
+
+test("same-event title variants still collapse inside one prompt", () => {
+  const result = buildDailyPromptSelection(
+    {
+      news: [
+        {
+          ...buildNewsItem(1),
+          title: "豆包手机控制电脑任务还能继续跑",
+          url: "https://example.com/doubao-jike",
+        },
+        {
+          ...buildNewsItem(2),
+          title: "发布了：豆包手机控制电脑任务还能继续跑",
+          url: "https://example.com/doubao-x",
+        },
+      ],
+      project: [],
+      socialMedia: [],
+      paper: [],
+    },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 2,
+      DAILY_PROMPT_NEWS_ITEMS: 2,
+      DAILY_PROMPT_PROJECT_ITEMS: 0,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_PAPER_ITEMS: 0,
+    }
+  );
+
+  assert.equal(result.selectedContentItems.length, 1);
+});
+
 test("buildDailyPromptSelection keeps one Xiaomi earnings story", () => {
   const result = buildDailyPromptSelection(
     {

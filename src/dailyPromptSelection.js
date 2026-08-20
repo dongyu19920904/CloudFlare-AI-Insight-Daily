@@ -150,6 +150,30 @@ function isSimilarReplayTitle(currentTitle, previousTitle) {
   return strongOverlap.length >= 2 || (overlap.length >= 3 && overlap.length / minTokenCount >= 0.6);
 }
 
+function isSameDailyPromptEventTitle(currentTitle, previousTitle) {
+  const normalizedCurrent = normalizeReplayTitle(currentTitle);
+  const normalizedPrevious = normalizeReplayTitle(previousTitle);
+  if (!normalizedCurrent || !normalizedPrevious) return false;
+  if (normalizedCurrent === normalizedPrevious) return true;
+  if (
+    normalizedCurrent.length >= 12 &&
+    normalizedPrevious.length >= 12 &&
+    (normalizedCurrent.includes(normalizedPrevious) || normalizedPrevious.includes(normalizedCurrent))
+  ) {
+    return true;
+  }
+
+  const currentTokens = getReplayTitleTokens(currentTitle);
+  const previousTokens = getReplayTitleTokens(previousTitle);
+  if (currentTokens.size === 0 || previousTokens.size === 0) return false;
+
+  const overlap = [...currentTokens].filter((token) => previousTokens.has(token));
+  const strongOverlap = overlap.filter((token) => (/[a-z]/.test(token) ? token.length >= 4 : token.length >= 3));
+  const minTokenCount = Math.min(currentTokens.size, previousTokens.size);
+  const overlapRatio = overlap.length / minTokenCount;
+  return strongOverlap.length >= 4 || (strongOverlap.length >= 2 && overlapRatio >= 0.6);
+}
+
 function scoreDailyPromptCandidate(candidate) {
   let score = 0;
   const sourceType = candidate?.sourceType || "";
@@ -379,6 +403,18 @@ function getDailyPromptEntityKey(candidate) {
   return majorEntities.find(([, pattern]) => pattern.test(text))?.[0] || "";
 }
 
+function getDailyPromptEntityCountKey(candidate) {
+  const entityKey = getDailyPromptEntityKey(candidate);
+  if (!entityKey) return "";
+
+  const scope = candidate?.isWelfare
+    ? "welfare"
+    : candidate?.sourceType === "project"
+      ? "project"
+      : "editorial";
+  return `${scope}:${entityKey}`;
+}
+
 function isProjectLikeDailyPromptCandidate(candidate) {
   const text = [
     candidate?.sourceType || "",
@@ -524,7 +560,7 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
       return false;
     }
 
-    return isSimilarReplayTitle(candidateTitle, existingCandidate.title);
+    return isSameDailyPromptEventTitle(candidateTitle, existingCandidate.title);
   });
 }
 
@@ -594,7 +630,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   let selectedProjectLikeCount = 0;
 
   const updateSelectedEntityCount = (candidate, delta) => {
-    const entityKey = getDailyPromptEntityKey(candidate);
+    const entityKey = getDailyPromptEntityCountKey(candidate);
     if (!entityKey) return;
     selectedEntityCounts.set(entityKey, Math.max(0, (selectedEntityCounts.get(entityKey) || 0) + delta));
   };
@@ -616,7 +652,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     ) {
       return false;
     }
-    const entityKey = getDailyPromptEntityKey(candidate);
+    const entityKey = getDailyPromptEntityCountKey(candidate);
     if (entityHardCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= entityHardCap) {
       return false;
     }
