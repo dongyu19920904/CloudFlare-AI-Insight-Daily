@@ -49,3 +49,14 @@ test("shouldFailoverFromAnthropic covers blocked-route errors", () => {
     false
   );
 });
+
+test("shouldFailoverFromAnthropic covers empty Anthropic responses", () => {
+  assert.equal(
+    shouldFailoverFromAnthropic(new Error("Anthropic stream completed but yielded no content.")),
+    true
+  );
+  assert.equal(
+    shouldFailoverFromAnthropic(new Error("Anthropic Chat API returned no content.")),
+    true
+  );
+});

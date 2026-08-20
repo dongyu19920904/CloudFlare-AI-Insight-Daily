@@ -284,6 +284,8 @@ export function shouldFailoverFromAnthropic(error) {
     return (
         shouldTryNextAnthropicBaseUrl(error) ||
         /anthropic chat api error \((401|403|408|409|429|5\d\d|524)\)/.test(message) ||
+        message.includes("yielded no content") ||
+        message.includes("returned no content") ||
         message.includes("unauthorized") ||
         message.includes("forbidden") ||
         message.includes("account suspended") ||
