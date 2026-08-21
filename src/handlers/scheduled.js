@@ -1471,6 +1471,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedPassed: repairedValidation.ok,
             initialQualityWarningCount: initialQualityTargetWarnings.length,
             repairedQualityWarningCount: repairedQualityTargetWarnings.length,
+            initialQualityWarnings: initialQualityTargetWarnings,
+            repairedQualityWarnings: repairedQualityTargetWarnings,
             initialTopItemCount: extractNumberedDailyItems(dailySummaryMarkdownContent).length,
             repairedTopItemCount: extractNumberedDailyItems(repairedDailySummaryMarkdownContent).length,
             targetTopItemCount: options.minimumTopItems || 0,
