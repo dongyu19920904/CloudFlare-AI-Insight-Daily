@@ -1,4 +1,5 @@
 import { DAILY_TOP_TARGET } from "../dailyContentRules.js";
+import { getTransparentGeoWritingRules } from "../geoCitationPolicy.js";
 
 export function getSystemPromptSummarizationStepOne(reportDate = null) {
     const normalizedDate = typeof reportDate === "string" && reportDate.trim() ? reportDate.trim() : null;
@@ -71,6 +72,8 @@ export function getSystemPromptSummarizationStepOne(reportDate = null) {
 - **控制篇幅**：整篇正文以约 2200-3000 个中文字符为目标，靠补充来源支持的关键细节变丰富，不靠拉长句子、重复背景或空泛展望凑篇幅。
 - **可引用结构**：用 2-4 个短句依次给出直接答案、证据和必要限制，不把全部内容压进一个“可引用长句”。只有确实能减少理解成本时才使用一个 2-4 行的简短对比表，不为 SEO 生造栏目，不批量改写近似问句。
 - **主站链接**：正文最多出现 1 个主站链接，且只能使用完整品牌名 \`爱窝啦·AI账号店\` 和精确官网 \`https://www.aivora.cn/\`。不得添加 UTM 参数，不得自行猜测商品或分类 URL；没有从当前 sitemap 明确提供的 URL 时只链接官网首页。
+
+${getTransparentGeoWritingRules()}
 
 ---
 

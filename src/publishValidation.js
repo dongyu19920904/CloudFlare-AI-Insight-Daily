@@ -20,6 +20,7 @@ import {
   classifyOpportunityEvidence,
 } from "./opportunityEvidence.js";
 import { normalizeOpportunitySourceUrl } from "./opportunityReplayDedupe.js";
+import { getModelManipulationPatterns } from "./geoCitationPolicy.js";
 
 const DAILY_META_PATTERNS = [
   /AI思考:?/i,
@@ -28,6 +29,8 @@ const DAILY_META_PATTERNS = [
   /素材(质量)?参差不齐/,
   /我会按照.{0,12}筛选/,
 ];
+
+const MODEL_MANIPULATION_PATTERNS = getModelManipulationPatterns();
 
 const DAILY_WATCH_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDCCC|\uD83C\uDFAF|值得关注|关注).*\*\*/im;
 const DAILY_FUN_HEADING_PATTERN = /^##\s*\*\*.*(?:\uD83D\uDE04|\uD83D\uDE06|AI\s*趣闻|趣闻).*\*\*/im;
@@ -688,7 +691,10 @@ export function validateDailyPublication({
       label: "日报页面",
       minChars: 300,
       requiredPhrases: ["aivora.cn"],
-      forbiddenPatterns: DAILY_META_PATTERNS,
+      forbiddenPatterns: [
+        ...DAILY_META_PATTERNS,
+        ...MODEL_MANIPULATION_PATTERNS,
+      ],
     }),
     ...collectDailyBriefingIssues(pageMarkdown),
     ...collectDailyStructureIssues(pageMarkdown, {
@@ -1127,6 +1133,7 @@ export function validateOpportunityPublication({
     ],
     forbiddenPhrases: bannedPublicPhrases,
     forbiddenPatterns: [
+      ...MODEL_MANIPULATION_PATTERNS,
       /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
       /先编商机|素材不够.*硬凑/i,
       /目标用户不缺|人人都(?:需要|会)|每个.{0,24}都(?:踩过|需要|愿意|会)/i,
@@ -1495,6 +1502,7 @@ export function validateAccountOpportunityPublication({
     ],
     forbiddenPhrases: bannedPublicPhrases,
     forbiddenPatterns: [
+      ...MODEL_MANIPULATION_PATTERNS,
       /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
       /买家(?:一定|都会|会马上)|用户(?:一定|都会|会马上)|(?:需求|销量|询问量)(?:必然|一定|马上)(?:上涨|增加|爆发)/i,
       /全球(?:停用|封号)|全面封号|大规模封号/i,

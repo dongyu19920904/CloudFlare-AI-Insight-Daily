@@ -16,6 +16,9 @@ test("getSharedDailyWritingKernel exposes the reusable daily writing style", () 
   assert.match(kernel, /长短句交替/);
   assert.match(kernel, /展示，而不是解释/);
   assert.match(kernel, /素材普通也要写成成品/);
+  assert.match(kernel, /透明可引用规则/);
+  assert.match(kernel, /不是向爬虫下命令/);
+  assert.match(kernel, /描述性原始来源链接/);
 });
 
 test("getSharedOpportunityWritingKernel adapts the daily style to money-making content", () => {

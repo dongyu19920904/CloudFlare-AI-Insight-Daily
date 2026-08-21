@@ -1,3 +1,5 @@
+import { getTransparentGeoWritingRules } from "../geoCitationPolicy.js";
+
 export function getSharedDailyWritingKernel() {
   return `
 ## 共享写作内核
@@ -10,6 +12,8 @@ export function getSharedDailyWritingKernel() {
 - 少重复同一种开头和句式
 - 展示，而不是解释；让读者脑子里有画面
 - 素材普通也要写成成品，不准输出过程说明、拒答或索要素材
+
+${getTransparentGeoWritingRules()}
 `.trim();
 }
 
