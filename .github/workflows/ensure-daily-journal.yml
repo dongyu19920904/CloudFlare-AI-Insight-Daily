@@ -2,12 +2,12 @@ name: Ensure Daily Journal
 
 on:
   schedule:
-    - cron: "11 1 * * *"
+    - cron: "31 0 * * *"
+    - cron: "47 0 * * *"
+    - cron: "59 0 * * *"
     - cron: "19 1 * * *"
-    - cron: "31 1 * * *"
     - cron: "47 1 * * *"
     - cron: "17 3 * * *"
-    - cron: "47 3 * * *"
   workflow_dispatch:
     inputs:
       date:
@@ -53,8 +53,32 @@ jobs:
           echo "date=$TARGET_DATE" >> "$GITHUB_OUTPUT"
           echo "year_month=${TARGET_DATE:0:7}" >> "$GITHUB_OUTPUT"
 
+      - name: Check daily recovery window
+        id: recovery_window
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
+            echo "open=true" >> "$GITHUB_OUTPUT"
+            echo "Manual recovery is allowed immediately."
+            exit 0
+          fi
+
+          SHANGHAI_TIME=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$SHANGHAI_TIME" -lt 0915 ]; then
+            echo "open=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping early recovery at ${SHANGHAI_TIME}; the Worker primary and backup runs keep priority until 09:15 Asia/Shanghai."
+          else
+            echo "open=true" >> "$GITHUB_OUTPUT"
+            echo "Recovery window is open at ${SHANGHAI_TIME} Asia/Shanghai."
+          fi
+
+      - name: Skip before Worker recovery window
+        if: steps.recovery_window.outputs.open != 'true'
+        run: echo "No Worker request was made before the 09:15 Asia/Shanghai recovery window."
+
       - name: Check current daily page and home pointer
         id: check
+        if: steps.recovery_window.outputs.open == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -104,17 +128,17 @@ jobs:
           fi
 
       - name: Skip because daily page and home are both current
-        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force != 'true'
+        if: steps.recovery_window.outputs.open == 'true' && steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force != 'true'
         run: echo "Skipping trigger because today's page exists and the home page already points to it."
 
       - name: Skip force rerun because daily page and home are already healthy
-        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force == 'true' && github.event.inputs.rebuild != 'true'
+        if: steps.recovery_window.outputs.open == 'true' && steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force == 'true' && github.event.inputs.rebuild != 'true'
         run: |
           echo "Force rerun requested, but today's page and home pointer are already current."
           echo "Skipping heavy regeneration to avoid unnecessary Worker subrequest pressure."
 
       - name: Repair daily home pointer from existing page
-        if: steps.check.outputs.exists == 'true' && steps.check.outputs.home_current != 'true' && github.event.inputs.rebuild != 'true'
+        if: steps.recovery_window.outputs.open == 'true' && steps.check.outputs.exists == 'true' && steps.check.outputs.home_current != 'true' && github.event.inputs.rebuild != 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -151,7 +175,7 @@ jobs:
           PY
 
       - name: Trigger today's AI daily generation
-        if: steps.check.outputs.exists != 'true' || github.event.inputs.rebuild == 'true'
+        if: steps.recovery_window.outputs.open == 'true' && (steps.check.outputs.exists != 'true' || github.event.inputs.rebuild == 'true')
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -286,7 +310,7 @@ jobs:
           exit 1
 
       - name: Verify today's page and home pointer
-        if: steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true'
+        if: steps.recovery_window.outputs.open == 'true' && (steps.check.outputs.exists != 'true' || steps.check.outputs.home_current != 'true' || github.event.inputs.rebuild == 'true')
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -331,6 +355,7 @@ jobs:
 
       - name: Validate current daily page content
         id: validate_page
+        if: steps.recovery_window.outputs.open == 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
@@ -351,7 +376,7 @@ jobs:
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - name: Report Worker daily status
-        if: always()
+        if: always() && steps.recovery_window.outputs.open == 'true'
         shell: bash
         env:
           MODE: daily
