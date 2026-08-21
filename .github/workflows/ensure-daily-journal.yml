@@ -127,6 +127,30 @@ jobs:
             echo "Home page points to '${HOME_NEXT:-<empty>}' instead of '${EXPECTED_HOME_NEXT}'."
           fi
 
+      - name: Report primary Worker status before recovery
+        if: steps.recovery_window.outputs.open == 'true' && steps.check.outputs.exists != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          MODE: daily
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          PAGE_HEALTH: needs-repair
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+        run: |
+          STATUS_HTTP_CODE="not_requested"
+          if [ -z "$TEST_TRIGGER_SECRET" ]; then
+            echo "::warning::TEST_TRIGGER_SECRET is not configured; primary Worker status is unavailable."
+          else
+            STATUS_HTTP_CODE=$(curl -sS -G "${WORKER_BASE_URL}/testTriggerScheduledStatus" \
+              -o worker-status.json \
+              -w "%{http_code}" \
+              --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+              --data-urlencode "mode=${MODE}" || echo "curl_failed")
+          fi
+
+          echo "Primary Worker status HTTP code: ${STATUS_HTTP_CODE}"
+          STATUS_HTTP_CODE="${STATUS_HTTP_CODE}" python .github/scripts/summarize-worker-status.py
+
       - name: Skip because daily page and home are both current
         if: steps.recovery_window.outputs.open == 'true' && steps.check.outputs.exists == 'true' && steps.check.outputs.home_current == 'true' && github.event.inputs.force != 'true'
         run: echo "Skipping trigger because today's page exists and the home page already points to it."
