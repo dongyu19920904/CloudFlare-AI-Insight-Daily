@@ -266,6 +266,7 @@ jobs:
           fi
 
           MODE=account-opportunity \
+          ACCOUNT_OPPORTUNITY_VALIDATION_PROFILE=pre-0803-actionable \
           TARGET_DATE="${TARGET_DATE}" \
           PAGE_RESPONSE_PATH=publication-page.json \
           node .github/scripts/validate-publication-content.mjs

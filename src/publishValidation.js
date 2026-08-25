@@ -1278,6 +1278,7 @@ function collectAccountOpportunitySourceIssues(
     allowedRejectedSourceUrls = null,
     sourceEvidence = [],
     observationMode = false,
+    enforceOfficialFactSources = true,
   } = {}
 ) {
   const issues = [];
@@ -1325,7 +1326,11 @@ function collectAccountOpportunitySourceIssues(
       );
     if (links.length === 0) {
       issues.push("账号商机每条硬信号都必须引用对应候选来源");
-    } else if (unsupportedHardSignalClause && !hasOfficialLink(links)) {
+    } else if (
+      enforceOfficialFactSources &&
+      unsupportedHardSignalClause &&
+      !hasOfficialLink(links)
+    ) {
       const clausePreview = normalizeText(unsupportedHardSignalClause).slice(0, 140);
       issues.push(`账号商机涉及价格、额度、支付、地区、登录、服务状态或政策的硬信号必须引用官方页面（触发句：${clausePreview}）`);
     }
@@ -1351,6 +1356,7 @@ function collectAccountOpportunitySourceIssues(
         !accountActionBoundaryPattern.test(clause)
     );
     if (
+      enforceOfficialFactSources &&
       criticalFactClauses.length > 0 &&
       !hasOfficialLink(links) &&
       unsupportedCriticalFactClause
@@ -1500,6 +1506,7 @@ export function validateAccountOpportunityPublication({
   minimumOpportunityCount = 1,
   maximumOpportunityCount = 2,
   observationMode = false,
+  enforceOfficialFactSources = true,
 }) {
   const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
   const issues = collectMarkdownIssues(visibleMarkdown, {
@@ -1541,6 +1548,7 @@ export function validateAccountOpportunityPublication({
     allowedRejectedSourceUrls,
     sourceEvidence,
     observationMode,
+    enforceOfficialFactSources,
   }));
   issues.push(...collectAccountOpportunityActionShapeIssues(visibleMarkdown));
   issues.push(...collectAccountOpportunitySafetyIssues(visibleMarkdown));

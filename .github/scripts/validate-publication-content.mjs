@@ -86,6 +86,8 @@ function validateByMode(mode, markdown) {
     return validateAccountOpportunityPublication({
       markdown: body,
       observationMode: isAccountOpportunityObservation(body),
+      enforceOfficialFactSources:
+        process.env.ACCOUNT_OPPORTUNITY_VALIDATION_PROFILE !== "pre-0803-actionable",
     });
   }
 

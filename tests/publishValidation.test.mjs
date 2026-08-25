@@ -1469,6 +1469,28 @@ test("validateAccountOpportunityPublication rejects linked titles and weak criti
   assert.match(result.issues.join("\n"), /必须引用对应官方页面/);
 });
 
+test("pre-August account profile keeps candidate links without keyword-based official-source blocking", () => {
+  const sourceUrl = "https://github.com/example/claude-tool";
+  const markdown = validAccountOpportunityMarkdown
+    .replaceAll("https://openai.com/news/subscription-quota-update", sourceUrl)
+    .replace(
+      "OpenAI 官方更新了 ChatGPT 订阅额度说明",
+      "开源项目展示了一个 Claude 工具使用场景"
+    )
+    .replaceAll("OpenAI 官方订阅说明", "项目仓库")
+    .replace("### 先修改套餐 FAQ，不急着新增商品", "### 先卖使用结果，不卖 Claude 官方额度");
+  const result = validateAccountOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [{ url: sourceUrl, tier: "primary", isPrimary: true }],
+    aivoraLinkPolicy: { allowedUrls: [] },
+    enforceOfficialFactSources: false,
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
 test("validateAccountOpportunityPublication allows a sourced low-risk tutorial listing without an official account change", () => {
   const sourceUrl = "https://github.com/anthropics/claude-code";
   const markdown = `## 30 秒结论

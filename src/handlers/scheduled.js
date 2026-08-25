@@ -2172,6 +2172,7 @@ async function generateAccountOpportunityMarkdown(
             maximumOpportunityCount:
                 accountOpportunityPlaybook.outputRules.maxPublishedOpportunities || 2,
             observationMode,
+            enforceOfficialFactSources: false,
         });
         markdown = validation.ok
             ? appendOpportunityReplayMetadata(
