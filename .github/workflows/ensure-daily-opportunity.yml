@@ -153,11 +153,12 @@ jobs:
           fi
 
           echo "Triggering AI opportunity generation for ${TARGET_DATE}"
-          curl -sS -G "${WORKER_BASE_URL}/testTriggerScheduledOpportunity" \
+          curl -sS -N -G "${WORKER_BASE_URL}/testTriggerScheduledOpportunity" \
             --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
             --data-urlencode "date=${TARGET_DATE}" \
             --data-urlencode "force=${{ github.event.inputs.force }}" \
             --data-urlencode "dryRun=${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}" \
+            --data-urlencode "stream=1" \
             > trigger-response.json
 
           python - <<'PY'
@@ -165,12 +166,20 @@ jobs:
           import os
 
           with open("trigger-response.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
+              events = [json.loads(line) for line in handle if line.strip()]
+
+          if not events:
+              raise SystemExit("Worker trigger returned an empty stream")
+
+          payload = events[-1]
 
           print(json.dumps(payload, ensure_ascii=False, indent=2))
 
-          if not payload.get("success"):
-              raise SystemExit("Worker trigger failed")
+          if payload.get("state") != "success" or not payload.get("success"):
+              raise SystemExit(
+                  f"Worker trigger failed: state={payload.get('state') or 'unknown'}; "
+                  f"error={payload.get('error') or ''}"
+              )
 
           debug = payload.get("debug") or {}
           quality_skipped = bool(debug.get("opportunityQualitySkipped"))
