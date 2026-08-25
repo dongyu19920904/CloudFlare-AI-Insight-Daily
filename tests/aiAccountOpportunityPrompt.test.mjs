@@ -8,7 +8,8 @@ test("account opportunity prompt separates official facts from low-risk actions"
 
   assert.match(prompt, /价格、额度、地区、支付、登录、服务状态和平台政策必须引用官方页面/);
   assert.match(prompt, /不能把普通模型新闻直接说成账号涨价、降额或封号/);
-  assert.match(prompt, /低风险教程、选型说明、标题测试和 FAQ 动作/);
+  assert.match(prompt, /账号商品的增值交付或需求验证/);
+  assert.match(prompt, /不能独立占据主行动/);
   assert.match(prompt, /每日只保留 1-2 个最有用的行动/);
   assert.match(prompt, /所有 URL 都必须逐字复制自输入候选/);
   assert.match(prompt, /非观察模式至少保留 1 条带候选链接的硬信号/);
@@ -20,6 +21,8 @@ test("account opportunity prompt serves sellers and ordinary buyers", () => {
 
   assert.match(prompt, /经营海外 AI 账号、订阅、API 和开发工具的中文卖家/);
   assert.match(prompt, /准备购买海外 AI 工具的普通买家/);
+  assert.match(prompt, /第一读者/);
+  assert.match(prompt, /买家避坑服务于可信经营，但不能取代卖家当天的经营动作/);
   assert.match(prompt, /今天发生什么/);
   assert.match(prompt, /今天做什么/);
   assert.match(prompt, /最大风险/);
@@ -54,4 +57,13 @@ test("account opportunity prompt publishes safe observation days without forcing
   assert.match(prompt, /今天没有取得可由官方页面确认的海外 AI 账号、价格、额度或政策新变化/);
   assert.match(prompt, /不新增商品/);
   assert.match(prompt, /不得新增商品、上架或承诺变化已经生效/);
+});
+
+test("account opportunity prompt keeps tutorials attached to an overseas account offer", () => {
+  const prompt = getSystemPromptAiAccountOpportunity("2026-08-25", "### 当前业务");
+
+  assert.match(prompt, /主行动必须直接落到一款海外账号、订阅或账号搭售商品/);
+  assert.match(prompt, /非观察模式不得只写「教程资料」/);
+  assert.match(prompt, /不是新套餐，不代表官方政策变化/);
+  assert.match(prompt, /而不是单独卖一份泛教程/);
 });

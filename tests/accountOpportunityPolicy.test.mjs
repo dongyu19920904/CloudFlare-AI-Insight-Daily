@@ -45,6 +45,22 @@ function makeCandidate(overrides = {}) {
   };
 }
 
+test("account opportunity playbook restores an overseas account-first offer", () => {
+  assert.equal(
+    accountOpportunityPlaybook.outputRules.requireAccountLikeOpportunityInTodayCanSell,
+    true
+  );
+  assert.match(accountOpportunityPlaybook.businessProfile.editorialRule, /哪款账号、订阅或账号搭售商品/);
+  assert.match(
+    accountOpportunityPlaybook.productLanes.find((lane) => lane.id === "bundle")?.description || "",
+    /不独立主推泛教程/
+  );
+  assert.ok(
+    accountOpportunityPlaybook.strategyKernel.supplyForms.includes("账号加教程或售后说明")
+  );
+  assert.ok(!accountOpportunityPlaybook.strategyKernel.supplyForms.includes("教程资料"));
+});
+
 test("account evidence rejects ordinary model news without an account signal", () => {
   const candidate = makeCandidate({
     supportingItems: [

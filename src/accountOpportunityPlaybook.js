@@ -4,8 +4,8 @@ export const accountOpportunityPlaybook = {
   businessProfile: {
     coreBusiness: [
       "海外官方 AI 账号与订阅",
+      "海外账号加教程或售后说明",
       "海外 API 或合规中转",
-      "教程与 FAQ",
       "代配置和迁移服务",
       "交易风控与售后边界",
     ],
@@ -16,28 +16,28 @@ export const accountOpportunityPlaybook = {
     ],
     tone: "直接、克制、可核验；像经营晨会，不像促销软文",
     editorialRule:
-      "只处理海外 AI 产品；先看真实来源，再决定今天是试挂低风险交付、修改标题或教程、更新 FAQ、收紧售后边界还是不动作。",
+      "只处理海外 AI 产品；先决定哪款账号、订阅或账号搭售商品今天要上、改、补或停，再用教程、FAQ 和售后边界降低交付成本。",
   },
 
   strategyKernel: {
     formula:
-      "真实信号 + 明确供给形态 + 一个最小动作 + 可观察结果 + 售后与合规边界。",
+      "真实信号 + 海外账号商品 + 增值交付 + 一个最小动作 + 可观察结果 + 售后与合规边界。",
     operatingRules: [
       "DeepSeek、豆包、Kimi、MiniMax、通义、智谱、文心、腾讯混元、讯飞等国内 AI 产品不进入本栏目",
       "国内产品与海外产品的比较稿，只有海外产品自身出现可核验新变化时才可采用",
-      "模型能力新闻不能直接证明账号价格、额度或政策变化，但可以触发教程、选型、迁移、组合体验或标题实验",
+      "模型能力新闻不能直接证明账号价格、额度或政策变化，但可以触发现有海外账号商品的教程、选型、迁移、组合体验或标题实验",
       "社交信息可以发现真实使用场景；价格、套餐、额度、支付、地区、登录、政策和服务状态仍必须回到官方页面",
-      "没有官方硬信号时也可做低风险的教程、FAQ、选型说明或标题测试，但不得虚构商品状态和平台变化",
+      "没有官方硬信号时也可给现有海外账号商品补充低风险教程、FAQ、选型说明或标题测试，但不得把单卖教程写成主商机",
       "普通买家也应能从文章中判断是否值得买、购买前应核对什么",
       "禁止共享滥用、凭据转卖、盗号、黑卡、接码、绕过验证和规避风控建议",
     ],
     supplyForms: [
       "官方订阅",
       "官方账号",
+      "账号加教程或售后说明",
       "API或中转",
       "第三方入口",
       "激活工具",
-      "教程资料",
       "代配置服务",
     ],
   },
@@ -46,22 +46,22 @@ export const accountOpportunityPlaybook = {
     {
       id: "account",
       name: "海外官方账号与订阅",
-      description: "只讨论海外产品中来源、功能范围和平台条款能够核验的账号或订阅变化。",
-      sellFormats: ["官方订阅入口", "正规账号交付", "购买前核验说明"],
+      description: "围绕海外账号或订阅做上新、标题、套餐说明和售后边界调整；功能场景只能作为增值交付。",
+      sellFormats: ["正规账号交付", "账号加上手说明", "账号加场景教程"],
       scoringProfile: {
-        catalogFit: 30,
+        catalogFit: 32,
         standardDelivery: 14,
         lowPriceLeadGen: 8,
-        upsellFit: 8,
+        upsellFit: 10,
       },
     },
     {
       id: "bundle",
-      name: "教程与决策资料",
-      description: "把真实变化写成选型 FAQ、上手说明和售后边界，不强制搭售账号。",
-      sellFormats: ["选型 FAQ", "上手教程", "风险核对清单"],
+      name: "账号增值搭售",
+      description: "把选型 FAQ、上手说明、迁移清单和风险边界附加到明确的海外账号商品中，不独立主推泛教程。",
+      sellFormats: ["账号加选型 FAQ", "账号加上手教程", "账号加迁移清单"],
       scoringProfile: {
-        catalogFit: 24,
+        catalogFit: 28,
         standardDelivery: 18,
         lowPriceLeadGen: 6,
         upsellFit: 10,
@@ -209,7 +209,7 @@ export const accountOpportunityPlaybook = {
     maxDigestCandidates: 4,
     maxEvidenceItemsPerCandidate: 3,
     minimumCandidateScore: 52,
-    requireAccountLikeOpportunityInTodayCanSell: false,
+    requireAccountLikeOpportunityInTodayCanSell: true,
     requireDistinctCreativityModes: false,
     dailyCreativityModeCount: 3,
     requireSections: ["30 秒结论", "今日硬信号", "今日可执行", "买家避坑", "今天别碰", "今日三步"],
