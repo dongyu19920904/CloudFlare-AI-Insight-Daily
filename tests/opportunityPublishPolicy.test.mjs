@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  normalizeOpportunityAvoidSection,
   normalizeOpportunityEvidenceBoundaryLanguage,
   validateOpportunityPublication,
 } from "../src/publishValidation.js";
@@ -236,6 +237,37 @@ test("the avoid section cannot name an item when no rejected candidate exists", 
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join(" | "), /没有被拒候选.*不得点名/);
+});
+
+test("avoid normalization removes model-invented items when no candidate was rejected", () => {
+  const avoidUrl = "https://t.me/aigc1024/23522";
+  const markdown = buildOpportunityMarkdown().replace(
+    "今天没有额外需要点名的高风险方向。",
+    `[自动视频流水线](${avoidUrl})看着很热，但今天先别碰。`
+  );
+
+  const normalized = normalizeOpportunityAvoidSection(markdown, {
+    hasRejectedCandidates: false,
+  });
+
+  assert.match(normalized, /今天没有额外需要点名的高风险方向。/);
+  assert.doesNotMatch(normalized, /aigc1024\/23522/);
+  assert.match(normalized, /## 今日主推/);
+  assert.match(normalized, /## 今日三步/);
+});
+
+test("avoid normalization preserves a sourced rejected candidate", () => {
+  const avoidUrl = "https://example.com/rejected";
+  const markdown = buildOpportunityMarkdown().replace(
+    "今天没有额外需要点名的高风险方向。",
+    `[弱证据候选](${avoidUrl})缺少可复现交付，今天先别碰。`
+  );
+
+  const normalized = normalizeOpportunityAvoidSection(markdown, {
+    hasRejectedCandidates: true,
+  });
+
+  assert.equal(normalized, markdown);
 });
 
 test("opportunity publication rejects unsupported universal market claims", () => {

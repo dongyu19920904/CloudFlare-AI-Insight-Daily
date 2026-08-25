@@ -978,6 +978,23 @@ const OPPORTUNITY_UNSAFE_AVOID_PATTERNS = [
   /(?:只有|仅有)(?:融资|采访|媒体|报道)[^。！？；\n]{0,48}(?:无|没有|未提供)[^。！？；\n]{0,30}(?:官方|原项目|GitHub|产品主页|产品演示|可复现)/i,
 ];
 
+export function normalizeOpportunityAvoidSection(
+  markdown,
+  { hasRejectedCandidates = true } = {}
+) {
+  const source = String(markdown || "");
+  if (hasRejectedCandidates) return source;
+
+  const sectionPattern =
+    /(^##\s+今天别碰[^\r\n]*\r?\n)[\s\S]*?(?=^##\s+|(?![\s\S]))/im;
+  if (!sectionPattern.test(source)) return source;
+
+  return source.replace(
+    sectionPattern,
+    "$1\n今天没有额外需要点名的高风险方向。\n\n"
+  );
+}
+
 export function normalizeOpportunityEvidenceBoundaryLanguage(
   markdown,
   { observationMode = false } = {}

@@ -53,6 +53,7 @@ import {
     validateDailyPublication,
     validateAccountOpportunityPublication,
     validateOpportunityPublication,
+    normalizeOpportunityAvoidSection,
     normalizeOpportunityEvidenceBoundaryLanguage,
 } from '../publishValidation.js';
 import {
@@ -1899,6 +1900,9 @@ async function generateOpportunityMarkdown(
             markdown,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
+        markdown = normalizeOpportunityAvoidSection(markdown, {
+            hasRejectedCandidates: rejectedOpportunityCandidates.length > 0,
+        });
         markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown, {
             observationMode,
         });
@@ -2140,6 +2144,9 @@ async function generateAccountOpportunityMarkdown(
             markdown,
             env.BOOK_LINK ? new URL(env.BOOK_LINK).hostname : 'news.aivora.cn'
         );
+        markdown = normalizeOpportunityAvoidSection(markdown, {
+            hasRejectedCandidates: rejectedAccountOpportunityCandidates.length > 0,
+        });
         markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown);
         if (observationMode) {
             markdown = normalizeAccountOpportunityObservationMarkdown(markdown);
