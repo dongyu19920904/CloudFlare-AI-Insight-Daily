@@ -1548,11 +1548,15 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
       )
       .replace(
         `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})。`,
-        `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})；相关项目声称提供终端接入，但无官方 API 或额度证明。`
+        `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})；相关项目声称提供终端接入，但无官方 API 或额度证明。\n- [可信来源展示了品牌合作场景](${mediaUrl})；这是品牌合作而非套餐变化，不触发账号上新。`
       )
       .replace(
         "是否有人购买仍待验证",
         "是否有人购买仍待验证；缺口：无官方插件市场或 Anthropic 授权证明"
+      )
+      .replace(
+        "不承诺工具长期可用",
+        "买家账号限额或封禁不在售后范围；不承诺工具长期可用"
       ),
     allowedSourceUrls: [mediaUrl],
     allowedRejectedSourceUrls: [],
