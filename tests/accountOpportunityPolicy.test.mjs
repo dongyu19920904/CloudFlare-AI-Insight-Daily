@@ -76,6 +76,51 @@ test("account evidence accepts a primary subscription or quota change", () => {
   assert.equal(assessment.strength, "中");
 });
 
+test("actionable profile keeps a traceable overseas feature signal without inventing an official account change", () => {
+  const candidate = makeCandidate({
+    supportingItems: [
+      {
+        type: "news",
+        title: "Claude Code adds a project workflow",
+        description: "Anthropic documents a new Claude Code workflow for developers",
+        source: "Anthropic",
+        url: "https://www.anthropic.com/news/claude-code-workflow",
+        evidence: {
+          tier: "primary",
+          isPrimary: true,
+          reason: "产品原始来源",
+          independentKey: "anthropic.com",
+        },
+      },
+    ],
+  });
+  const result = qualifyAccountOpportunityCandidates(
+    [candidate],
+    accountOpportunityPlaybook,
+    {
+      entities: [{ key: "name:chatgpt", section: "account-opportunity" }],
+      commercialSignatures: [
+        {
+          key: "account:official-subscription:plan-selection:faq-or-offer-review",
+          section: "account-opportunity",
+        },
+      ],
+    },
+    {
+      requireOfficialChange: false,
+      enforceMinimumScore: false,
+      enforceReplayDimensions: false,
+      dedupeCandidateSignatures: false,
+      allowObservationFallback: false,
+    }
+  );
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].accountEvidence.officialChangeEligible, false);
+  assert.equal(result.candidates[0].evidenceEligible, true);
+  assert.equal(result.candidates[0].xianyuToday, "是");
+});
+
 test("account replay rejects the same product entity from the previous seven days", () => {
   const result = qualifyAccountOpportunityCandidates(
     [makeCandidate()],

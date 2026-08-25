@@ -1764,10 +1764,12 @@ async function generateOpportunityMarkdown(
         profile: 'general',
         previousMainTopicSignals: options.previousMainTopicSignals || null,
         recentReplayMemory: options.recentReplayMemory || null,
-        enforceReplayDimensions: true,
+        // Restore the pre-August editorial profile: source/entity replay stays in
+        // place, while delivery-family similarity is guidance rather than a hard gate.
+        enforceReplayDimensions: false,
         entityAwareGrouping: true,
         avoidGenericDuplicates: true,
-        minimumCandidateScore: 52,
+        dedupeCandidateEntities: true,
     };
     const previewAssessment = buildOpportunityCandidateAssessment(
         allUnifiedData,
@@ -1806,8 +1808,8 @@ async function generateOpportunityMarkdown(
         opportunityPlaybook,
         {
             ...assessmentOptions,
-            requireStrongEvidence: true,
-            allowObservationFallback: true,
+            requireStrongEvidence: false,
+            allowObservationFallback: false,
             supplementalEvidenceBySourceUrl:
                 evidenceEnrichment?.recordsBySourceUrl || {},
         }
@@ -1867,7 +1869,7 @@ async function generateOpportunityMarkdown(
     console.log(`[Scheduled][Opportunity] Generating content...`);
     const replayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const opportunityPromptInput = [
-        `${observationMode ? '## 仅供观察核验的候选' : '## 已通过发布门槛的候选'}\n\n${opportunityCandidatesText}`,
+        `${observationMode ? '## 仅供观察核验的候选' : '## 有真实来源、可继续编辑的候选'}\n\n${opportunityCandidatesText}`,
         replayMemoryPrompt ? `## 近7天商机记忆\n\n${replayMemoryPrompt}` : '',
         `## 候选证据摘要\n\n${opportunitySourceDigest}`,
         `## 弱证据或重复候选（只能用于“今天别碰”）\n\n${buildRejectedOpportunityDigest(rejectedOpportunityCandidates)}`,
@@ -2032,9 +2034,15 @@ async function generateAccountOpportunityMarkdown(
         accountOpportunityPlaybook,
         options.recentReplayMemory,
         {
-            minimumScore:
-                accountOpportunityPlaybook.outputRules.minimumCandidateScore || 52,
-            allowObservationFallback: true,
+            // Match the useful pre-August behavior: a traceable overseas signal
+            // can produce a low-risk title/tutorial/FAQ experiment even when no
+            // same-day price or policy change exists.
+            requireOfficialChange: false,
+            enforceMinimumScore: false,
+            enforceReplayDimensions: false,
+            dedupeCandidateEntities: true,
+            dedupeCandidateSignatures: false,
+            allowObservationFallback: false,
         }
     );
     const accountOpportunityCandidates = accountAssessment.candidates.slice(
@@ -2098,7 +2106,7 @@ async function generateAccountOpportunityMarkdown(
     console.log(`[Scheduled][AccountOpportunity] Generating content...`);
     const accountReplayMemoryPrompt = formatOpportunityReplayMemoryForPrompt(options.recentReplayMemory);
     const accountOpportunityPromptInput = [
-        `${observationMode ? '## 仅供观察核验的账号线索' : '## 已通过账号商机门槛的候选'}\n\n${accountOpportunityCandidatesText}`,
+        `${observationMode ? '## 仅供观察核验的账号线索' : '## 有真实来源、可形成经营动作的海外账号候选'}\n\n${accountOpportunityCandidatesText}`,
         accountReplayMemoryPrompt ? `## 近7天商机记忆\n\n${accountReplayMemoryPrompt}` : '',
         `## 弱证据、重复或高风险候选（只能用于“今天别碰”）\n\n${buildRejectedAccountOpportunityDigest(rejectedAccountOpportunityCandidates)}`,
     ].filter(Boolean).join('\n\n');
@@ -2671,7 +2679,7 @@ export async function handleScheduledOpportunity(event, env, ctx, specifiedDate 
     const dateStr = specifiedDate || getISODate();
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'opportunity');
-    debugInfo.opportunityPipelineVersion = 'reader-v3-visible-validation';
+    debugInfo.opportunityPipelineVersion = 'pre-0803-actionable-v1';
     const dryRun = Boolean(options.dryRun);
     debugInfo.opportunityDryRun = dryRun;
     console.log(`[Scheduled][Opportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
@@ -2781,7 +2789,7 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     setFetchDate(dateStr);
     const debugInfo = buildBaseDebugInfo(dateStr, 'account-opportunity');
     const dryRun = Boolean(options.dryRun);
-    debugInfo.accountOpportunityPipelineVersion = 'evidence-first-risk-v2';
+    debugInfo.accountOpportunityPipelineVersion = 'pre-0803-actionable-overseas-v1';
     debugInfo.accountOpportunityDryRun = dryRun;
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 

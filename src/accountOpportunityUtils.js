@@ -305,6 +305,12 @@ export function qualifyAccountOpportunityCandidates(
   recentReplayMemory = null,
   options = {}
 ) {
+  const requireOfficialChange = options.requireOfficialChange !== false;
+  const enforceMinimumScore = options.enforceMinimumScore !== false;
+  const enforceReplayDimensions = options.enforceReplayDimensions !== false;
+  const dedupeCandidateEntities = options.dedupeCandidateEntities !== false;
+  const dedupeCandidateSignatures =
+    options.dedupeCandidateSignatures !== false;
   const minimumScore = Math.max(
     0,
     Number.parseInt(options.minimumScore, 10) ||
@@ -338,30 +344,51 @@ export function qualifyAccountOpportunityCandidates(
     const entityKey = String(candidate?.entityKey || "").toLowerCase();
     const entityToken = getEntitySearchToken(entityKey);
     const rejectionReasons = [];
+    const hasTraceableSource = (candidate?.supportingItems || []).some(
+      (item) => String(item?.url || "").trim().length > 0
+    );
+    const evidenceEligible = requireOfficialChange
+      ? evidence.eligible
+      : hasTraceableSource;
 
-    if (!evidence.eligible) {
-      rejectionReasons.push(...evidence.gaps);
+    if (!evidenceEligible) {
+      rejectionReasons.push(
+        ...(requireOfficialChange
+          ? evidence.gaps
+          : ["没有可追溯到原始素材的来源链接"])
+      );
     }
     if (!marketScope.eligible) {
       rejectionReasons.push(...marketScope.gaps);
     }
-    if ((candidate?.score || 0) < minimumScore) {
+    if (enforceMinimumScore && (candidate?.score || 0) < minimumScore) {
       rejectionReasons.push(`综合分低于账号商机门槛 ${minimumScore}`);
     }
     if (
+      enforceReplayDimensions &&
       entityKey &&
       (recentEntities.has(entityKey) ||
         (entityToken.length >= 3 && recentTitles.includes(entityToken)))
     ) {
       rejectionReasons.push("近 7 天账号商机已经使用同一产品或项目实体");
     }
-    if (recentSignatures.has(dimensions.accountReplaySignature)) {
+    if (
+      enforceReplayDimensions &&
+      recentSignatures.has(dimensions.accountReplaySignature)
+    ) {
       rejectionReasons.push("近 7 天账号商机已经使用同一供给形态、买家痛点和行动组合");
     }
-    if (entityKey && seenEntities.has(entityKey)) {
+    if (
+      dedupeCandidateEntities &&
+      entityKey &&
+      seenEntities.has(entityKey)
+    ) {
       rejectionReasons.push("当天账号候选中已经有同一产品或项目实体");
     }
-    if (seenSignatures.has(dimensions.accountReplaySignature)) {
+    if (
+      dedupeCandidateSignatures &&
+      seenSignatures.has(dimensions.accountReplaySignature)
+    ) {
       rejectionReasons.push("当天账号候选中行动组合重复");
     }
 
@@ -370,7 +397,12 @@ export function qualifyAccountOpportunityCandidates(
       /第三方|镜像|共享|激活|破解|key|中转/i.test(getCandidateEvidenceText(candidate))
         ? "高"
         : candidate.afterSalesRisk || "中";
-    const listingDecision = afterSalesRisk === "高" ? "否" : "观察";
+    const listingDecision =
+      afterSalesRisk === "高"
+        ? "否"
+        : requireOfficialChange && !evidence.eligible
+          ? "观察"
+          : "是";
     const assessed = {
       ...candidate,
       ...dimensions,
@@ -378,10 +410,14 @@ export function qualifyAccountOpportunityCandidates(
       deliveryType: dimensions.actionType,
       commercialSignature: dimensions.accountReplaySignature,
       offerFamily: dimensions.accountOfferFamily,
-      accountEvidence: evidence,
+      accountEvidence: {
+        ...evidence,
+        eligible: evidenceEligible,
+        officialChangeEligible: evidence.eligible,
+      },
       accountMarketScope: marketScope,
       evidenceStrength: evidence.strength,
-      evidenceEligible: evidence.eligible,
+      evidenceEligible,
       evidenceGaps: evidence.gaps,
       confidence: evidence.strength,
       xianyuToday: listingDecision,
@@ -392,8 +428,10 @@ export function qualifyAccountOpportunityCandidates(
 
     if (assessed.qualified) {
       qualified.push(assessed);
-      if (entityKey) seenEntities.add(entityKey);
-      seenSignatures.add(dimensions.accountReplaySignature);
+      if (dedupeCandidateEntities && entityKey) seenEntities.add(entityKey);
+      if (dedupeCandidateSignatures) {
+        seenSignatures.add(dimensions.accountReplaySignature);
+      }
     } else {
       rejected.push(assessed);
     }

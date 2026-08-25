@@ -77,6 +77,35 @@ test("strict opportunity assessment rejects media-only product claims", () => {
   );
 });
 
+test("actionable profile keeps a traceable AI signal for a low-cost market test", () => {
+  const assessment = buildOpportunityCandidateAssessment(
+    {
+      news: [
+        {
+          title: "某 AI 工具发布自动化工作流",
+          description: "可信媒体展示了内容整理与自动化交付流程",
+          source: "机器之心",
+          url: "https://www.jiqizhixin.com/articles/actionable-example",
+          published_date: "2026-08-25",
+          details: { content_html: "<p>workflow release content automation</p>" },
+        },
+      ],
+    },
+    undefined,
+    {
+      requireStrongEvidence: false,
+      enforceReplayDimensions: false,
+      entityAwareGrouping: true,
+      avoidGenericDuplicates: true,
+      dedupeCandidateEntities: true,
+    }
+  );
+
+  assert.ok(assessment.candidates.length > 0);
+  assert.equal(assessment.candidates[0].observationOnly, undefined);
+  assert.equal(assessment.rejectedCandidates.length, 0);
+});
+
 test("observation fallback keeps a trusted-media change as verification only", () => {
   const assessment = buildOpportunityCandidateAssessment(
     {

@@ -1380,8 +1380,65 @@ test("validateAccountOpportunityPublication rejects linked titles and weak criti
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /标题必须是纯文本/);
-  assert.match(result.issues.join("\n"), /每条硬信号都必须引用官方页面或原项目/);
+  assert.match(result.issues.join("\n"), /硬信号必须引用官方页面/);
   assert.match(result.issues.join("\n"), /必须引用对应官方页面/);
+});
+
+test("validateAccountOpportunityPublication allows a sourced low-risk tutorial listing without an official account change", () => {
+  const sourceUrl = "https://github.com/anthropics/claude-code";
+  const result = validateAccountOpportunityPublication({
+    markdown: `## 30 秒结论
+
+- **今天发生什么：** Claude Code 原项目公开了可复现的工作流能力。
+- **今天做什么：** 做一页中文上手清单并测试一个教程标题。
+- **最大风险：** 不能把功能更新说成账号价格、额度或长期稳定性变化。
+
+## 今日硬信号
+
+- [Claude Code 官方仓库证明项目及公开工作流存在](${sourceUrl})。
+
+## 今日可执行
+
+### 先试一页 Claude Code 中文上手清单
+
+**判断：** 今天可测试的是低售后的教程交付，不是凭空新增账号承诺。
+
+- **证据与可信度：** [Claude Code 官方仓库证明项目及公开说明存在](${sourceUrl})；可信度：中；是否有人购买仍待验证。
+- **供给形态：** 教程资料。
+- **适合买家与真实需求：** 待验证假设：刚接触 Claude Code 的开发者可能需要一页中文起步清单。
+- **是否今天能挂闲鱼：** 是；只挂教程样品，不承诺账号状态变化。
+- **今天最小动作：** 做一页样品并用两版标题收集三次有效询问。
+- **售后与合规：** 售后风险：低；只解释公开操作，不代绕过平台限制。
+- **不能承诺与停止：** 不承诺工具长期可用；48 小时没有有效询问就停止扩写。
+
+## 买家避坑
+
+- 付款前确认交付的是教程资料，不是官方账号或官方授权服务。
+- 先看样页和适用版本，再判断是否适合自己的工作流。
+
+## 今天别碰
+
+- 今天没有额外需要点名的高风险方向。
+
+## 今日三步
+
+- **今天确认：** 核对仓库公开说明和可复现范围。
+- **今天修改：** 做一页中文样品并测试两版标题。
+- **今天记录：** 记录三次有效询问及买家最想解决的问题。`,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [
+      {
+        url: sourceUrl,
+        tier: "primary",
+        isPrimary: true,
+        reason: "原项目",
+      },
+    ],
+    aivoraLinkPolicy: { allowedUrls: [] },
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
 test("validateAccountOpportunityPublication rejects unsafe trading advice and invented seller prices", () => {

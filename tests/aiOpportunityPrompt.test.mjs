@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { getSystemPromptAiOpportunity } from "../src/prompt/aiOpportunityPrompt.js";
 
-test("getSystemPromptAiOpportunity defines an evidence-first opportunity editor", () => {
+test("getSystemPromptAiOpportunity defines a source-backed actionable opportunity editor", () => {
   const prompt = getSystemPromptAiOpportunity("2026-08-03", "### 当前业务");
 
   assert.match(prompt, /AI 商机产品主编/);
@@ -11,6 +11,7 @@ test("getSystemPromptAiOpportunity defines an evidence-first opportunity editor"
   assert.match(prompt, /官方发布、原项目、原作者/);
   assert.match(prompt, /社交信息只能发现线索/);
   assert.match(prompt, /先有真实信号，再推导可测试的商机/);
+  assert.match(prompt, /先替读者找出今天能试的最小交付/);
   assert.match(prompt, /绝不为了完整栏目凑数/);
 });
 
@@ -23,8 +24,8 @@ test("getSystemPromptAiOpportunity asks for actionable 48-hour validation and st
   assert.match(prompt, /第一单/);
   assert.match(prompt, /复购或沉淀资产/);
   assert.match(prompt, /停止条件/);
-  assert.match(prompt, /5 次目标访谈/);
-  assert.match(prompt, /单纯发帖、录屏、收藏项目不算验证/);
+  assert.match(prompt, /访谈 3-5 位目标用户/);
+  assert.match(prompt, /发帖或录屏必须同时写清要观察什么反馈/);
 });
 
 test("getSystemPromptAiOpportunity keeps the concise publication structure", () => {
@@ -41,7 +42,7 @@ test("getSystemPromptAiOpportunity keeps the concise publication structure", () 
   assert.match(prompt, /证据与可信度/);
   assert.match(prompt, /第一单与复购/);
   assert.match(prompt, /风险与停止/);
-  assert.match(prompt, /读者交付家族/);
+  assert.match(prompt, /商业模式和交付类型用于提醒当天做出差异/);
   assert.match(prompt, /今日三步必须恰好 3 个一级列表项/);
   assert.match(prompt, /每项只有一个完整句子且不超过 80 个中文字符/);
   assert.doesNotMatch(prompt, /## 地图感/);

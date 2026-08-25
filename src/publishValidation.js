@@ -1279,7 +1279,6 @@ function collectAccountOpportunitySourceIssues(
   const allowedRejected = Array.isArray(allowedRejectedSourceUrls)
     ? new Set(allowedRejectedSourceUrls.map(canonicalizeUrl).filter(Boolean))
     : allowedQualified;
-  const evidenceByUrl = buildEvidenceByUrl(sourceEvidence);
   const summary = extractSection(markdown, /^##\s+30\s*秒结论(?:\s|$).*$/im);
   const hardSignals = extractSection(markdown, /^##\s+今日硬信号(?:\s|$).*$/im);
   const actionSection = extractSection(markdown, /^##\s+今日可执行(?:\s|$).*$/im);
@@ -1288,11 +1287,10 @@ function collectAccountOpportunitySourceIssues(
   const actionSteps = extractSection(markdown, /^##\s+今日三步(?:\s|$).*$/im);
   const actionBlocks = extractLevel3Blocks(actionSection);
 
-  const getEvidence = (link) =>
-    evidenceByUrl.get(link.url) || classifyOpportunityEvidence({ url: link.url }, "");
-  const isPrimaryLink = (link) => getEvidence(link)?.isPrimary === true;
   const hasOfficialLink = (links) =>
     links.some((link) => isOfficialAccountOpportunityUrl(link.url));
+  const criticalAccountFactPattern =
+    /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i;
 
   const hardSignalLines = getSectionBody(hardSignals)
     .split(/\r?\n/)
@@ -1310,8 +1308,10 @@ function collectAccountOpportunitySourceIssues(
       );
     if (isObservationConclusion) continue;
     const links = extractSectionLinks(line).filter((link) => !isNoiseSectionLink(link));
-    if (links.length === 0 || !links.some(isPrimaryLink)) {
-      issues.push("账号商机每条硬信号都必须引用官方页面或原项目");
+    if (links.length === 0) {
+      issues.push("账号商机每条硬信号都必须引用对应候选来源");
+    } else if (criticalAccountFactPattern.test(line) && !hasOfficialLink(links)) {
+      issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策的硬信号必须引用官方页面");
     }
   }
 
@@ -1324,11 +1324,9 @@ function collectAccountOpportunitySourceIssues(
       issues.push("账号商机同一行动不得重复引用同一个来源链接");
     }
 
-    const criticalFactPattern =
-      /(?:¥|￥|\$\s*\d|美元|元\s*\/(?:月|年)|价格|售价|额度|配额|套餐|支付|地区|登录|封号|封禁|下线|停用|退役|正式上线|服务状态|政策|条款|授权)/i;
     const criticalFactClauses = block
       .split(/\r?\n|[。；;]/)
-      .filter((clause) => criticalFactPattern.test(clause));
+      .filter((clause) => criticalAccountFactPattern.test(clause));
     const observationBoundaryPattern =
       /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不新增/;
     const hasUnsupportedCriticalFact = criticalFactClauses.some(
@@ -1342,9 +1340,6 @@ function collectAccountOpportunitySourceIssues(
       issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策时必须引用对应官方页面");
     }
     if (/是否今天能挂闲鱼[:：]\*{0,2}\s*是(?=$|[\s；;，。])/m.test(block)) {
-      if (!hasOfficialLink(links)) {
-        issues.push("账号商机建议今天上架时必须有官方来源支持关键事实");
-      }
       if (/售后风险[:：]\s*高(?=$|[\s；;，。])/m.test(block)) {
         issues.push("账号商机售后风险为高时不得建议今天上架");
       }
