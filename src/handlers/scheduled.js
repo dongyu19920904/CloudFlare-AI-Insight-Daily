@@ -43,6 +43,7 @@ import {
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     formatAccountOpportunityCandidatesForPrompt,
     insertAccountOpportunityAivoraLink,
+    normalizeAccountOpportunityHardSignalLinks,
     normalizeAccountOpportunityObservationMarkdown,
     qualifyAccountOpportunityCandidates,
     updateAccountOpportunityHomeIndexContent,
@@ -2142,6 +2143,8 @@ async function generateAccountOpportunityMarkdown(
         markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown);
         if (observationMode) {
             markdown = normalizeAccountOpportunityObservationMarkdown(markdown);
+        } else {
+            markdown = normalizeAccountOpportunityHardSignalLinks(markdown);
         }
 
         const insertedAivoraLink = insertAccountOpportunityAivoraLink(

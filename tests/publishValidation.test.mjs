@@ -1560,7 +1560,7 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
       )
       .replace(
         "不承诺工具长期可用",
-        "项目稳定性不受官方保障、依赖 API 额度；它不改变账号本身的订阅或额度规则；买家账号限额或封禁不在售后范围；交付不包含长期维护、API 额度或官方授权；购买前仍以页面当日说明和官方条款为准；不承诺工具长期可用"
+        "项目稳定性不受官方保障、依赖 API 额度；它不改变账号本身的订阅或额度规则；买家账号限额或封禁不在售后范围；交付不包含长期维护、API 额度或官方授权；如果买家问能否免费用或长期稳定，必须回答不能，额度、价格和政策以 Claude 官方为准；不承诺工具长期可用"
       ),
     allowedSourceUrls: [mediaUrl],
     allowedRejectedSourceUrls: [],

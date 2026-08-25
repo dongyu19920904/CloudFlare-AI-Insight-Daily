@@ -636,6 +636,39 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
   return output.join("\n");
 }
 
+export function normalizeAccountOpportunityHardSignalLinks(markdown) {
+  const lines = String(markdown || "").split(/\r?\n/);
+  const sectionStart = lines.findIndex((line) =>
+    /^##\s+今日硬信号(?:\s|$)/.test(line)
+  );
+  if (sectionStart < 0) return String(markdown || "");
+
+  let sectionEnd = lines.length;
+  for (let index = sectionStart + 1; index < lines.length; index += 1) {
+    if (/^##\s+/.test(lines[index])) {
+      sectionEnd = index;
+      break;
+    }
+  }
+
+  const body = lines.slice(sectionStart + 1, sectionEnd);
+  const hasLinkedSignal = body.some(
+    (line) => /^\s*[-*+]\s+/.test(line) && /\[[^\]]+\]\(https?:\/\//i.test(line)
+  );
+  if (!hasLinkedSignal) return String(markdown || "");
+
+  const normalizedBody = body.filter(
+    (line) =>
+      !line.trim() ||
+      (/^\s*[-*+]\s+/.test(line) && /\[[^\]]+\]\(https?:\/\//i.test(line))
+  );
+  return [
+    ...lines.slice(0, sectionStart + 1),
+    ...normalizedBody,
+    ...lines.slice(sectionEnd),
+  ].join("\n");
+}
+
 export function buildRejectedAccountOpportunityDigest(
   candidates = [],
   maxCandidates = 3

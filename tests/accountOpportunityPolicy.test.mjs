@@ -9,6 +9,7 @@ import {
   deriveAccountOpportunityDimensions,
   insertAccountOpportunityAivoraLink,
   isOfficialAccountOpportunityUrl,
+  normalizeAccountOpportunityHardSignalLinks,
   normalizeAccountOpportunityObservationMarkdown,
   qualifyAccountOpportunityCandidates,
 } from "../src/accountOpportunityUtils.js";
@@ -439,4 +440,21 @@ test("account observation normalization fixes the hard-signal boundary and missi
     )
   );
   assert.match(normalized, /\*\*判断：\*\* 今天只有待核验线索/);
+});
+
+test("account hard-signal normalization removes unsourced extras when a sourced signal exists", () => {
+  const normalized = normalizeAccountOpportunityHardSignalLinks(`## 今日硬信号
+
+- [原项目证明工作流存在](https://example.com/project)。
+- 社区还讨论了套餐变化。
+这是一段没有来源的补充说明。
+
+## 今日可执行
+
+### 写一页教程`);
+
+  assert.match(normalized, /原项目证明工作流存在/);
+  assert.doesNotMatch(normalized, /社区还讨论了套餐变化/);
+  assert.doesNotMatch(normalized, /没有来源的补充说明/);
+  assert.match(normalized, /## 今日可执行/);
 });
