@@ -458,3 +458,22 @@ test("account hard-signal normalization removes unsourced extras when a sourced 
   assert.doesNotMatch(normalized, /没有来源的补充说明/);
   assert.match(normalized, /## 今日可执行/);
 });
+
+test("account hard-signal normalization rebuilds a bounded signal from a body link", () => {
+  const normalized = normalizeAccountOpportunityHardSignalLinks(`## 今日硬信号
+
+- 社区讨论了一种海外 AI 工具用法。
+
+## 今日可执行
+
+### 写一页教程
+
+- **证据与可信度：** [原项目展示了工作流](https://github.com/example/project)；可信度：中。`);
+
+  assert.match(
+    normalized,
+    /\[候选来源展示的海外 AI 工具线索\]\(https:\/\/github\.com\/example\/project\)/
+  );
+  assert.match(normalized, /不证明账号、价格、额度或政策变化，相关事实仍待官方确认/);
+  assert.doesNotMatch(normalized, /社区讨论了一种海外 AI 工具用法/);
+});

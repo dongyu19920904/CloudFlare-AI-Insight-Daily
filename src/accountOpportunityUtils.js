@@ -637,7 +637,8 @@ export function normalizeAccountOpportunityObservationMarkdown(markdown) {
 }
 
 export function normalizeAccountOpportunityHardSignalLinks(markdown) {
-  const lines = String(markdown || "").split(/\r?\n/);
+  const sourceMarkdown = String(markdown || "");
+  const lines = sourceMarkdown.split(/\r?\n/);
   const sectionStart = lines.findIndex((line) =>
     /^##\s+今日硬信号(?:\s|$)/.test(line)
   );
@@ -655,7 +656,28 @@ export function normalizeAccountOpportunityHardSignalLinks(markdown) {
   const hasLinkedSignal = body.some(
     (line) => /^\s*[-*+]\s+/.test(line) && /\[[^\]]+\]\(https?:\/\//i.test(line)
   );
-  if (!hasLinkedSignal) return String(markdown || "");
+  if (!hasLinkedSignal) {
+    const sourceLink = Array.from(
+      sourceMarkdown.matchAll(/(?<!!)\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi)
+    ).find((match) => {
+      try {
+        const hostname = new URL(match[2]).hostname.toLowerCase();
+        return hostname !== "aivora.cn" && !hostname.endsWith(".aivora.cn");
+      } catch {
+        return false;
+      }
+    });
+    if (!sourceLink) return sourceMarkdown;
+
+    const safeSignal = `- [候选来源展示的海外 AI 工具线索](${sourceLink[2]})；该来源不证明账号、价格、额度或政策变化，相关事实仍待官方确认。`;
+    return [
+      ...lines.slice(0, sectionStart + 1),
+      "",
+      safeSignal,
+      "",
+      ...lines.slice(sectionEnd),
+    ].join("\n");
+  }
 
   const normalizedBody = body.filter(
     (line) =>
