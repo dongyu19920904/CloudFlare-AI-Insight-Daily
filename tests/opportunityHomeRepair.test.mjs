@@ -103,5 +103,6 @@ test("general opportunity publication keeps the strong evidence gate", () => {
   )?.[0] || "";
 
   assert.match(finalAssessment, /requireStrongEvidence: true/);
+  assert.match(finalAssessment, /minimumCandidateScore: 1/);
   assert.match(finalAssessment, /allowObservationFallback: false/);
 });

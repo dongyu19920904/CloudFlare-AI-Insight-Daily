@@ -1816,6 +1816,7 @@ async function generateOpportunityMarkdown(
         {
             ...assessmentOptions,
             requireStrongEvidence: true,
+            minimumCandidateScore: 1,
             allowObservationFallback: false,
             supplementalEvidenceBySourceUrl:
                 evidenceEnrichment?.recordsBySourceUrl || {},
