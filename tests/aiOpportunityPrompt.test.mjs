@@ -12,6 +12,8 @@ test("getSystemPromptAiOpportunity defines a source-backed actionable opportunit
   assert.match(prompt, /社交信息只能发现线索/);
   assert.match(prompt, /先有真实信号，再推导可测试的商机/);
   assert.match(prompt, /先替读者找出今天能试的最小交付/);
+  assert.match(prompt, /可以证明「有人公开展示或报告了这个场景」/);
+  assert.match(prompt, /不得仅因缺少官方或付费证据把所有合格候选改写成/);
   assert.match(prompt, /绝不为了完整栏目凑数/);
 });
 
@@ -89,4 +91,7 @@ test("getSystemPromptAiOpportunity keeps observation days honest", () => {
   assert.match(prompt, /今天没有新的差异化商机，不凑数/);
   assert.match(prompt, /尚不进入成交阶段/);
   assert.match(prompt, /不得把它写成新机会、上架建议或已确认需求/);
+  assert.match(prompt, /只有候选明确含「发布模式: 观察」时/);
+  assert.match(prompt, /本稿就不是观察稿/);
+  assert.match(prompt, /不得把「没有官方证据」误写成「什么都不能做」/);
 });
