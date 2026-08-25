@@ -1603,6 +1603,10 @@ test("validateAccountOpportunityPublication treats explicit account disclaimers 
     .replace(
       "本次候选没有真实询价记录",
       "证据缺口是项目能力不等于 Claude 官方功能，无法据此确认套餐、价格、额度、兼容范围、自动化效果或售后责任"
+    )
+    .replace(
+      "今天适合核对现有商品说明，不适合凭一次更新猜测买家需求",
+      "可以测试教程资料需求，但不应包装成 Claude 官方订阅、官方授权或固定效果商品"
     );
   const result = validateAccountOpportunityPublication({
     markdown,
