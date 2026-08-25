@@ -63,11 +63,20 @@ test("Aivora link intent is limited to directly related account or subscription 
     {
       label: "ChatGPT 订阅迁移验证",
       productAngle: "核对账号入口和续费边界",
+      preferredLane: "account",
+    },
+  ]);
+  const serviceOnly = buildAivoraOpportunityLinkIntent([
+    {
+      label: "Claude 开源项目代配置",
+      productAngle: "交付一次跑通测试和说明",
+      preferredLane: "service",
     },
   ]);
 
   assert.equal(unrelated.eligible, false);
   assert.equal(related.eligible, true);
+  assert.equal(serviceOnly.eligible, false);
   assert.ok(related.tokens.includes("chatgpt"));
 });
 

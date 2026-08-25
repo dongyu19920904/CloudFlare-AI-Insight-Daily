@@ -92,7 +92,14 @@ export function buildAivoraOpportunityLinkPolicy({
 }
 
 export function buildAivoraOpportunityLinkIntent(candidates = []) {
-  const text = (candidates || [])
+  const directAccountCandidates = (candidates || []).filter(
+    (candidate) => String(candidate?.preferredLane || "").toLowerCase() === "account"
+  );
+  if (directAccountCandidates.length === 0) {
+    return { eligible: false, tokens: [], cacheKey: "none" };
+  }
+
+  const text = directAccountCandidates
     .flatMap((candidate) => [
       candidate?.label,
       candidate?.productAngle,
