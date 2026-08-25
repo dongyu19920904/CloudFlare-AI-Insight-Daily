@@ -1319,10 +1319,18 @@ function collectAccountOpportunitySourceIssues(
       );
     if (isObservationConclusion) continue;
     const links = extractSectionLinks(line).filter((link) => !isNoiseSectionLink(link));
+    const unsupportedHardSignalClause = line
+      .split(/[。；;]/)
+      .find(
+        (clause) =>
+          criticalAccountFactPattern.test(clause) &&
+          !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause)
+      );
     if (links.length === 0) {
       issues.push("账号商机每条硬信号都必须引用对应候选来源");
-    } else if (criticalAccountFactPattern.test(line) && !hasOfficialLink(links)) {
-      issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策的硬信号必须引用官方页面");
+    } else if (unsupportedHardSignalClause && !hasOfficialLink(links)) {
+      const clausePreview = normalizeText(unsupportedHardSignalClause).slice(0, 140);
+      issues.push(`账号商机涉及价格、额度、支付、地区、登录、服务状态或政策的硬信号必须引用官方页面（触发句：${clausePreview}）`);
     }
   }
 
@@ -1338,8 +1346,12 @@ function collectAccountOpportunitySourceIssues(
     const criticalFactClauses = block
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalAccountFactPattern.test(clause));
+    const accountActionBoundaryPattern =
+      /(?:今天最小动作|今天确认|今天修改|今天记录)[^。；;\n]{0,80}(?:核对|核实|查清|列出|注明|写清|补充|补一条|检查|区分)/;
     const unsupportedCriticalFactClause = criticalFactClauses.find(
-      (clause) => !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause)
+      (clause) =>
+        !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause) &&
+        !accountActionBoundaryPattern.test(clause)
     );
     if (
       criticalFactClauses.length > 0 &&

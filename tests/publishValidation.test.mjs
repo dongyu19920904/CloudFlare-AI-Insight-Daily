@@ -1471,8 +1471,7 @@ test("validateAccountOpportunityPublication rejects linked titles and weak criti
 
 test("validateAccountOpportunityPublication allows a sourced low-risk tutorial listing without an official account change", () => {
   const sourceUrl = "https://github.com/anthropics/claude-code";
-  const result = validateAccountOpportunityPublication({
-    markdown: `## 30 秒结论
+  const markdown = `## 30 秒结论
 
 - **今天发生什么：** Claude Code 原项目公开了可复现的工作流能力。
 - **今天做什么：** 做一页中文上手清单并测试一个教程标题。
@@ -1509,7 +1508,9 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
 
 - **今天确认：** 核对仓库公开说明和可复现范围。
 - **今天修改：** 做一页中文样品并测试两版标题。
-- **今天记录：** 记录三次有效询问及买家最想解决的问题。`,
+- **今天记录：** 记录三次有效询问及买家最想解决的问题。`;
+  const result = validateAccountOpportunityPublication({
+    markdown,
     allowedSourceUrls: [sourceUrl],
     allowedRejectedSourceUrls: [],
     sourceEvidence: [
@@ -1524,6 +1525,42 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
   });
 
   assert.equal(result.ok, true, result.issues.join("\n"));
+
+  const mediaUrl = "https://example.com/claude-tool-workflow";
+  const boundedMediaAction = validateAccountOpportunityPublication({
+    markdown: markdown
+      .replaceAll(sourceUrl, mediaUrl)
+      .replace(
+        "Claude Code 原项目公开了可复现的工作流能力",
+        "可信来源展示了一个 Claude 工具组合使用场景"
+      )
+      .replace(
+        "Claude Code 官方仓库证明项目及公开工作流存在",
+        "可信来源展示了 Claude 工具组合使用场景"
+      )
+      .replace(
+        "Claude Code 官方仓库证明项目及公开说明存在",
+        "可信来源证明有人公开展示了这个使用场景"
+      )
+      .replace(
+        "做一页样品并用两版标题收集三次有效询问",
+        "在现有 FAQ 里补一条并列出需要核对的 Pro 订阅、登录地区与本地环境前置条件"
+      )
+      .replace(
+        `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})。`,
+        `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})；本次候选输入未确认额度、登录地区或政策变化。`
+      ),
+    allowedSourceUrls: [mediaUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [{ url: mediaUrl, tier: "trusted-media", isPrimary: false }],
+    aivoraLinkPolicy: { allowedUrls: [] },
+  });
+
+  assert.equal(
+    boundedMediaAction.ok,
+    true,
+    boundedMediaAction.issues.join("\n")
+  );
 });
 
 test("validateAccountOpportunityPublication rejects unsafe trading advice and invented seller prices", () => {
