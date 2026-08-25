@@ -10,6 +10,9 @@ test("account opportunity prompt separates official facts from low-risk actions"
   assert.match(prompt, /不能把普通模型新闻直接说成账号涨价、降额或封号/);
   assert.match(prompt, /低风险教程、选型说明、标题测试和 FAQ 动作/);
   assert.match(prompt, /每日只保留 1-2 个最有用的行动/);
+  assert.match(prompt, /所有 URL 都必须逐字复制自输入候选/);
+  assert.match(prompt, /非观察模式至少保留 1 条带候选链接的硬信号/);
+  assert.match(prompt, /第一行必须逐字使用「\*\*判断：\*\*」开头/);
 });
 
 test("account opportunity prompt serves sellers and ordinary buyers", () => {
