@@ -1575,6 +1575,42 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
   );
 });
 
+test("validateAccountOpportunityPublication treats explicit account disclaimers and checks as boundaries", () => {
+  const sourceUrl = "https://github.com/example/claude-setup";
+  const markdown = validAccountOpportunityMarkdown
+    .replaceAll("https://openai.com/news/subscription-quota-update", sourceUrl)
+    .replace("### 先修改套餐 FAQ，不急着新增商品", "### 先做一页接入配置 FAQ")
+    .replace(
+      "OpenAI 官方更新了 ChatGPT 订阅额度说明",
+      "开源项目展示了一个 Claude 接入配置场景"
+    )
+    .replace(
+      "OpenAI 官方订阅说明证明额度字段已更新",
+      "项目仓库证明接入配置工具存在"
+    )
+    .replace(
+      "但它不证明二手市场需求",
+      "该页面不证明 Claude 官方套餐、账号权益或服务条款适用范围"
+    )
+    .replace(
+      "OpenAI 官方订阅说明证明额度字段已更新",
+      "项目仓库证明配置工具存在；该页面不证明 Claude 官方订阅价格、额度或账号政策发生变化"
+    )
+    .replace(
+      "适合正在比较套餐额度的用户；是否愿意购买仍是待验证假设",
+      "先验证用户是卡在接入配置，还是其实在寻找官方套餐权益"
+    );
+  const result = validateAccountOpportunityPublication({
+    markdown,
+    allowedSourceUrls: [sourceUrl],
+    allowedRejectedSourceUrls: [],
+    sourceEvidence: [{ url: sourceUrl, tier: "primary", isPrimary: true }],
+    aivoraLinkPolicy: { allowedUrls: [] },
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
 test("validateAccountOpportunityPublication rejects unsafe trading advice and invented seller prices", () => {
   const invalid = validAccountOpportunityMarkdown
     .replace("修改一个额度 FAQ", "提供绕过风控步骤并共享账号")
