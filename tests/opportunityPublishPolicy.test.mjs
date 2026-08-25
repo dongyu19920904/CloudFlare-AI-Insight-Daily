@@ -583,6 +583,35 @@ test("a positive authorization claim still requires primary evidence", () => {
   assert.match(result.issues.join(" | "), /必须引用官方或原项目来源/);
 });
 
+test("opportunity publication accepts media-to-official verification boundaries", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "中，需要核对素材版权和许可边界",
+      "中，媒体信息不能替代官方功能、价格、版权和使用范围说明，相关内容需逐项核对"
+    ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("an asserted price change cannot hide behind an official-verification warning", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "中，需要核对素材版权和许可边界",
+      "中，价格已经调整，但媒体信息不能替代官方价格说明"
+    ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /必须引用官方或原项目来源/);
+});
+
 test("a bounded exclusion cannot hide an unsupported price claim", () => {
   const mediaUrl = "https://www.jiqizhixin.com/articles/example";
   const result = validateOpportunityPublication({
