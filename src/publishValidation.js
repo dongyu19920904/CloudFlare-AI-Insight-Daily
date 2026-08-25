@@ -808,7 +808,9 @@ function isBoundedOpportunitySensitiveClause(clause = "") {
   if (OPPORTUNITY_EXPLICIT_PRICE_ASSERTION_PATTERN.test(clause)) {
     return false;
   }
-  const assertionText = String(clause).replace(/公开或获授权/g, "公开资料");
+  const assertionText = String(clause)
+    .replace(/公开或获授权/g, "公开资料")
+    .replace(/(?:尚未|未)获(?:得)?授权/g, "授权待核对");
   if (OPPORTUNITY_EXPLICIT_LICENSE_ASSERTION_PATTERN.test(assertionText)) {
     return false;
   }

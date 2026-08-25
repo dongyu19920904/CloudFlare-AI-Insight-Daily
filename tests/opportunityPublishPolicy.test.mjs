@@ -597,6 +597,20 @@ test("opportunity publication accepts media-to-official verification boundaries"
   assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
+test("opportunity publication treats unlicensed-material wording as a risk boundary", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "中，需要核对素材版权和许可边界",
+      "中，素材可能涉及商标、肖像或未获授权图片，报道也不能证明商用许可，需先核对授权"
+    ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
 test("an asserted price change cannot hide behind an official-verification warning", () => {
   const mediaUrl = "https://www.jiqizhixin.com/articles/example";
   const result = validateOpportunityPublication({
