@@ -789,6 +789,9 @@ function linkLabelOverstatesDestination(link) {
   }
 }
 
+const OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN =
+  /没有取得|没有|尚无|尚未|未获|未确认|待核验|待核对|待确认|仍待|仍需|仍缺|还需|有待|需要核对|需要确认|需核对|需确认|先核对|先确认|应核对|应确认|必须核对|必须确认|不明确|未知|缺少官方|不承诺|不能确认|无法确认|不能证明|不启动|不进入|不新增|建议(?:定价|报价)|先(?:定价|报价)|试(?:挂|卖)|(?:测试|验证|试探)(?:价|价格|报价|定价)|暂定(?:价|价格)|价格假设|报价假设/;
+
 function collectOpportunitySourcePolicyIssues(
   markdown,
   {
@@ -838,10 +841,8 @@ function collectOpportunitySourcePolicyIssues(
     const criticalFactClauses = block
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalFactPattern.test(clause));
-    const observationBoundaryPattern =
-      /没有取得|没有|尚无|尚未|未获|未确认|待核验|待核对|仍待|仍缺|需要核对|先核对|应核对|必须核对|缺少官方|不承诺|不能确认|无法确认|不能证明|不启动|不进入/;
     const hasUnsupportedCriticalFact = criticalFactClauses.some(
-      (clause) => !observationBoundaryPattern.test(clause)
+      (clause) => !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause)
     );
     if (
       criticalFactClauses.length > 0 &&
@@ -1324,10 +1325,8 @@ function collectAccountOpportunitySourceIssues(
     const criticalFactClauses = block
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalAccountFactPattern.test(clause));
-    const observationBoundaryPattern =
-      /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不新增/;
     const hasUnsupportedCriticalFact = criticalFactClauses.some(
-      (clause) => !observationBoundaryPattern.test(clause)
+      (clause) => !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause)
     );
     if (
       criticalFactClauses.length > 0 &&

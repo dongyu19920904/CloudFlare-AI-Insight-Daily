@@ -1130,6 +1130,41 @@ test("validateOpportunityPublication accepts an evidence-first opportunity brief
     boundedLicenseCheck.issues.join("\n")
   );
 
+  const experimentalPrice = validateOpportunityPublication({
+    ...validationOptions,
+    markdown: markdown
+      .replaceAll("https://github.com/HBAI-Ltd/Toonflow-app", mediaUrl)
+      .replace(
+        "官方仓库：证明项目代码、教程与许可说明可核验",
+        "可信媒体报道展示了这套公开工作流"
+      )
+      .replace(
+        "一支三镜头样片、实际耗时、模型成本和失败记录，不包含长期代运营",
+        "一支三镜头样片、实际耗时和失败记录；先用 199 元测试价验证，不承诺长期代运营"
+      ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, tier: "trusted-media", isPrimary: false }],
+  });
+  assert.equal(experimentalPrice.ok, true, experimentalPrice.issues.join("\n"));
+
+  const unsupportedOfficialPrice = validateOpportunityPublication({
+    ...validationOptions,
+    markdown: markdown
+      .replaceAll("https://github.com/HBAI-Ltd/Toonflow-app", mediaUrl)
+      .replace(
+        "官方仓库：证明项目代码、教程与许可说明可核验",
+        "可信媒体报道展示了这套公开工作流"
+      )
+      .replace(
+        "一支三镜头样片、实际耗时、模型成本和失败记录，不包含长期代运营",
+        "该产品官方售价为 199 元/月，并且已经正式上线"
+      ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, tier: "trusted-media", isPrimary: false }],
+  });
+  assert.equal(unsupportedOfficialPrice.ok, false);
+  assert.match(unsupportedOfficialPrice.issues.join(" | "), /官方或原项目来源/);
+
   const unsupportedMarketClaim = validateOpportunityPublication({
     ...validationOptions,
     markdown: markdown.replace(
