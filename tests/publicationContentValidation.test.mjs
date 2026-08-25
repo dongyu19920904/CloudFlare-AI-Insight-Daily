@@ -145,6 +145,7 @@ date: 2026-08-08T00:00:00+08:00
 ## 买家避坑
 
 - 购买前要求卖家说明信息来自官方页面还是社区讨论。
+- 与当前业务直接相关时，可查看[爱窝啦·AI账号店](https://www.aivora.cn/)了解服务边界。
 
 ## 今天别碰
 
@@ -165,6 +166,7 @@ date: 2026-08-08T00:00:00+08:00
       env: {
         ...process.env,
         MODE: "account-opportunity",
+        AIVORA_VALIDATED_URLS: "https://www.aivora.cn/",
         TARGET_DATE: "2026-08-08",
         PAGE_RESPONSE_PATH: pagePath,
       },

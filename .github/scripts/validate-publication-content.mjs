@@ -54,6 +54,13 @@ function parseMinimumTopItems() {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function parseValidatedAivoraUrls() {
+  return String(process.env.AIVORA_VALIDATED_URLS || "")
+    .split(/[\s,|]+/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+}
+
 function isAccountOpportunityObservation(markdown) {
   return /^-\s+今天没有取得可由官方页面确认的(?:海外 AI )?账号、价格、额度或政策新变化；不新增商品。\s*$/m.test(
     String(markdown || "")
@@ -88,6 +95,7 @@ function validateByMode(mode, markdown) {
       observationMode: isAccountOpportunityObservation(body),
       enforceOfficialFactSources:
         process.env.ACCOUNT_OPPORTUNITY_VALIDATION_PROFILE !== "pre-0803-actionable",
+      aivoraLinkPolicy: { allowedUrls: parseValidatedAivoraUrls() },
     });
   }
 
