@@ -92,3 +92,16 @@ test("opportunity repair keeps the template-owned H1 and constrains the action l
   assert.match(scheduledHandler, /今日三步必须恰好 3 个一级列表项/);
   assert.doesNotMatch(scheduledHandler, /必须包含：# 今日 AI 商机/);
 });
+
+test("general opportunity publication keeps the strong evidence gate", () => {
+  const scheduledHandler = readFileSync(
+    new URL("../src/handlers/scheduled.js", import.meta.url),
+    "utf8",
+  );
+  const finalAssessment = scheduledHandler.match(
+    /const candidateAssessment = buildOpportunityCandidateAssessment\([\s\S]*?supplementalEvidenceBySourceUrl:[\s\S]*?\n\s*}\n\s*\);/,
+  )?.[0] || "";
+
+  assert.match(finalAssessment, /requireStrongEvidence: true/);
+  assert.match(finalAssessment, /allowObservationFallback: false/);
+});

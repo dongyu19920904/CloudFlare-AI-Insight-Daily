@@ -1815,7 +1815,7 @@ async function generateOpportunityMarkdown(
         opportunityPlaybook,
         {
             ...assessmentOptions,
-            requireStrongEvidence: false,
+            requireStrongEvidence: true,
             allowObservationFallback: false,
             supplementalEvidenceBySourceUrl:
                 evidenceEnrichment?.recordsBySourceUrl || {},
