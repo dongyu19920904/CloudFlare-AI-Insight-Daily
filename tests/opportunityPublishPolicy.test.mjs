@@ -549,6 +549,40 @@ test("opportunity publication treats an unclear license boundary as a stop condi
   assert.equal(result.ok, true, result.issues.join("\n"));
 });
 
+test("opportunity publication accepts authorized-input checks and license stop conditions", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl)
+      .replace(
+        "给五位目标用户看样片并询问是否愿意提供真实脚本试做",
+        "先用一份公开或获授权的产品资料跑通一条样片，记录实际耗时和失败点"
+      )
+      .replace(
+        "中，需要核对素材版权和许可边界；无法复现、成本不可控或五位用户都无意愿就停。",
+        "中；样品无法稳定回放，或许可、素材和数据边界无法说明，就停止扩展。"
+      ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("a positive authorization claim still requires primary evidence", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "中，需要核对素材版权和许可边界",
+      "低，产品资料已经获得商业授权，可以直接分发"
+    ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /必须引用官方或原项目来源/);
+});
+
 test("a bounded exclusion cannot hide an unsupported price claim", () => {
   const mediaUrl = "https://www.jiqizhixin.com/articles/example";
   const result = validateOpportunityPublication({
