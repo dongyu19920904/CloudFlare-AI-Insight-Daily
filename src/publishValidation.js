@@ -841,7 +841,7 @@ function collectOpportunitySourcePolicyIssues(
     const criticalFactClauses = block
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalFactPattern.test(clause));
-    const hasUnsupportedCriticalFact = criticalFactClauses.some(
+    const unsupportedCriticalFactClause = criticalFactClauses.find(
       (clause) => !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause)
     );
     if (
@@ -852,9 +852,10 @@ function collectOpportunitySourcePolicyIssues(
           classifyOpportunityEvidence({ url: link.url }, "");
         return evidence.isPrimary === true;
       }) &&
-      hasUnsupportedCriticalFact
+      unsupportedCriticalFactClause
     ) {
-      issues.push("AI 商机涉及价格、状态、政策或许可事实时必须引用官方或原项目来源");
+      const clausePreview = normalizeText(unsupportedCriticalFactClause).slice(0, 140);
+      issues.push(`AI 商机涉及价格、状态、政策或许可事实时必须引用官方或原项目来源（触发句：${clausePreview}）`);
     }
   }
 
@@ -1325,15 +1326,16 @@ function collectAccountOpportunitySourceIssues(
     const criticalFactClauses = block
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalAccountFactPattern.test(clause));
-    const hasUnsupportedCriticalFact = criticalFactClauses.some(
+    const unsupportedCriticalFactClause = criticalFactClauses.find(
       (clause) => !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause)
     );
     if (
       criticalFactClauses.length > 0 &&
       !hasOfficialLink(links) &&
-      hasUnsupportedCriticalFact
+      unsupportedCriticalFactClause
     ) {
-      issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策时必须引用对应官方页面");
+      const clausePreview = normalizeText(unsupportedCriticalFactClause).slice(0, 140);
+      issues.push(`账号商机涉及价格、额度、支付、地区、登录、服务状态或政策时必须引用对应官方页面（触发句：${clausePreview}）`);
     }
     if (/是否今天能挂闲鱼[:：]\*{0,2}\s*是(?=$|[\s；;，。])/m.test(block)) {
       if (/售后风险[:：]\s*高(?=$|[\s；;，。])/m.test(block)) {
