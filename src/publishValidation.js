@@ -790,7 +790,7 @@ function linkLabelOverstatesDestination(link) {
 }
 
 const OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN =
-  /没有取得|没有|尚无|尚未|未获|未确认|未提供|待核验|待核对|待确认|仍待|仍需|仍缺|还需|有待|需要核对|需要确认|需核对|需确认|先核对|先确认|应核对|应确认|必须核对|必须确认|不明确|未知|缺少官方|不承诺|不能确认|无法确认|无法核验|不能证明|不启动|不进入|不新增|建议(?:定价|报价)|先(?:定价|报价)|试(?:挂|卖)|(?:测试|验证|试探)(?:价|价格|报价|定价)|暂定(?:价|价格)|价格假设|报价假设/;
+  /没有取得|没有|尚无|尚未|未获|未确认|未提供|未提取到|待核验|待核对|待确认|仍待|仍需|仍缺|还需|有待|需要核对|需要确认|需核对|需确认|先核对|先确认|应核对|应确认|必须核对|必须确认|不明确|未知|缺少官方|不承诺|不能确认|无法确认|无法核验|不能证明|不启动|不进入|不新增|建议(?:定价|报价)|先(?:定价|报价)|试(?:挂|卖)|(?:测试|验证|试探)(?:价|价格|报价|定价)|暂定(?:价|价格)|价格假设|报价假设/;
 
 function collectOpportunitySourcePolicyIssues(
   markdown,
@@ -825,7 +825,8 @@ function collectOpportunitySourcePolicyIssues(
     }
 
     if (!hasOpportunityEvidenceLink(block)) {
-      issues.push("AI 商机每个机会都必须在证据来源字段提供原始链接");
+      const heading = normalizeText(block.match(/^###\s+(.+)$/m)?.[1] || "未命名机会").slice(0, 80);
+      issues.push(`AI 商机每个机会都必须在证据来源字段同一行提供原始链接（机会：${heading}）`);
     }
 
     const blockLinks = extractSectionLinks(block).filter((link) => !isNoiseSectionLink(link));
@@ -1078,7 +1079,7 @@ function collectOpportunityMarketHypothesisIssues(markdown) {
   );
 
   return unsupportedClause
-    ? ["AI 商机把未经需求证据支持的市场缺口或群体痛点写成事实，必须改为待验证假设"]
+    ? [`AI 商机把未经需求证据支持的市场缺口或群体痛点写成事实，必须改为待验证假设（触发句：${normalizeText(unsupportedClause).slice(0, 140)}）`]
     : [];
 }
 

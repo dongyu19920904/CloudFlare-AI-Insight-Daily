@@ -1140,7 +1140,7 @@ test("validateOpportunityPublication accepts an evidence-first opportunity brief
       )
       .replace(
         "原项目已经提供可运行的桌面工作流，但“项目能跑”不等于“有人愿意买”。",
-        "本次候选输入未提供官方或原项目来源，产品状态、功能边界和许可条件无法核验。"
+        "本次候选输入未提取到官方或原项目来源，产品状态、功能边界和许可条件无法核验。"
       ),
     allowedSourceUrls: [mediaUrl],
     sourceEvidence: [{ url: mediaUrl, tier: "trusted-media", isPrimary: false }],
