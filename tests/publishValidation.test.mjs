@@ -1548,7 +1548,7 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
       )
       .replace(
         `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})。`,
-        `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})；相关项目声称提供终端接入，但无官方 API 或额度证明。\n- [可信来源展示了品牌合作场景](${mediaUrl})；这是品牌合作而非套餐变化，不触发账号上新。`
+        `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})；相关项目声称提供终端接入，但无官方 API 或额度证明。\n- [可信来源展示了品牌合作场景](${mediaUrl})；这是品牌合作而非套餐变化，不触发账号上新。\n- [社区项目展示了知识图谱场景](${mediaUrl})；这是社区项目能力，不是 Claude 官方账号或套餐变化。`
       )
       .replace(
         "是否有人购买仍待验证",
@@ -1556,7 +1556,7 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
       )
       .replace(
         "不承诺工具长期可用",
-        "买家账号限额或封禁不在售后范围；交付不包含长期维护、API 额度或官方授权；不承诺工具长期可用"
+        "项目稳定性不受官方保障、依赖 API 额度；买家账号限额或封禁不在售后范围；交付不包含长期维护、API 额度或官方授权；不承诺工具长期可用"
       ),
     allowedSourceUrls: [mediaUrl],
     allowedRejectedSourceUrls: [],
