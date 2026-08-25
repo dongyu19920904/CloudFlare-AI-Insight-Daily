@@ -1599,6 +1599,10 @@ test("validateAccountOpportunityPublication treats explicit account disclaimers 
     .replace(
       "适合正在比较套餐额度的用户；是否愿意购买仍是待验证假设",
       "先验证用户是卡在接入配置，还是其实在寻找官方套餐权益"
+    )
+    .replace(
+      "本次候选没有真实询价记录",
+      "证据缺口是项目能力不等于 Claude 官方功能，无法据此确认套餐、价格、额度、兼容范围、自动化效果或售后责任"
     );
   const result = validateAccountOpportunityPublication({
     markdown,
