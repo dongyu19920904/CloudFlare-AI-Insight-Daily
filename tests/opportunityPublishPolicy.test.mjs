@@ -480,7 +480,10 @@ test("opportunity publication rejects an overlong action section", () => {
 test("opportunity publication requires primary evidence for policy and license claims", () => {
   const mediaUrl = "https://www.jiqizhixin.com/articles/example";
   const result = validateOpportunityPublication({
-    markdown: buildOpportunityMarkdown(mediaUrl),
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "中，需要核对素材版权和许可边界",
+      "低，项目采用 MIT 许可，可以直接商业分发"
+    ),
     allowedSourceUrls: [mediaUrl],
     sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
   });

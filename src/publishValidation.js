@@ -839,7 +839,7 @@ function collectOpportunitySourcePolicyIssues(
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalFactPattern.test(clause));
     const observationBoundaryPattern =
-      /没有取得|没有|尚无|尚未|未获|未确认|待核验|仍缺|缺少官方|不承诺|不能确认|无法确认|不启动|不进入/;
+      /没有取得|没有|尚无|尚未|未获|未确认|待核验|待核对|仍待|仍缺|需要核对|先核对|应核对|必须核对|缺少官方|不承诺|不能确认|无法确认|不能证明|不启动|不进入/;
     const hasUnsupportedCriticalFact = criticalFactClauses.some(
       (clause) => !observationBoundaryPattern.test(clause)
     );
@@ -851,7 +851,7 @@ function collectOpportunitySourcePolicyIssues(
           classifyOpportunityEvidence({ url: link.url }, "");
         return evidence.isPrimary === true;
       }) &&
-      (!observationMode || hasUnsupportedCriticalFact)
+      hasUnsupportedCriticalFact
     ) {
       issues.push("AI 商机涉及价格、状态、政策或许可事实时必须引用官方或原项目来源");
     }
@@ -1127,9 +1127,6 @@ export function validateOpportunityPublication({
       "48小时验证",
       "第一单与复购",
       "风险与停止",
-      "今天确认",
-      "今天制作",
-      "今天询价",
     ],
     forbiddenPhrases: bannedPublicPhrases,
     forbiddenPatterns: [
@@ -1335,7 +1332,7 @@ function collectAccountOpportunitySourceIssues(
     if (
       criticalFactClauses.length > 0 &&
       !hasOfficialLink(links) &&
-      (!observationMode || hasUnsupportedCriticalFact)
+      hasUnsupportedCriticalFact
     ) {
       issues.push("账号商机涉及价格、额度、支付、地区、登录、服务状态或政策时必须引用对应官方页面");
     }

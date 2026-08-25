@@ -1097,6 +1097,39 @@ test("validateOpportunityPublication accepts an evidence-first opportunity brief
   assert.equal(result.ok, true);
   assert.deepEqual(result.issues, []);
 
+  const legacyActionLabels = validateOpportunityPublication({
+    ...validationOptions,
+    markdown: markdown
+      .replace("今天确认", "先发什么")
+      .replace("今天制作", "先做什么")
+      .replace("今天询价", "先卖什么"),
+  });
+  assert.equal(legacyActionLabels.ok, true, legacyActionLabels.issues.join("\n"));
+
+  const mediaUrl = "https://www.36kr.com/p/actionable-workflow";
+  const boundedLicenseCheck = validateOpportunityPublication({
+    ...validationOptions,
+    markdown: markdown
+      .replaceAll("https://github.com/HBAI-Ltd/Toonflow-app", mediaUrl)
+      .replace(
+        "官方仓库：证明项目代码、教程与许可说明可核验",
+        "可信媒体报道展示了这套公开工作流"
+      ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [
+      {
+        url: mediaUrl,
+        tier: "trusted-media",
+        isPrimary: false,
+      },
+    ],
+  });
+  assert.equal(
+    boundedLicenseCheck.ok,
+    true,
+    boundedLicenseCheck.issues.join("\n")
+  );
+
   const unsupportedMarketClaim = validateOpportunityPublication({
     ...validationOptions,
     markdown: markdown.replace(

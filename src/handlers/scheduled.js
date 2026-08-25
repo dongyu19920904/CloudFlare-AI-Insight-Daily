@@ -1764,8 +1764,8 @@ async function generateOpportunityMarkdown(
         profile: 'general',
         previousMainTopicSignals: options.previousMainTopicSignals || null,
         recentReplayMemory: options.recentReplayMemory || null,
-        // Restore the pre-August editorial profile: source/entity replay stays in
-        // place, while delivery-family similarity is guidance rather than a hard gate.
+        // Restore the pre-August editorial profile: source URL replay and same-day
+        // entity dedupe stay in place, while broad similarity is guidance rather than a hard gate.
         enforceReplayDimensions: false,
         entityAwareGrouping: true,
         avoidGenericDuplicates: true,
