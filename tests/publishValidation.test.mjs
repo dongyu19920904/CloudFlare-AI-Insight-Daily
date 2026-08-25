@@ -1547,6 +1547,10 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
         "在现有 FAQ 里补一条并列出需要核对的 Pro 订阅、登录地区与本地环境前置条件"
       )
       .replace(
+        "待验证假设：刚接触 Claude Code 的开发者可能需要一页中文起步清单",
+        "待验证假设：刚接触 Claude Code 的开发者可能需要一页中文起步清单；可以先写一页教程，说清楚 Claude 能干什么、Obsidian 怎么配合、哪些场景需要付费套餐"
+      )
+      .replace(
         `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})。`,
         `- [可信来源展示了 Claude 工具组合使用场景](${mediaUrl})；相关项目声称提供终端接入，但无官方 API 或额度证明。\n- [可信来源展示了品牌合作场景](${mediaUrl})；这是品牌宣传，无账号、订阅或套餐变化，不触发账号上新。\n- [社区项目展示了知识图谱场景](${mediaUrl})；这是社区项目能力，不是 Claude 官方账号或套餐变化。`
       )

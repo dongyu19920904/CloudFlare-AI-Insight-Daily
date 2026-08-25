@@ -1344,7 +1344,7 @@ function collectAccountOpportunitySourceIssues(
       .split(/\r?\n|[。；;]/)
       .filter((clause) => criticalAccountFactPattern.test(clause));
     const accountActionBoundaryPattern =
-      /(?:今天最小动作|今天确认|今天修改|今天记录)[^。；;\n]{0,80}(?:核对|核实|查清|列出|注明|写清|补充|补一条|检查|区分)/;
+      /(?:(?:今天最小动作|今天确认|今天修改|今天记录)[^。；;\n]{0,80}(?:核对|核实|查清|列出|注明|写清|补充|补一条|检查|区分)|(?:可以|建议)?先[^。；;\n]{0,28}(?:写|制作|补充|核对|核实|列出|说明|说清楚|注明|标明|检查|区分))/;
     const unsupportedCriticalFactClause = criticalFactClauses.find(
       (clause) =>
         !OPPORTUNITY_SENSITIVE_BOUNDARY_PATTERN.test(clause) &&
