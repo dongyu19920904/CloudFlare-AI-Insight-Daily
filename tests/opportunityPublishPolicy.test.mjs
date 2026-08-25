@@ -501,15 +501,35 @@ test("opportunity publication requires primary evidence for policy and license c
 test("opportunity publication treats an unclear license boundary as a stop condition", () => {
   const mediaUrl = "https://www.jiqizhixin.com/articles/example";
   const result = validateOpportunityPublication({
-    markdown: buildOpportunityMarkdown(mediaUrl).replace(
-      "中，需要核对素材版权和许可边界；无法复现、成本不可控或五位用户都无意愿就停。",
-      "中；无法复现最小闭环、许可边界不清、测试成本不可控，或五位用户都无意愿就停。"
-    ),
+    markdown: buildOpportunityMarkdown(mediaUrl)
+      .replace(
+        "固定一个脚本、三镜头和一次修改，以可播放样片验收",
+        "限定为一份材料、一条成片和一轮修改，不含发布、配音授权和持续运营"
+      )
+      .replace(
+        "中，需要核对素材版权和许可边界；无法复现、成本不可控或五位用户都无意愿就停。",
+        "中；无法复现最小闭环、依赖和许可边界无法核对，或五位用户都无意愿就停。"
+      ),
     allowedSourceUrls: [mediaUrl],
     sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
   });
 
   assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
+test("a bounded exclusion cannot hide an unsupported price claim", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "固定一个脚本、三镜头和一次修改，以可播放样片验收",
+      "价格 100 元，不含发布授权，以可播放样片验收"
+    ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(" | "), /必须引用官方或原项目来源/);
 });
 
 test("opportunity publication rejects non-whitelisted Aivora links", () => {
