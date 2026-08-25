@@ -498,6 +498,20 @@ test("opportunity publication requires primary evidence for policy and license c
   assert.match(result.issues.join(" | "), /必须引用官方或原项目来源/);
 });
 
+test("opportunity publication treats an unclear license boundary as a stop condition", () => {
+  const mediaUrl = "https://www.jiqizhixin.com/articles/example";
+  const result = validateOpportunityPublication({
+    markdown: buildOpportunityMarkdown(mediaUrl).replace(
+      "中，需要核对素材版权和许可边界；无法复现、成本不可控或五位用户都无意愿就停。",
+      "中；无法复现最小闭环、许可边界不清、测试成本不可控，或五位用户都无意愿就停。"
+    ),
+    allowedSourceUrls: [mediaUrl],
+    sourceEvidence: [{ url: mediaUrl, isPrimary: false }],
+  });
+
+  assert.equal(result.ok, true, result.issues.join("\n"));
+});
+
 test("opportunity publication rejects non-whitelisted Aivora links", () => {
   const sourceUrl = "https://github.com/example/video-workflow";
   const markdown = `${buildOpportunityMarkdown(sourceUrl)}\n\n[爱窝啦](https://www.aivora.cn/products/expired)`;
