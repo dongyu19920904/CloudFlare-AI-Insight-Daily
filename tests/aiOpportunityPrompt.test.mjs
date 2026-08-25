@@ -26,8 +26,24 @@ test("getSystemPromptAiOpportunity asks for actionable 48-hour validation and st
   assert.match(prompt, /第一单/);
   assert.match(prompt, /复购或沉淀资产/);
   assert.match(prompt, /停止条件/);
-  assert.match(prompt, /访谈 3-5 位目标用户/);
+  assert.match(prompt, /必须先产生 1 个可展示样品/);
+  assert.match(prompt, /单纯访谈、收藏项目、转述 README 不算完整验证/);
   assert.match(prompt, /发帖或录屏必须同时写清要观察什么反馈/);
+});
+
+test("getSystemPromptAiOpportunity restores productized pre-August editorial behavior", () => {
+  const prompt = getSystemPromptAiOpportunity("2026-08-03", "### 当前业务");
+
+  assert.match(prompt, /你负责排序和商品化/);
+  assert.match(prompt, /必须输出恰好 1 个「今日主推」和至少 1 个「本周小试」/);
+  assert.match(prompt, /优先把能形成可验收结果的候选放进「今日主推」/);
+  assert.match(prompt, /不得让只有媒体或社交转述的候选排在它前面/);
+  assert.match(prompt, /可展示的商品雏形/);
+  assert.match(prompt, /2-4 项交付内容/);
+  assert.match(prompt, /买家可检查的验收结果/);
+  assert.match(prompt, /不夸张的测试标题或邀约句/);
+  assert.match(prompt, /访谈可以跟在样品之后，不能成为唯一动作/);
+  assert.match(prompt, /本节至少写 1 个小试，不得省略/);
 });
 
 test("getSystemPromptAiOpportunity keeps the concise publication structure", () => {
