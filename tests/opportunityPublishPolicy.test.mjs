@@ -445,7 +445,7 @@ test("a GitHub repository root cannot be labeled as a direct license page", () =
 
 test("opportunity publication rejects an overlong main item", () => {
   const sourceUrl = "https://github.com/example/video-workflow";
-  const repeated = "重复背景不帮助用户做决定。".repeat(90);
+  const repeated = "重复背景不帮助用户做决定。".repeat(110);
   const markdown = buildOpportunityMarkdown(sourceUrl).replace(
     "原项目已经可以复现，但付费需求还没有被证明，因此只做一次小样验证。",
     repeated

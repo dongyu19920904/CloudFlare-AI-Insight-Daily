@@ -898,7 +898,7 @@ function collectOpportunitySourcePolicyIssues(
 function collectOpportunityLengthIssues(markdown) {
   const issues = [];
   const maxDirectChars = 360;
-  const maxMainChars = 1100;
+  const maxMainChars = 1200;
   const maxSmallChars = 650;
   const maxActionChars = 520;
   const directSection = extractSection(markdown, /^##\s+直接结论(?:\s|$).*$/im);
