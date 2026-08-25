@@ -374,6 +374,7 @@ test("opportunity evidence normalization scopes model absence claims before vali
   const sourceUrl = "https://www.36kr.com/p/example";
   const normalized = normalizeOpportunityEvidenceBoundaryLanguage(`## 今日主推
 ### 验证一个机会
+这篇媒体报道没有提供官方产品主页或原项目链接，但可以作为场景线索。
 - **证据与可信度：** 中；尚无任何付费记录，没有任何用户原话或询价记录，无已知商标限制。
 - **鱼塘与笨办法：** 目前只有项目存在证明，没有买家痛点访谈。
 - **风险与停止：** 仍需核对许可。**停止条件：** 五位目标用户均没有付费意向就停。
@@ -390,6 +391,11 @@ test("opportunity evidence normalization scopes model absence claims before vali
   assert.match(normalized, /停止条件：\*\* 五位目标用户均没有付费意向就停/);
   assert.doesNotMatch(normalized, /均本次候选输入未提供付费意向/);
   assert.match(normalized, /相关商标、内容、依赖与授权边界仍待核对/);
+  assert.match(
+    normalized,
+    /本次候选输入未提供可核验的官方产品或原项目链接，但可以作为场景线索/
+  );
+  assert.doesNotMatch(normalized, /媒体报道没有提供官方产品主页/);
   assert.match(
     normalized,
     /本次候选输入未提供可核验的官方产品或原项目链接，也未提供可复现的交付证据/

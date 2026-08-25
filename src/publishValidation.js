@@ -997,11 +997,22 @@ export function normalizeOpportunityEvidenceBoundaryLanguage(
         inAvoidSection = /^##\s+今天别碰(?:\s|$)/.test(line);
         return line;
       }
-      if (
-        !inAvoidSection ||
-        !OPPORTUNITY_UNSAFE_AVOID_PATTERNS.some((pattern) => pattern.test(line))
-      ) {
+      const unsafeSourceGapPattern = OPPORTUNITY_UNSAFE_AVOID_PATTERNS.find(
+        (pattern) => pattern.test(line)
+      );
+      if (!unsafeSourceGapPattern) {
         return line;
+      }
+
+      if (!inAvoidSection) {
+        const scopedSourceGapPattern = new RegExp(
+          `(?:这篇|该)?(?:${unsafeSourceGapPattern.source})(?:链接|页面|入口)?`,
+          unsafeSourceGapPattern.flags
+        );
+        return line.replace(
+          scopedSourceGapPattern,
+          "本次候选输入未提供可核验的官方产品或原项目链接"
+        );
       }
 
       const sourceLink = line.match(/\[[^\]]+\]\(https?:\/\/[^)]+\)/i)?.[0] || "该候选";
