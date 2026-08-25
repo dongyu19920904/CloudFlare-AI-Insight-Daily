@@ -1556,7 +1556,7 @@ test("validateAccountOpportunityPublication allows a sourced low-risk tutorial l
       )
       .replace(
         "不承诺工具长期可用",
-        "买家账号限额或封禁不在售后范围；不承诺工具长期可用"
+        "买家账号限额或封禁不在售后范围；交付不包含长期维护、API 额度或官方授权；不承诺工具长期可用"
       ),
     allowedSourceUrls: [mediaUrl],
     allowedRejectedSourceUrls: [],
