@@ -84,3 +84,33 @@ test("fallback order is Anthropic primary, OpenAI, then Anthropic backup model",
   assert.equal(result, "OK");
   assert.deepEqual(requestedModels, ["claude-sonnet-5", "gpt-5.6-sol", "claude-opus-4-7"]);
 });
+
+test("Anthropic payload honors a scoped max token budget", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let requestedPayload = null;
+
+  globalThis.fetch = async (_url, options) => {
+    requestedPayload = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      content: [{ type: "text", text: "OK" }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const result = await callChatAPI({
+    USE_MODEL_PLATFORM: "ANTHROPIC",
+    ANTHROPIC_API_URL: "https://example.test",
+    ANTHROPIC_API_KEY: "primary-key",
+    DEFAULT_ANTHROPIC_MODEL: "claude-sonnet-5",
+    ANTHROPIC_MAX_TOKENS: "4096",
+    ANTHROPIC_RETRY_MAX: "0",
+  }, "Reply only: OK");
+
+  assert.equal(result, "OK");
+  assert.equal(requestedPayload.max_tokens, 4096);
+});

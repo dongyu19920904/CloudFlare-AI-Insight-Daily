@@ -750,6 +750,16 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
     ].join('\n');
 }
 
+function getDailyBodyGenerationEnv(env) {
+    const maxTokens = String(env.DAILY_ANTHROPIC_MAX_TOKENS || '').trim();
+    if (!maxTokens) return env;
+
+    return {
+        ...env,
+        ANTHROPIC_MAX_TOKENS: maxTokens,
+    };
+}
+
 function extractMatchTokens(item) {
     const text = [
         item?.title || '',
@@ -1354,6 +1364,11 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         throw new Error('No content items found for daily generation.');
     }
 
+    const dailyBodyGenerationEnv = getDailyBodyGenerationEnv(env);
+    debugInfo.dailyBodyAnthropicMaxTokens = Number.parseInt(
+        String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
+        10
+    ) || null;
     console.log(`[Scheduled][Daily] Generating content...`);
     const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);
     const outputOfCall2User = buildDailyGenerationPromptInput(
@@ -1361,7 +1376,11 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         options.dailyFunContentItems
     );
 
-    let outputOfCall2 = await generateContentWithTransportFallback(env, outputOfCall2User, outputOfCall2System);
+    let outputOfCall2 = await generateContentWithTransportFallback(
+        dailyBodyGenerationEnv,
+        outputOfCall2User,
+        outputOfCall2System
+    );
     outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
     outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
     outputOfCall2 = normalizeMarkdownImageSyntax(outputOfCall2);
@@ -1425,7 +1444,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             `[Scheduled][Daily] First draft needs repair, retrying: ${repairIssues.join(' | ')}`
         );
         let repairedOutputOfCall2 = await generateContentWithTransportFallback(
-            env,
+            dailyBodyGenerationEnv,
             buildDailyRepairPrompt(outputOfCall2User, outputOfCall2, repairIssues, dateStr),
             outputOfCall2System
         );

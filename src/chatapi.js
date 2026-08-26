@@ -1173,11 +1173,19 @@ async function* callOpenAIChatAPIStream(env, promptText, systemPromptText = null
  * @returns {Promise<string>} The generated text content.
  * @throws {Error} If API call fails.
  */
-function buildAnthropicMessagesPayload(modelName, promptText, systemPromptText = null, stream = false) {
+function getAnthropicMaxTokens(env) {
+    const configured = Number.parseInt(String(env.ANTHROPIC_MAX_TOKENS ?? "").trim(), 10);
+    if (Number.isFinite(configured) && configured >= 256 && configured <= 32000) {
+        return configured;
+    }
+    return 2048;
+}
+
+function buildAnthropicMessagesPayload(env, modelName, promptText, systemPromptText = null, stream = false) {
     const payload = {
         model: modelName,
         messages: [{ role: "user", content: promptText }],
-        max_tokens: 2048
+        max_tokens: getAnthropicMaxTokens(env)
     };
 
     if (stream) {
@@ -1192,7 +1200,7 @@ function buildAnthropicMessagesPayload(modelName, promptText, systemPromptText =
 }
 
 async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, promptText, systemPromptText = null, stream = false) {
-    const payload = buildAnthropicMessagesPayload(modelName, promptText, systemPromptText, stream);
+    const payload = buildAnthropicMessagesPayload(env, modelName, promptText, systemPromptText, stream);
     const retryConfig = getAnthropicRetryConfig(env);
     const debugLog = (message, meta) => console.warn(`[Anthropic retry] ${message}`, meta || {});
     let response = await fetchWithRetryOnError(url, {
@@ -1222,7 +1230,7 @@ async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, pro
         throw new Error(`Anthropic Chat API error (${response.status}): ${errorText}`);
     }
 
-    const fallbackPayload = buildAnthropicMessagesPayload(modelName, `${trimmedSystemPrompt}\n\n${promptText}`, null, stream);
+    const fallbackPayload = buildAnthropicMessagesPayload(env, modelName, `${trimmedSystemPrompt}\n\n${promptText}`, null, stream);
     response = await fetchWithRetryOnError(url, {
         method: 'POST',
         headers: {
