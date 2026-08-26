@@ -53,6 +53,20 @@ test("daily assembly keeps one exact reader-first Aivora link in the FAQ", () =>
   assert.doesNotMatch(markdown, /utm_source|统一体验|爱窝啦 Aivora/);
 });
 
+test("daily assembly keeps a complete body publishable when the model omits FAQ", () => {
+  const body = `## **🔥 今日焦点 TOP 1**
+
+### 1. 官方模型更新
+
+**模型能力更新。** [官方公告列出当前变化](https://example.com/model)。`;
+
+  const markdown = assembleDailySummaryMarkdown(body, "今天有一项经过官方确认的模型更新。", env);
+
+  assert.match(markdown, /^## \*\*❓ 相关问题\*\*$/m);
+  assert.match(markdown, /如何判断今天的 AI 更新是否值得跟进/);
+  assert.match(markdown, /爱窝啦·AI账号店/);
+});
+
 test("daily assembly strips obsolete model-generated intros before the TOP section", () => {
   const body = `## **⏱ 3分钟读懂今天**
 

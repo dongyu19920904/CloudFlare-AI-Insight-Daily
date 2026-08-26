@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DAILY_AIVORA_FAQ_CTA,
+  ensureDailyFaqSection,
   enforceDailyTopGithubLimit,
   ensureDailyTopHighlightDensity,
   ensureUniqueDailyTopSources,
@@ -318,6 +319,21 @@ test("normalizeDailyFaqAivoraCta does not hide a missing factual answer", () => 
 
   assert.doesNotMatch(normalized, /爱窝啦|Aivora|aivora\.cn/);
   assert.doesNotMatch(normalized, /购买后的使用指导与售后支持/);
+});
+
+test("ensureDailyFaqSection adds a factual verification question when the model omits FAQ", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 官方模型更新
+
+**模型能力更新。** [官方公告列出当前变化](https://example.com/model)。`;
+
+  const ensured = ensureDailyFaqSection(markdown);
+
+  assert.match(ensured, /^## \*\*❓ 相关问题\*\*$/m);
+  assert.match(ensured, /先打开正文中的原始来源/);
+  assert.match(ensured, /以对应官方页面的当前说明为准/);
+  assert.ok(ensured.includes(DAILY_AIVORA_FAQ_CTA));
 });
 
 test("sanitizeDuplicateDailySections removes repeated stories across V3 topic sections", () => {

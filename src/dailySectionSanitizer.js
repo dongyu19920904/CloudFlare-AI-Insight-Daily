@@ -408,6 +408,21 @@ export function normalizeDailyFaqAivoraCta(markdown) {
   });
 }
 
+export function ensureDailyFaqSection(markdown) {
+  const content = String(markdown || "").trim();
+  if (!content || DAILY_FAQ_SECTION_PATTERN.test(content)) return content;
+
+  return `${content}
+
+## **❓ 相关问题**
+
+### 如何判断今天的 AI 更新是否值得跟进？
+
+先打开正文中的原始来源，确认产品状态、适用范围和限制，再用一个真实小任务做小范围验证。涉及价格、额度、功能或政策时，以对应官方页面的当前说明为准。
+
+${DAILY_AIVORA_FAQ_CTA}`;
+}
+
 export function stripDailyHeadingCountSuffix(markdown) {
   return String(markdown || "").replace(
     /^(#{1,6}\s+(?:\*\*)?.*?)(?:\s*[\uFF08(]\s*\d+(?:\s*[-~\u2013\u2014]\s*\d+)?\s*\u6761\s*[\uFF09)]\s*)(\*\*)?(\s*)$/gm,
