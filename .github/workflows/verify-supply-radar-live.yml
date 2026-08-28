@@ -1,0 +1,85 @@
+name: Verify Aivora Supply Radar Live
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact Aivora-Supply-Radar commit SHA; blank uses main
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-aivora-supply-radar-live
+  cancel-in-progress: true
+
+env:
+  SUPPLY_RADAR_URL: https://aivora-supply-radar.sabrinamisan090.workers.dev
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve immutable release SHA
+        id: release
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="${REQUESTED_SHA:-}"
+          if [[ -z "$sha" ]]; then
+            sha="$(git ls-remote https://github.com/dongyu19920904/Aivora-Supply-Radar.git refs/heads/main | cut -f1)"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid or unavailable release SHA" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          repository: dongyu19920904/Aivora-Supply-Radar
+          ref: ${{ steps.release.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install verification runtime
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Verify routes, metadata, data and security boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          paths=(/ /products /products/chatgpt-plus-renewal /merchants/aivora /opportunities /official-prices /changes /community /submit /methodology /sitemap.xml /robots.txt /api/v1/products /api/v1/merchants)
+          for path in "${paths[@]}"; do
+            curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL$path" > /dev/null
+          done
+          curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL/" > /tmp/supply-home.html
+          grep -F '<link rel="canonical" href="https://aivora-supply-radar.sabrinamisan090.workers.dev/">' /tmp/supply-home.html > /dev/null
+          grep -F 'application/ld+json' /tmp/supply-home.html > /dev/null
+          grep -F '爱窝啦·AI账号店' /tmp/supply-home.html > /dev/null
+          curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL/api/v1/health" > /tmp/supply-health.json
+          jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24 and .latestOpportunity.report_date == "2026-08-28"' /tmp/supply-health.json > /dev/null
+          [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 --request POST "$SUPPLY_RADAR_URL/api/v1/admin/sync")" == 401 ]]
+          [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 "$SUPPLY_RADAR_URL/__aivora_internal_scheduled_v1")" == 404 ]]
+
+      - name: Verify desktop and mobile themes
+        env:
+          AUDIT_BASE_URL: ${{ env.SUPPLY_RADAR_URL }}
+        run: npm run audit:visual
+
+      - name: Save visual evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-radar-live-visual-audit-${{ steps.release.outputs.sha }}
+          path: artifacts/visual-audit/
+          if-no-files-found: warn
+          retention-days: 14
