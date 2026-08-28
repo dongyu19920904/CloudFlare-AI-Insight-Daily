@@ -1,6 +1,8 @@
 name: Manage Aivora Supply Radar
 
 on:
+  schedule:
+    - cron: "47 */6 * * *"
   workflow_dispatch:
     inputs:
       action:
@@ -13,6 +15,7 @@ on:
           - sync-opportunities
           - sync-aivora
           - sync-feeds
+          - sync-all
       submission_id:
         description: Required for approve/reject
         required: false
@@ -40,7 +43,7 @@ jobs:
       - name: Call authenticated management endpoint
         shell: bash
         env:
-          ACTION: ${{ inputs.action }}
+          ACTION: ${{ github.event_name == 'schedule' && 'sync-all' || inputs.action }}
           SUBMISSION_ID: ${{ inputs.submission_id }}
           NOTE: ${{ inputs.note }}
           ADMIN_API_KEY: ${{ secrets.SUPPLY_RADAR_ADMIN_API_KEY }}
@@ -65,6 +68,9 @@ jobs:
               ;;
             sync-feeds)
               url="$SUPPLY_RADAR_URL/api/v1/admin/sync/feeds"
+              ;;
+            sync-all)
+              url="$SUPPLY_RADAR_URL/api/v1/admin/sync"
               ;;
             *)
               echo "Unsupported action" >&2
