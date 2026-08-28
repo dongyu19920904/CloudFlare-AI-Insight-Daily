@@ -1,0 +1,75 @@
+name: Manage Aivora Supply Radar
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Moderation or synchronization action
+        required: true
+        type: choice
+        options:
+          - approve-submission
+          - reject-submission
+          - sync-opportunities
+          - sync-aivora
+          - sync-feeds
+      submission_id:
+        description: Required for approve/reject
+        required: false
+        type: string
+      note:
+        description: Optional moderation note (500 characters maximum)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manage-aivora-supply-radar
+  cancel-in-progress: false
+
+jobs:
+  manage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call authenticated management endpoint
+        shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          SUBMISSION_ID: ${{ inputs.submission_id }}
+          NOTE: ${{ inputs.note }}
+          ADMIN_API_KEY: ${{ secrets.SUPPLY_RADAR_ADMIN_API_KEY }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            approve-submission|reject-submission)
+              [[ "$SUBMISSION_ID" =~ ^[1-9][0-9]*$ ]] || { echo "A positive submission ID is required" >&2; exit 1; }
+              verb="${ACTION%-submission}"
+              url="https://supply.aivora.cn/api/v1/admin/submissions/${SUBMISSION_ID}/${verb}"
+              body="$(jq -nc --arg note "${NOTE:0:500}" '{note: $note}')"
+              curl --fail --silent --show-error --max-time 30 \
+                -H "Authorization: Bearer $ADMIN_API_KEY" \
+                -H "Content-Type: application/json" \
+                --data "$body" "$url"
+              ;;
+            sync-opportunities)
+              url="https://supply.aivora.cn/api/v1/admin/sync/opportunities"
+              ;;
+            sync-aivora)
+              url="https://supply.aivora.cn/api/v1/admin/sync/aivora"
+              ;;
+            sync-feeds)
+              url="https://supply.aivora.cn/api/v1/admin/sync/feeds"
+              ;;
+            *)
+              echo "Unsupported action" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$ACTION" == sync-* ]]; then
+            curl --fail --silent --show-error --max-time 180 \
+              -H "Authorization: Bearer $ADMIN_API_KEY" \
+              -X POST "$url"
+          fi

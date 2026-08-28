@@ -1,0 +1,149 @@
+name: Deploy Aivora Supply Radar
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact Aivora-Supply-Radar commit SHA; blank uses main
+        required: false
+        type: string
+      force:
+        description: Redeploy even when this SHA was already successful
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-aivora-supply-radar
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Resolve immutable release SHA
+        id: release
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="${REQUESTED_SHA:-}"
+          if [[ -z "$sha" ]]; then
+            sha="$(git ls-remote https://github.com/dongyu19920904/Aivora-Supply-Radar.git refs/heads/main | cut -f1)"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid or unavailable release SHA" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore successful deployment marker
+        id: deployed
+        if: ${{ !inputs.force }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .deploy-state
+          key: aivora-supply-radar-deployed-${{ steps.release.outputs.sha }}
+          lookup-only: true
+
+      - name: Checkout exact Supply Radar release
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v6
+        with:
+          repository: dongyu19920904/Aivora-Supply-Radar
+          ref: ${{ steps.release.outputs.sha }}
+          path: site
+          persist-credentials: false
+
+      - name: Set up Node
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Verify release
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        working-directory: site
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run check:content
+          npm run dry-run:seed
+          npm run build
+
+      - name: Ensure D1 and generate deployment config
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        working-directory: site
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          databases="$(npx wrangler d1 list --json)"
+          database_id="$(jq -r '.[] | select(.name == "aivora-supply-radar-db") | (.uuid // .id)' <<<"$databases" | head -n1)"
+          if [[ -z "$database_id" || "$database_id" == "null" ]]; then
+            npx wrangler d1 create aivora-supply-radar-db --location apac
+            databases="$(npx wrangler d1 list --json)"
+            database_id="$(jq -r '.[] | select(.name == "aivora-supply-radar-db") | (.uuid // .id)' <<<"$databases" | head -n1)"
+          fi
+          [[ "$database_id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Unable to resolve D1 database" >&2; exit 1; }
+          jq --arg id "$database_id" --arg account "$CLOUDFLARE_ACCOUNT_ID" \
+            '.d1_databases[0].database_id = $id | .account_id = $account' \
+            wrangler.jsonc > wrangler.deploy.json
+
+      - name: Migrate and deploy Worker
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        working-directory: site
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPPLY_RADAR_ADMIN_API_KEY: ${{ secrets.SUPPLY_RADAR_ADMIN_API_KEY }}
+        run: |
+          set -euo pipefail
+          npx wrangler d1 migrations apply aivora-supply-radar-db --remote --config wrangler.deploy.json
+          npx wrangler deploy --config wrangler.deploy.json
+          printf '%s' "$SUPPLY_RADAR_ADMIN_API_KEY" | \
+            npx wrangler secret put ADMIN_API_KEY --config wrangler.deploy.json
+
+      - name: Verify custom domain
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 15 \
+              https://supply.aivora.cn/api/v1/health > /tmp/supply-health.json; then
+              jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24' \
+                /tmp/supply-health.json > /dev/null
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Supply Radar health check did not become ready" >&2
+          exit 1
+
+      - name: Save successful deployment marker
+        if: ${{ success() && (inputs.force || steps.deployed.outputs.cache-hit != 'true') }}
+        shell: bash
+        run: |
+          mkdir -p .deploy-state
+          printf '%s\n' '${{ steps.release.outputs.sha }}' > .deploy-state/sha
+
+      - name: Cache successful deployment marker
+        if: ${{ success() && (inputs.force || steps.deployed.outputs.cache-hit != 'true') }}
+        uses: actions/cache/save@v4
+        with:
+          path: .deploy-state
+          key: aivora-supply-radar-deployed-${{ steps.release.outputs.sha }}
