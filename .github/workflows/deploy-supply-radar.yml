@@ -22,6 +22,9 @@ concurrency:
   group: deploy-aivora-supply-radar
   cancel-in-progress: false
 
+env:
+  SUPPLY_RADAR_URL: https://aivora-supply-radar.sabrinamisan090.workers.dev
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -116,7 +119,7 @@ jobs:
           ready=false
           for attempt in $(seq 1 18); do
             if curl --fail --silent --show-error --max-time 15 \
-              https://supply.aivora.cn/api/v1/health > /dev/null; then
+              "$SUPPLY_RADAR_URL/api/v1/health" > /dev/null; then
               ready=true
               break
             fi
@@ -126,7 +129,7 @@ jobs:
           curl --fail --silent --show-error --max-time 180 \
             --request POST \
             --header "Authorization: Bearer $SUPPLY_RADAR_ADMIN_API_KEY" \
-            https://supply.aivora.cn/api/v1/admin/sync > /tmp/supply-sync.json
+            "$SUPPLY_RADAR_URL/api/v1/admin/sync" > /tmp/supply-sync.json
           jq -e '.aivora.status == "fulfilled"' /tmp/supply-sync.json > /dev/null
 
       - name: Verify custom domain
@@ -136,7 +139,7 @@ jobs:
           set -euo pipefail
           for attempt in $(seq 1 18); do
             if curl --fail --silent --show-error --max-time 15 \
-              https://supply.aivora.cn/api/v1/health > /tmp/supply-health.json; then
+              "$SUPPLY_RADAR_URL/api/v1/health" > /tmp/supply-health.json; then
               jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24' \
                 /tmp/supply-health.json > /dev/null
               exit 0

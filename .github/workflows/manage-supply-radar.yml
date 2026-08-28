@@ -29,6 +29,9 @@ concurrency:
   group: manage-aivora-supply-radar
   cancel-in-progress: false
 
+env:
+  SUPPLY_RADAR_URL: https://aivora-supply-radar.sabrinamisan090.workers.dev
+
 jobs:
   manage:
     runs-on: ubuntu-latest
@@ -47,7 +50,7 @@ jobs:
             approve-submission|reject-submission)
               [[ "$SUBMISSION_ID" =~ ^[1-9][0-9]*$ ]] || { echo "A positive submission ID is required" >&2; exit 1; }
               verb="${ACTION%-submission}"
-              url="https://supply.aivora.cn/api/v1/admin/submissions/${SUBMISSION_ID}/${verb}"
+              url="$SUPPLY_RADAR_URL/api/v1/admin/submissions/${SUBMISSION_ID}/${verb}"
               body="$(jq -nc --arg note "${NOTE:0:500}" '{note: $note}')"
               curl --fail --silent --show-error --max-time 30 \
                 -H "Authorization: Bearer $ADMIN_API_KEY" \
@@ -55,13 +58,13 @@ jobs:
                 --data "$body" "$url"
               ;;
             sync-opportunities)
-              url="https://supply.aivora.cn/api/v1/admin/sync/opportunities"
+              url="$SUPPLY_RADAR_URL/api/v1/admin/sync/opportunities"
               ;;
             sync-aivora)
-              url="https://supply.aivora.cn/api/v1/admin/sync/aivora"
+              url="$SUPPLY_RADAR_URL/api/v1/admin/sync/aivora"
               ;;
             sync-feeds)
-              url="https://supply.aivora.cn/api/v1/admin/sync/feeds"
+              url="$SUPPLY_RADAR_URL/api/v1/admin/sync/feeds"
               ;;
             *)
               echo "Unsupported action" >&2
