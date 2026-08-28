@@ -126,20 +126,24 @@ jobs:
             sleep 10
           done
           [[ "$ready" == true ]] || { echo "Supply Radar domain did not become ready" >&2; exit 1; }
-          sync_status=401
-          for attempt in $(seq 1 18); do
-            sync_status="$(curl --silent --show-error --max-time 210 \
-              --output /tmp/supply-sync.json --write-out '%{http_code}' \
-              --request POST \
-              --header "Authorization: Bearer $SUPPLY_RADAR_ADMIN_API_KEY" \
-              "$SUPPLY_RADAR_URL/api/v1/admin/sync")"
-            [[ "$sync_status" == 401 ]] || break
-            sleep 10
-          done
-          [[ "$sync_status" == 200 ]] || { echo "Initial sync returned HTTP $sync_status" >&2; exit 1; }
-          jq -e '.aivora.status == "fulfilled"' /tmp/supply-sync.json > /dev/null
+          curl --fail --silent --show-error --max-time 30 \
+            "$SUPPLY_RADAR_URL/api/v1/health" > /tmp/supply-before-sync.json
+          if ! jq -e '.latestSourceRun != null' /tmp/supply-before-sync.json > /dev/null; then
+            sync_status=401
+            for attempt in $(seq 1 18); do
+              sync_status="$(curl --silent --show-error --max-time 210 \
+                --output /tmp/supply-sync.json --write-out '%{http_code}' \
+                --request POST \
+                --header "Authorization: Bearer $SUPPLY_RADAR_ADMIN_API_KEY" \
+                "$SUPPLY_RADAR_URL/api/v1/admin/sync")"
+              [[ "$sync_status" == 401 ]] || break
+              sleep 10
+            done
+            [[ "$sync_status" == 200 ]] || { echo "Initial sync returned HTTP $sync_status" >&2; exit 1; }
+            jq -e '.aivora.status == "fulfilled"' /tmp/supply-sync.json > /dev/null
+          fi
 
-      - name: Verify custom domain
+      - name: Verify live URL
         if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
