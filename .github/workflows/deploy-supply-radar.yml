@@ -81,28 +81,18 @@ jobs:
           npm run dry-run:seed
           npm run build
 
-      - name: Ensure D1 and generate deployment config
+      - name: Generate deployment config
         if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
         working-directory: site
         shell: bash
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          databases="$(npx wrangler d1 list --json)"
-          database_id="$(jq -r '.[] | select(.name == "aivora-supply-radar-db") | (.uuid // .id)' <<<"$databases" | head -n1)"
-          if [[ -z "$database_id" || "$database_id" == "null" ]]; then
-            npx wrangler d1 create aivora-supply-radar-db --location apac
-            databases="$(npx wrangler d1 list --json)"
-            database_id="$(jq -r '.[] | select(.name == "aivora-supply-radar-db") | (.uuid // .id)' <<<"$databases" | head -n1)"
-          fi
-          [[ "$database_id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Unable to resolve D1 database" >&2; exit 1; }
-          jq --arg id "$database_id" --arg account "$CLOUDFLARE_ACCOUNT_ID" \
-            '.d1_databases[0].database_id = $id | .account_id = $account' \
+          jq --arg account "$CLOUDFLARE_ACCOUNT_ID" '.account_id = $account' \
             wrangler.jsonc > wrangler.deploy.json
 
-      - name: Migrate and deploy Worker
+      - name: Deploy Worker and set admin secret
         if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
         working-directory: site
         shell: bash
@@ -112,10 +102,32 @@ jobs:
           SUPPLY_RADAR_ADMIN_API_KEY: ${{ secrets.SUPPLY_RADAR_ADMIN_API_KEY }}
         run: |
           set -euo pipefail
-          npx wrangler d1 migrations apply aivora-supply-radar-db --remote --config wrangler.deploy.json
           npx wrangler deploy --config wrangler.deploy.json
           printf '%s' "$SUPPLY_RADAR_ADMIN_API_KEY" | \
             npx wrangler secret put ADMIN_API_KEY --config wrangler.deploy.json
+
+      - name: Run initial isolated source sync
+        if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
+        shell: bash
+        env:
+          SUPPLY_RADAR_ADMIN_API_KEY: ${{ secrets.SUPPLY_RADAR_ADMIN_API_KEY }}
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 15 \
+              https://supply.aivora.cn/api/v1/health > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$ready" == true ]] || { echo "Supply Radar domain did not become ready" >&2; exit 1; }
+          curl --fail --silent --show-error --max-time 180 \
+            --request POST \
+            --header "Authorization: Bearer $SUPPLY_RADAR_ADMIN_API_KEY" \
+            https://supply.aivora.cn/api/v1/admin/sync > /tmp/supply-sync.json
+          jq -e '.aivora.status == "fulfilled"' /tmp/supply-sync.json > /dev/null
 
       - name: Verify custom domain
         if: ${{ inputs.force || steps.deployed.outputs.cache-hit != 'true' }}
