@@ -1,0 +1,219 @@
+name: Deploy Supply Radar V2 Production
+
+run-name: Deploy Supply Radar V2 production ${{ inputs.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact tested Aivora-Supply-Radar V2 commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-supply-radar-v2-production
+  cancel-in-progress: false
+
+env:
+  PRODUCTION_URL: https://supply.aivora.cn
+  PRODUCTION_WORKER_URL: https://aivora-supply-radar-v2.sabrinamisan090.workers.dev
+  NEXT_PUBLIC_SITE_URL: https://supply.aivora.cn
+  NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPPLY_V2_SUPABASE_URL }}
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPPLY_V2_SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPPLY_V2_SUPABASE_SERVICE_ROLE_KEY }}
+  ADMIN_PASSWORD: ${{ secrets.SUPPLY_V2_ADMIN_PASSWORD }}
+  ADMIN_SESSION_SECRET: ${{ secrets.SUPPLY_V2_ADMIN_SESSION_SECRET }}
+  LEGACY_RADAR_API_URL: https://aivora-supply-radar.sabrinamisan090.workers.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Validate immutable release and configuration
+        id: release
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+          SUPPLY_V2_PROJECT_REF: ${{ vars.SUPPLY_V2_PROJECT_REF }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "A full release SHA is required" >&2; exit 1; }
+          required=(
+            NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY
+            SUPABASE_SERVICE_ROLE_KEY ADMIN_PASSWORD ADMIN_SESSION_SECRET
+            SUPPLY_V2_PROJECT_REF CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN
+          )
+          for key in "${required[@]}"; do
+            [[ -n "${!key:-}" ]] || { echo "Required deployment configuration is missing: $key" >&2; exit 1; }
+          done
+          [[ "$NEXT_PUBLIC_SUPABASE_URL" == "https://${SUPPLY_V2_PROJECT_REF}.supabase.co" ]] || {
+            echo "Supabase project reference and URL do not match" >&2
+            exit 1
+          }
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact V2 release
+        uses: actions/checkout@v4
+        with:
+          repository: dongyu19920904/Aivora-Supply-Radar
+          ref: ${{ steps.release.outputs.sha }}
+          path: site
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: site/v2-web/pnpm-lock.yaml
+
+      - name: Verify and build exact production release
+        working-directory: site/v2-web
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm typecheck
+          pnpm lint
+          pnpm build:cf:production
+
+      - name: Deploy isolated V2 production Worker
+        working-directory: site/v2-web
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          secrets_file="$RUNNER_TEMP/supply-v2-production-secrets.json"
+          trap 'rm -f "$secrets_file"' EXIT
+          jq -n '{
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+            ADMIN_PASSWORD: env.ADMIN_PASSWORD,
+            ADMIN_SESSION_SECRET: env.ADMIN_SESSION_SECRET
+          }' > "$secrets_file"
+          pnpm exec wrangler deploy \
+            --config wrangler.production.toml \
+            --secrets-file "$secrets_file" \
+            --var "NEXT_PUBLIC_SITE_URL:$NEXT_PUBLIC_SITE_URL" \
+            --var "NEXT_PUBLIC_SUPABASE_URL:$NEXT_PUBLIC_SUPABASE_URL" \
+            --var "LEGACY_RADAR_API_URL:$LEGACY_RADAR_API_URL" \
+            --message "Supply Radar V2 production $RELEASE_SHA"
+
+      - name: Verify V2 Worker before edge switch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 18); do
+            status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/direct-offers.json" \
+              --write-out '%{http_code}' "$PRODUCTION_WORKER_URL/api/products/chatgpt-plus/offers?limit=50&offset=0")"
+            if [[ "$status" == 200 ]] && jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
+              "$RUNNER_TEMP/direct-offers.json" > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$ready" == true ]] || { echo "V2 production Worker did not become ready" >&2; exit 1; }
+          curl --fail --silent --show-error --max-time 30 "$PRODUCTION_WORKER_URL/" > "$RUNNER_TEMP/direct-home.html"
+          grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/direct-home.html" > /dev/null
+          grep -F '<link rel="canonical" href="https://supply.aivora.cn' "$RUNNER_TEMP/direct-home.html" > /dev/null
+
+      - name: Switch Pages edge service binding to V2
+        id: edge
+        working-directory: site/pages-edge
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ../v2-web/node_modules/.bin/wrangler pages deploy public \
+            --project-name aivora-supply-radar-edge \
+            --branch main \
+            --commit-hash "$RELEASE_SHA" \
+            --commit-message "Promote Supply Radar V2" \
+            --commit-dirty=false
+
+      - name: Verify production domain after edge switch
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 18); do
+            status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/production-offers.json" \
+              --write-out '%{http_code}' "$PRODUCTION_URL/api/products/chatgpt-plus/offers?limit=50&offset=0")"
+            if [[ "$status" == 200 ]] && jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
+              "$RUNNER_TEMP/production-offers.json" > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$ready" == true ]] || { echo "Production domain did not switch to V2" >&2; exit 1; }
+
+          paths=(/ /card-products /channels /opportunities /changes /official-prices /community /submit /sitemap.xml /robots.txt)
+          for path in "${paths[@]}"; do
+            status="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$PRODUCTION_URL$path")"
+            [[ "$status" == 200 ]] || { echo "Production route $path returned HTTP $status" >&2; exit 1; }
+          done
+          curl --fail --silent --show-error --max-time 30 "$PRODUCTION_URL/" > "$RUNNER_TEMP/production-home.html"
+          grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/production-home.html" > /dev/null
+          grep -F '<link rel="canonical" href="https://supply.aivora.cn' "$RUNNER_TEMP/production-home.html" > /dev/null
+          grep -F 'application/ld+json' "$RUNNER_TEMP/production-home.html" > /dev/null
+
+          total="$(jq -r '.pageInfo.total' "$RUNNER_TEMP/production-offers.json")"
+          {
+            echo "### Supply Radar V2 production"
+            echo "- Release: \`$RELEASE_SHA\`"
+            echo "- URL: \`$PRODUCTION_URL\`"
+            echo "- ChatGPT Plus live offers: \`$total\`"
+            echo "- Rollback service: \`aivora-supply-radar\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll back Pages edge to V1 when post-switch verification fails
+        if: ${{ failure() && steps.edge.outcome == 'success' }}
+        working-directory: site/pages-edge
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          jq '.services[0].service = "aivora-supply-radar"' wrangler.jsonc > wrangler.rollback.jsonc
+          ../v2-web/node_modules/.bin/wrangler pages deploy public \
+            --config wrangler.rollback.jsonc \
+            --project-name aivora-supply-radar-edge \
+            --branch main \
+            --commit-hash "$RELEASE_SHA" \
+            --commit-message "Automatic rollback to Supply Radar V1" \
+            --commit-dirty=false
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 20 \
+              "$PRODUCTION_URL/api/v1/health" > "$RUNNER_TEMP/rollback-health.json" && \
+              jq -e '.status == "ok" and .database == "ok"' "$RUNNER_TEMP/rollback-health.json" > /dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Automatic V1 edge rollback could not be verified" >&2
+          exit 1
