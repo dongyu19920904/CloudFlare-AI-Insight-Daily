@@ -19,7 +19,6 @@ concurrency:
 
 env:
   PREVIEW_URL: https://aivora-supply-radar-v2-preview.sabrinamisan090.workers.dev
-  R2_BUCKET: aivora-supply-radar-v2-next-cache
   NEXT_PUBLIC_SITE_URL: https://aivora-supply-radar-v2-preview.sabrinamisan090.workers.dev
   NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPPLY_V2_SUPABASE_URL }}
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPPLY_V2_SUPABASE_ANON_KEY }}
@@ -86,30 +85,7 @@ jobs:
           pnpm test
           pnpm typecheck
           pnpm lint
-          pnpm build:cf
-
-      - name: Ensure isolated OpenNext R2 cache
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets"
-          curl --fail --silent --show-error \
-            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "$api" > "$RUNNER_TEMP/r2-buckets.json"
-          jq -e '.success == true' "$RUNNER_TEMP/r2-buckets.json" > /dev/null
-          if ! jq -e --arg name "$R2_BUCKET" '.result.buckets[]? | select(.name == $name)' \
-            "$RUNNER_TEMP/r2-buckets.json" > /dev/null; then
-            jq -nc --arg name "$R2_BUCKET" '{name: $name}' > "$RUNNER_TEMP/r2-create.json"
-            curl --fail --silent --show-error \
-              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              --header "Content-Type: application/json" \
-              --data @"$RUNNER_TEMP/r2-create.json" \
-              "$api" > "$RUNNER_TEMP/r2-created.json"
-            jq -e '.success == true' "$RUNNER_TEMP/r2-created.json" > /dev/null
-          fi
+          pnpm build:cf:preview
 
       - name: Deploy one isolated preview Worker version
         working-directory: site/v2-web
@@ -130,7 +106,7 @@ jobs:
             ADMIN_SESSION_SECRET: env.ADMIN_SESSION_SECRET
           }' > "$secrets_file"
           pnpm exec wrangler deploy \
-            --config wrangler.toml \
+            --config wrangler.preview.toml \
             --secrets-file "$secrets_file" \
             --var "NEXT_PUBLIC_SITE_URL:$NEXT_PUBLIC_SITE_URL" \
             --var "NEXT_PUBLIC_SUPABASE_URL:$NEXT_PUBLIC_SUPABASE_URL" \
