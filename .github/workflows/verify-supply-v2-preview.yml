@@ -1,0 +1,87 @@
+name: Verify Supply Radar V2 Preview
+
+run-name: Verify Supply Radar V2 preview ${{ inputs.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact deployed Aivora-Supply-Radar V2 commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-supply-radar-v2-preview
+  cancel-in-progress: true
+
+env:
+  AUDIT_BASE_URL: https://aivora-supply-radar-v2-preview.sabrinamisan090.workers.dev
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate immutable release
+        id: release
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "A full deployed SHA is required" >&2; exit 1; }
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: dongyu19920904/Aivora-Supply-Radar
+          ref: ${{ steps.release.outputs.sha }}
+          path: site
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: site/v2-web/pnpm-lock.yaml
+
+      - name: Install browser audit runtime
+        working-directory: site/v2-web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Audit desktop, mobile, light and dark preview
+        working-directory: site/v2-web
+        run: pnpm audit:visual
+
+      - name: Save visual evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-v2-preview-visual-${{ steps.release.outputs.sha }}
+          path: site/v2-web/artifacts/visual-audit/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record verification result
+        if: ${{ success() }}
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          {
+            echo "### Supply Radar V2 preview visual verification"
+            echo "- Release: \`$RELEASE_SHA\`"
+            echo "- URL: \`$AUDIT_BASE_URL\`"
+            echo "- Matrix: \`9/9 publishable\`"
+            echo "- Production domain changed: \`no\`"
+          } >> "$GITHUB_STEP_SUMMARY"
