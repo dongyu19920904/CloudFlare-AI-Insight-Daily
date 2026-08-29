@@ -1,0 +1,43 @@
+name: Inspect Supply Radar Domain
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PAGES_PROJECT: aivora-supply-radar-edge
+  CUSTOM_DOMAIN: supply.aivora.cn
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read Cloudflare Pages domain status
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT/domains/$CUSTOM_DOMAIN"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$api" > /tmp/pages-domain.json
+          jq -e '.success == true' /tmp/pages-domain.json > /dev/null
+          jq '{
+            name: .result.name,
+            status: .result.status,
+            validationStatus: .result.validation_data.status,
+            validationMethod: .result.validation_data.method,
+            validationError: (.result.validation_data.error_message // null),
+            verificationStatus: .result.verification_data.status,
+            verificationError: (.result.verification_data.error_message // null)
+          }' /tmp/pages-domain.json
+          status="$(jq -r '.result.status' /tmp/pages-domain.json)"
+          if [[ "$status" == "blocked" || "$status" == "error" || "$status" == "deactivated" ]]; then
+            echo "Cloudflare Pages custom domain is $status" >&2
+            exit 1
+          fi
