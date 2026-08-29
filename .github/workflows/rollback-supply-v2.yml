@@ -1,0 +1,80 @@
+name: Roll Back Supply Radar V2 to V1
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type ROLLBACK_TO_V1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-supply-radar-v2-production
+  cancel-in-progress: false
+
+env:
+  PRODUCTION_URL: https://supply.aivora.cn
+  V1_RELEASE_SHA: 37c275116d47d6498d9b4c4b0e272e5df4975cb7
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate rollback request
+        shell: bash
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          [[ "$CONFIRM" == "ROLLBACK_TO_V1" ]] || { echo "Rollback confirmation did not match" >&2; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          repository: dongyu19920904/Aivora-Supply-Radar
+          ref: ${{ env.V1_RELEASE_SHA }}
+          path: site
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install V1 deployment runtime
+        working-directory: site
+        run: npm ci --ignore-scripts
+
+      - name: Restore V1 Pages service binding
+        working-directory: site/pages-edge
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          ../node_modules/.bin/wrangler pages deploy public \
+            --project-name aivora-supply-radar-edge \
+            --branch main \
+            --commit-hash "$V1_RELEASE_SHA" \
+            --commit-message "Roll back Supply Radar to V1" \
+            --commit-dirty=false
+
+      - name: Verify restored V1
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 20 \
+              "$PRODUCTION_URL/api/v1/health" > "$RUNNER_TEMP/v1-health.json" && \
+              jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24' \
+                "$RUNNER_TEMP/v1-health.json" > /dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "V1 rollback did not become healthy" >&2
+          exit 1

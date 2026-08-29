@@ -153,10 +153,10 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 18); do
-            if curl --fail --silent --show-error --max-time 20 \
-              "$PAGES_URL/api/v1/health" > /tmp/supply-pages-health.json; then
-              jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24' \
-                /tmp/supply-pages-health.json > /dev/null
+            if curl --fail --silent --show-error --max-time 30 \
+              "$PAGES_URL/api/products/chatgpt-plus/offers?limit=50&offset=0" > /tmp/supply-pages-offers.json; then
+              jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
+                /tmp/supply-pages-offers.json > /dev/null
               curl --fail --silent --show-error --max-time 20 "$PAGES_URL/" > /tmp/supply-pages-home.html
               grep -F '爱窝啦·AI账号店' /tmp/supply-pages-home.html > /dev/null
               exit 0
