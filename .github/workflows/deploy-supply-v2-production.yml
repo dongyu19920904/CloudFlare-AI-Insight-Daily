@@ -9,6 +9,14 @@ on:
         description: Exact tested Aivora-Supply-Radar V2 commit SHA
         required: true
         type: string
+      mode:
+        description: Deploy Worker and promote, or promote the existing verified Worker
+        required: true
+        default: deploy-and-promote
+        type: choice
+        options:
+          - deploy-and-promote
+          - promote-existing
 
 permissions:
   contents: read
@@ -77,18 +85,23 @@ jobs:
           cache: pnpm
           cache-dependency-path: site/v2-web/pnpm-lock.yaml
 
+      - name: Install exact release dependencies
+        working-directory: site/v2-web
+        run: pnpm install --frozen-lockfile
+
       - name: Verify and build exact production release
+        if: ${{ inputs.mode == 'deploy-and-promote' }}
         working-directory: site/v2-web
         shell: bash
         run: |
           set -euo pipefail
-          pnpm install --frozen-lockfile
           pnpm test
           pnpm typecheck
           pnpm lint
           pnpm build:cf:production
 
       - name: Deploy isolated V2 production Worker
+        if: ${{ inputs.mode == 'deploy-and-promote' }}
         working-directory: site/v2-web
         shell: bash
         env:
@@ -120,19 +133,22 @@ jobs:
           set -euo pipefail
           ready=false
           for attempt in $(seq 1 18); do
-            status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/direct-offers.json" \
+            offers_status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/direct-offers.json" \
               --write-out '%{http_code}' "$PRODUCTION_WORKER_URL/api/products/chatgpt-plus/offers?limit=50&offset=0")"
-            if [[ "$status" == 200 ]] && jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
-              "$RUNNER_TEMP/direct-offers.json" > /dev/null; then
+            home_status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/direct-home.html" \
+              --write-out '%{http_code}' "$PRODUCTION_WORKER_URL/")"
+            if [[ "$offers_status" == 200 ]] && [[ "$home_status" == 200 ]] && \
+              jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
+                "$RUNNER_TEMP/direct-offers.json" > /dev/null && \
+              grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/direct-home.html" > /dev/null && \
+              grep -F '<link rel="canonical" href="https://supply.aivora.cn' \
+                "$RUNNER_TEMP/direct-home.html" > /dev/null; then
               ready=true
               break
             fi
             sleep 10
           done
           [[ "$ready" == true ]] || { echo "V2 production Worker did not become ready" >&2; exit 1; }
-          curl --fail --silent --show-error --max-time 30 "$PRODUCTION_WORKER_URL/" > "$RUNNER_TEMP/direct-home.html"
-          grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/direct-home.html" > /dev/null
-          grep -F '<link rel="canonical" href="https://supply.aivora.cn' "$RUNNER_TEMP/direct-home.html" > /dev/null
 
       - name: Switch Pages edge service binding to V2
         id: edge
@@ -184,6 +200,7 @@ jobs:
           {
             echo "### Supply Radar V2 production"
             echo "- Release: \`$RELEASE_SHA\`"
+            echo "- Mode: \`${{ inputs.mode }}\`"
             echo "- URL: \`$PRODUCTION_URL\`"
             echo "- ChatGPT Plus live offers: \`$total\`"
             echo "- Rollback service: \`aivora-supply-radar\`"
