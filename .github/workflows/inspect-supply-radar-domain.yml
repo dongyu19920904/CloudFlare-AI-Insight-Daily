@@ -2,6 +2,12 @@ name: Inspect Supply Radar Domain
 
 on:
   workflow_dispatch:
+    inputs:
+      retry_validation:
+        description: Retry Cloudflare validation after confirming the public CNAME
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -41,3 +47,33 @@ jobs:
             echo "Cloudflare Pages custom domain is $status" >&2
             exit 1
           fi
+
+      - name: Retry validation against the published CNAME
+        if: ${{ inputs.retry_validation }}
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          expected="aivora-supply-radar-edge.pages.dev."
+          actual="$(dig +short CNAME "$CUSTOM_DOMAIN" @1.1.1.1 | tail -n 1)"
+          [[ "${actual,,}" == "$expected" ]] || {
+            echo "Public CNAME is not ready; refusing to retry validation" >&2
+            exit 1
+          }
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT/domains/$CUSTOM_DOMAIN"
+          curl --fail --silent --show-error \
+            --request PATCH \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "$api" > /tmp/pages-domain-retry.json
+          jq -e '.success == true' /tmp/pages-domain-retry.json > /dev/null
+          jq '{
+            name: .result.name,
+            status: .result.status,
+            validationStatus: .result.validation_data.status,
+            verificationStatus: .result.verification_data.status,
+            verificationError: (.result.verification_data.error_message // null)
+          }' /tmp/pages-domain-retry.json
