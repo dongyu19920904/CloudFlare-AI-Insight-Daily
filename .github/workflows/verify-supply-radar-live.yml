@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SUPPLY_RADAR_URL: https://aivora-supply-radar.sabrinamisan090.workers.dev
+  SUPPLY_RADAR_URL: https://supply.aivora.cn
 
 jobs:
   verify:
@@ -62,7 +62,7 @@ jobs:
             curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL$path" > /dev/null
           done
           curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL/" > /tmp/supply-home.html
-          grep -F '<link rel="canonical" href="https://aivora-supply-radar.sabrinamisan090.workers.dev/">' /tmp/supply-home.html > /dev/null
+          grep -F '<link rel="canonical" href="https://supply.aivora.cn/">' /tmp/supply-home.html > /dev/null
           grep -F 'application/ld+json' /tmp/supply-home.html > /dev/null
           grep -F '爱窝啦·AI账号店' /tmp/supply-home.html > /dev/null
           curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL/api/v1/health" > /tmp/supply-health.json

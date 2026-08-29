@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SUPPLY_RADAR_URL: https://aivora-supply-radar.sabrinamisan090.workers.dev
+  SUPPLY_RADAR_URL: https://supply.aivora.cn
 
 jobs:
   deploy:
