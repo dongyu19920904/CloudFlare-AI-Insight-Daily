@@ -1,0 +1,182 @@
+name: Deploy Supply Radar Domain
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact Aivora-Supply-Radar commit SHA; blank uses main
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-supply-radar-domain
+  cancel-in-progress: false
+
+env:
+  PAGES_PROJECT: aivora-supply-radar-edge
+  PAGES_URL: https://aivora-supply-radar-edge.pages.dev
+  CUSTOM_DOMAIN: supply.aivora.cn
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Resolve immutable release SHA
+        id: release
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="${REQUESTED_SHA:-}"
+          if [[ -z "$sha" ]]; then
+            sha="$(git ls-remote https://github.com/dongyu19920904/Aivora-Supply-Radar.git refs/heads/main | cut -f1)"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid or unavailable release SHA" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact Supply Radar release
+        uses: actions/checkout@v6
+        with:
+          repository: dongyu19920904/Aivora-Supply-Radar
+          ref: ${{ steps.release.outputs.sha }}
+          path: site
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Verify release
+        working-directory: site
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run check:content
+          npm run dry-run:seed
+          npm run build
+
+      - name: Create Pages project when absent
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects"
+          status="$(curl --silent --show-error --output /tmp/pages-project.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$api/$PAGES_PROJECT")"
+          case "$status" in
+            200)
+              jq -e '.success == true' /tmp/pages-project.json > /dev/null
+              ;;
+            404)
+              jq -nc --arg name "$PAGES_PROJECT" '{name: $name, production_branch: "main"}' \
+                > /tmp/pages-project-create.json
+              curl --fail --silent --show-error \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                --header "Content-Type: application/json" \
+                --data @/tmp/pages-project-create.json \
+                "$api" > /tmp/pages-project.json
+              jq -e '.success == true' /tmp/pages-project.json > /dev/null
+              ;;
+            *)
+              jq -r '.errors[]?.message // empty' /tmp/pages-project.json >&2
+              echo "Cloudflare Pages project lookup returned HTTP $status" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy Pages service-binding edge
+        working-directory: site/pages-edge
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ../node_modules/.bin/wrangler pages deploy public \
+            --project-name "$PAGES_PROJECT" \
+            --branch main \
+            --commit-hash "$RELEASE_SHA" \
+            --commit-message "Bind $CUSTOM_DOMAIN" \
+            --commit-dirty=false
+
+      - name: Associate custom domain before DNS change
+        id: domain
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT/domains"
+          status="$(curl --silent --show-error --output /tmp/pages-domain.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$api/$CUSTOM_DOMAIN")"
+          case "$status" in
+            200)
+              jq -e '.success == true' /tmp/pages-domain.json > /dev/null
+              ;;
+            404)
+              jq -nc --arg name "$CUSTOM_DOMAIN" '{name: $name}' > /tmp/pages-domain-create.json
+              curl --fail --silent --show-error \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                --header "Content-Type: application/json" \
+                --data @/tmp/pages-domain-create.json \
+                "$api" > /tmp/pages-domain.json
+              jq -e '.success == true' /tmp/pages-domain.json > /dev/null
+              ;;
+            *)
+              jq -r '.errors[]?.message // empty' /tmp/pages-domain.json >&2
+              echo "Cloudflare Pages domain lookup returned HTTP $status" >&2
+              exit 1
+              ;;
+          esac
+          echo "status=$(jq -r '.result.status' /tmp/pages-domain.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Pages proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 20 \
+              "$PAGES_URL/api/v1/health" > /tmp/supply-pages-health.json; then
+              jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24' \
+                /tmp/supply-pages-health.json > /dev/null
+              curl --fail --silent --show-error --max-time 20 "$PAGES_URL/" > /tmp/supply-pages-home.html
+              grep -F '爱窝啦·AI账号店' /tmp/supply-pages-home.html > /dev/null
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Pages proxy did not become ready" >&2
+          exit 1
+
+      - name: Record DNS handoff
+        shell: bash
+        env:
+          DOMAIN_STATUS: ${{ steps.domain.outputs.status }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          {
+            echo "### Supply Radar custom domain"
+            echo "- Release: \`$RELEASE_SHA\`"
+            echo "- Pages: \`$PAGES_URL\`"
+            echo "- Domain: \`$CUSTOM_DOMAIN\`"
+            echo "- Cloudflare status: \`$DOMAIN_STATUS\`"
+            echo "- DNSPod CNAME: \`supply\` → \`aivora-supply-radar-edge.pages.dev\`"
+          } >> "$GITHUB_STEP_SUMMARY"
