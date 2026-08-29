@@ -66,7 +66,11 @@ jobs:
           grep -F 'application/ld+json' /tmp/supply-home.html > /dev/null
           grep -F '爱窝啦·AI账号店' /tmp/supply-home.html > /dev/null
           curl --fail --silent --show-error --max-time 30 "$SUPPLY_RADAR_URL/api/v1/health" > /tmp/supply-health.json
-          jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24 and .latestOpportunity.report_date == "2026-08-28"' /tmp/supply-health.json > /dev/null
+          jq -e '.status == "ok" and .database == "ok" and .products >= 48 and .offers >= 24 and (.latestOpportunity.report_date | type == "string")' /tmp/supply-health.json > /dev/null
+          latest_date="$(jq -r '.latestOpportunity.report_date' /tmp/supply-health.json)"
+          shanghai_today="$(TZ=Asia/Shanghai date +%F)"
+          shanghai_yesterday="$(TZ=Asia/Shanghai date --date='yesterday' +%F)"
+          [[ "$latest_date" == "$shanghai_today" || "$latest_date" == "$shanghai_yesterday" ]]
           [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 --request POST "$SUPPLY_RADAR_URL/api/v1/admin/sync")" == 401 ]]
           [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 "$SUPPLY_RADAR_URL/__aivora_internal_scheduled_v1")" == 404 ]]
 
