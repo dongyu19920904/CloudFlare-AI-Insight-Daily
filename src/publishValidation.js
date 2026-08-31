@@ -1620,3 +1620,179 @@ export function validateAccountOpportunityPublication({
     aivoraLinkCount: aivoraValidation.linkCount,
   };
 }
+
+const SUPPLY_DRIVEN_ACTION_FIELDS = [
+  "货源证据",
+  "库存与价格",
+  "买家怎么选",
+  "卖家今天做",
+  "利润怎么核",
+  "风险与停止",
+];
+
+function isAllowedPublicSupplyUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" &&
+      parsed.hostname === "supply.aivora.cn" &&
+      (
+        parsed.pathname === "/opportunities" ||
+        parsed.pathname.startsWith("/card-products/") ||
+        parsed.pathname === "/profit-calculator"
+      );
+  } catch {
+    return false;
+  }
+}
+
+export function validateSupplyDrivenAccountOpportunityPublication({
+  markdown,
+  allowedSupplyUrls = null,
+  expectedStats = null,
+  expectedProductSlugs = [],
+  aivoraLinkPolicy = { allowedUrls: [] },
+}) {
+  const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
+  const issues = collectMarkdownIssues(visibleMarkdown, {
+    label: "实时货源账号商机页面",
+    minChars: 700,
+    requiredPhrases: [
+      "## 今日货源结论",
+      "## 实时货源盘面",
+      "## 今日可执行货源",
+      "## 行业信号",
+      "## 买家避坑",
+      "## 今日三步",
+      ...SUPPLY_DRIVEN_ACTION_FIELDS,
+    ],
+    forbiddenPatterns: [
+      ...MODEL_MANIPULATION_PATTERNS,
+      /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
+      /建议(?:售价|定价)|(?:挂价|卖价|售价)[:：]?\s*[¥￥$]?\s*\d/i,
+      /(?:销量|需求|询问量)(?:必然|一定|马上)(?:上涨|增加|爆发)/i,
+      /永不封号|无限续杯|官方授权|保证稳定/i,
+    ],
+  });
+
+  if (/^#\s+\S/m.test(visibleMarkdown)) {
+    issues.push("实时货源账号商机正文不得输出一级标题");
+  }
+
+  const summary = getSectionBody(
+    extractSection(visibleMarkdown, /^##\s+今日货源结论(?:\s|$).*$/im)
+  );
+  const summaryLines = summary.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (summaryLines.length !== 3 || summaryLines.some((line) => !/^[-*+]\s+/.test(line))) {
+    issues.push("今日货源结论必须恰好是 3 个一级列表项");
+  }
+  for (const label of ["快照", "卖家动作", "最大风险"]) {
+    if (!summaryLines.some((line) => line.includes(`**${label}**`))) {
+      issues.push(`今日货源结论缺少“${label}”`);
+    }
+  }
+
+  const actionSection = extractSection(
+    visibleMarkdown,
+    /^##\s+今日可执行货源(?:\s|$).*$/im
+  );
+  const actions = extractLevel3Blocks(actionSection);
+  if (actions.length < 1 || actions.length > 3) {
+    issues.push("实时货源日报必须包含 1 至 3 个可执行货源");
+  }
+  for (const block of actions) {
+    if (/^###\s+\[[^\]]+\]\(https?:\/\//m.test(block)) {
+      issues.push("可执行货源标题必须是纯文本");
+    }
+    for (const field of SUPPLY_DRIVEN_ACTION_FIELDS) {
+      const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!new RegExp(`^-\\s*\\*\\*${escaped}\\*\\*\\s+\\S`, "m").test(block)) {
+        issues.push(`可执行货源缺少“${field}”字段`);
+      }
+    }
+    if (!/https:\/\/supply\.aivora\.cn\/card-products\/[a-z0-9-]+/i.test(block)) {
+      issues.push("每个可执行货源必须链接到标准商品页");
+    }
+    if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(block)) {
+      issues.push("每个可执行货源必须提供利润计算入口");
+    }
+  }
+
+  const actionSteps = getSectionBody(
+    extractSection(visibleMarkdown, /^##\s+今日三步(?:\s|$).*$/im)
+  ).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (actionSteps.length !== 3 || actionSteps.some((line) => !/^[-*+]\s+/.test(line))) {
+    issues.push("实时货源日报的今日三步必须恰好是 3 个一级列表项");
+  }
+  for (const label of ["今天核验", "今天算账", "今天记录"]) {
+    if (!actionSteps.some((line) => line.includes(`**${label}**`))) {
+      issues.push(`实时货源日报的今日三步缺少“${label}”`);
+    }
+  }
+
+  const allowed = Array.isArray(allowedSupplyUrls)
+    ? new Set(allowedSupplyUrls.map(canonicalizeUrl).filter(Boolean))
+    : null;
+  const supplyLinks = extractSectionLinks(visibleMarkdown).filter((link) => {
+    try {
+      return new URL(link.url).hostname === "supply.aivora.cn";
+    } catch {
+      return false;
+    }
+  });
+  if (!supplyLinks.some((link) => canonicalizeUrl(link.url) === canonicalizeUrl("https://supply.aivora.cn/opportunities"))) {
+    issues.push("实时货源盘面必须链接到货源商机页");
+  }
+  for (const link of supplyLinks) {
+    if (!isAllowedPublicSupplyUrl(link.url)) {
+      issues.push(`实时货源日报包含不允许的货源链接: ${link.url}`);
+    } else if (allowed && !allowed.has(canonicalizeUrl(link.url))) {
+      issues.push(`实时货源日报包含快照之外的货源链接: ${link.url}`);
+    }
+  }
+
+  if (expectedStats) {
+    for (const [field, label] of [
+      ["productCount", "标准商品数"],
+      ["availableProductCount", "可购买商品数"],
+      ["availableOfferCount", "可购买报价数"],
+      ["recentChangeCount", "异动数"],
+      ["lowSupplyProductCount", "低供给观察数"],
+    ]) {
+      if (!new RegExp(`(?:^|\\D)${Number(expectedStats[field])}(?:\\D|$)`).test(getSectionBody(
+        extractSection(visibleMarkdown, /^##\s+实时货源盘面(?:\s|$).*$/im)
+      ))) {
+        issues.push(`实时货源盘面缺少快照中的${label}`);
+      }
+    }
+  }
+  for (const slug of expectedProductSlugs || []) {
+    if (!visibleMarkdown.includes(`https://supply.aivora.cn/card-products/${slug}`)) {
+      issues.push(`实时货源日报缺少已选商品链接: ${slug}`);
+    }
+  }
+
+  const proseWithoutUrls = visibleMarkdown.replace(/\]\(https?:\/\/[^)]+\)/g, "]");
+  if (/[：—–]/.test(proseWithoutUrls)) {
+    issues.push("实时货源日报正文不得使用冒号或破折号式写法");
+  }
+  if (/不是.{0,60}而是|并非.{0,60}而是|看似.{0,60}实则/.test(proseWithoutUrls)) {
+    issues.push("实时货源日报正文不得使用翻案句式");
+  }
+
+  issues.push(...collectAccountOpportunitySafetyIssues(visibleMarkdown));
+  issues.push(...collectOpportunityMarketHypothesisIssues(visibleMarkdown));
+  const aivoraValidation = validateOpportunityAivoraLinks(
+    visibleMarkdown,
+    aivoraLinkPolicy,
+    { maxLinks: 1 }
+  );
+  issues.push(...aivoraValidation.issues);
+
+  return {
+    ok: issues.length === 0,
+    issues,
+    opportunityCount: actions.length,
+    supplyLinkCount: supplyLinks.length,
+    aivoraLinkCount: aivoraValidation.linkCount,
+  };
+}

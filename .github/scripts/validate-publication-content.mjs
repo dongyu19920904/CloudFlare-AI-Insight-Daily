@@ -5,6 +5,7 @@ import {
   validateAccountOpportunityPublication,
   validateDailyPublication,
   validateOpportunityPublication,
+  validateSupplyDrivenAccountOpportunityPublication,
 } from "../../src/publishValidation.js";
 
 function markdownValue(value) {
@@ -90,6 +91,12 @@ function validateByMode(mode, markdown) {
   }
 
   if (mode === "account-opportunity") {
+    if (/^##\s+实时货源盘面(?:\s|$)/m.test(body)) {
+      return validateSupplyDrivenAccountOpportunityPublication({
+        markdown: body,
+        aivoraLinkPolicy: { allowedUrls: parseValidatedAivoraUrls() },
+      });
+    }
     return validateAccountOpportunityPublication({
       markdown: body,
       observationMode: isAccountOpportunityObservation(body),

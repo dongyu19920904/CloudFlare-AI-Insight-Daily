@@ -53,9 +53,17 @@ import {
     validateDailyPublication,
     validateAccountOpportunityPublication,
     validateOpportunityPublication,
+    validateSupplyDrivenAccountOpportunityPublication,
     normalizeOpportunityAvoidSection,
     normalizeOpportunityEvidenceBoundaryLanguage,
 } from '../publishValidation.js';
+import {
+    loadSupplyOpportunitySnapshot,
+    recordSupplySnapshotDebug,
+} from '../supplyOpportunitySnapshot.js';
+import {
+    buildSupplyDrivenAccountOpportunityMarkdown,
+} from '../supplyDrivenAccountOpportunity.js';
 import {
     extractGithubTopProjectsFromMarkdown,
     filterGithubProjectsAgainstRecentTop,
@@ -2026,6 +2034,55 @@ async function generateAccountOpportunityMarkdown(
     );
     debugInfo.accountOpportunityOutOfScopePreviewCount =
         previewAssessment.candidates.length - overseasPreviewCandidates.length;
+
+    if (options.supplySnapshot) {
+        const supplyResult = buildSupplyDrivenAccountOpportunityMarkdown({
+            dateStr,
+            snapshot: options.supplySnapshot,
+            industryCandidates: overseasPreviewCandidates,
+        });
+        const allowedSupplyUrls = [
+            options.supplySnapshot.source,
+            ...supplyResult.selectedSignals.flatMap((signal) => [
+                signal.product.productUrl,
+                signal.product.profitCalculatorUrl,
+            ]),
+        ];
+        const validation = validateSupplyDrivenAccountOpportunityPublication({
+            markdown: supplyResult.markdown,
+            allowedSupplyUrls,
+            expectedStats: options.supplySnapshot.stats,
+            expectedProductSlugs: supplyResult.selectedSignals.map(
+                (signal) => signal.product.slug
+            ),
+            aivoraLinkPolicy: { allowedUrls: [] },
+        });
+
+        debugInfo.accountOpportunityPipelineVersion = 'supply-snapshot-v1';
+        debugInfo.accountOpportunitySupplyDriven = true;
+        debugInfo.accountOpportunityModelCalls = 0;
+        debugInfo.accountOpportunityCandidateCount = overseasPreviewCandidates.length;
+        debugInfo.accountOpportunityCandidateAssessment = previewAssessment.stats;
+        debugInfo.accountOpportunitySelectedSupplySignals =
+            supplyResult.selectedSignals.map((signal) => ({
+                slug: signal.product.slug,
+                kind: signal.kind,
+                tone: signal.tone,
+            }));
+        debugInfo.accountOpportunityGenerated = true;
+
+        return {
+            accountOpportunityPaths,
+            accountOpportunityMarkdownContent: supplyResult.markdown,
+            validation,
+            candidateAssessment: previewAssessment,
+            qualitySkipped: false,
+            observationMode: false,
+            validationContext: null,
+        };
+    }
+
+    debugInfo.accountOpportunitySupplyDriven = false;
     const evidenceCacheKey = getOpportunityEvidenceCacheKey(
         dateStr,
         overseasPreviewCandidates
@@ -2830,16 +2887,21 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 
     await reportScheduledProgress(options, 'account-opportunity', 'loading-sources', 10);
+    const [scheduledContext, supplySnapshotResult] = await Promise.all([
+        loadScheduledContext(env, dateStr, debugInfo, {
+            preferCachedData: true,
+            loadOpportunityReplay: true,
+            includeCurrentOpportunityReplay: true,
+            skipSourceCacheWrite: dryRun,
+        }),
+        loadSupplyOpportunitySnapshot(env),
+    ]);
+    recordSupplySnapshotDebug(debugInfo, supplySnapshotResult);
     const {
         allUnifiedData,
         previousOpportunityReplaySignals,
         recentOpportunityReplayMemory,
-    } = await loadScheduledContext(env, dateStr, debugInfo, {
-        preferCachedData: true,
-        loadOpportunityReplay: true,
-        includeCurrentOpportunityReplay: true,
-        skipSourceCacheWrite: dryRun,
-    });
+    } = scheduledContext;
     await reportScheduledProgress(options, 'account-opportunity', 'generating', 42, {
         sourceItems: debugInfo.totalSourceItemCount,
     });
@@ -2857,6 +2919,7 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         {
             previousMainTopicSignals: previousOpportunityReplaySignals,
             recentReplayMemory: recentOpportunityReplayMemory,
+            supplySnapshot: supplySnapshotResult.snapshot,
             dryRun,
         }
     );

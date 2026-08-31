@@ -8,7 +8,7 @@ const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE = "{{< latest-account-opportunity >}}";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
-  "核验海外 AI 账号、订阅、API、支付、额度与平台政策变化，给卖家当天动作，也给买家清晰的购买风险边界。";
+  "根据爱窝啦·货源雷达的实时库存、可售报价与价格异动，给 AI 账号卖家当天采购、接单、利润核算和停止建议。";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION} 只在证据达到门槛时更新。`;
 const ACCOUNT_OBSERVATION_HARD_SIGNAL =

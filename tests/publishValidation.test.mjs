@@ -5,7 +5,77 @@ import {
   validateDailyPublication,
   validateAccountOpportunityPublication,
   validateOpportunityPublication,
+  validateSupplyDrivenAccountOpportunityPublication,
 } from "../src/publishValidation.js";
+import { buildSupplyDrivenAccountOpportunityMarkdown } from "../src/supplyDrivenAccountOpportunity.js";
+
+test("supply-driven account daily accepts only snapshot-backed facts and links", () => {
+  const snapshot = {
+    source: "https://supply.aivora.cn/opportunities",
+    generatedAt: "2026-08-31T06:40:00Z",
+    latestObservedAt: "2026-08-31T06:35:00Z",
+    stats: {
+      productCount: 49,
+      availableProductCount: 47,
+      availableOfferCount: 3349,
+      recentChangeCount: 100,
+      recentChangeCountCapped: true,
+      lowSupplyProductCount: 7,
+    },
+    signals: [{
+      id: "restock:chatgpt-plus",
+      kind: "restock",
+      tone: "opportunity",
+      label: "补货恢复",
+      title: "ChatGPT Plus 出现可购买货源",
+      evidence: "库存状态 out_of_stock 到 in_stock，连续快照已经确认。",
+      buyerAction: "打开详情比较规格、售后和交付方式。",
+      sellerAction: "核验交付以后小量采购，再按真实成本接单。",
+      stopCondition: "规格不清楚、交付失败或没有利润时停止。",
+      observedAt: "2026-08-31T06:35:00Z",
+      product: {
+        slug: "chatgpt-plus",
+        name: "ChatGPT Plus 试用订阅",
+        platform: "ChatGPT",
+        lowestPrice: 3.3,
+        warrantyPrice: 44,
+        availableOfferCount: 220,
+        updatedAt: "2026-08-31T06:35:00Z",
+        sortOrder: 1,
+        platformSortOrder: 1,
+        productUrl: "https://supply.aivora.cn/card-products/chatgpt-plus",
+        profitCalculatorUrl: "https://supply.aivora.cn/profit-calculator?product=chatgpt-plus&cost=3.30",
+      },
+    }],
+  };
+  const { markdown } = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-08-31",
+    snapshot,
+  });
+  const allowedSupplyUrls = [
+    snapshot.source,
+    snapshot.signals[0].product.productUrl,
+    snapshot.signals[0].product.profitCalculatorUrl,
+  ];
+
+  const valid = validateSupplyDrivenAccountOpportunityPublication({
+    markdown,
+    allowedSupplyUrls,
+    expectedStats: snapshot.stats,
+    expectedProductSlugs: ["chatgpt-plus"],
+  });
+  assert.deepEqual(valid.issues, []);
+  assert.equal(valid.opportunityCount, 1);
+
+  const invented = validateSupplyDrivenAccountOpportunityPublication({
+    markdown: markdown.replace("可购买报价共 3349 条", "可购买报价共 9999 条"),
+    allowedSupplyUrls,
+    expectedStats: snapshot.stats,
+    expectedProductSlugs: ["chatgpt-plus"],
+  });
+  assert.equal(invented.ok, false);
+  assert.match(invented.issues.join(" | "), /可购买报价数/);
+});
 
 test("validateDailyPublication accepts the V3 topic structure", () => {
   const pageMarkdown = `## **今日摘要**
