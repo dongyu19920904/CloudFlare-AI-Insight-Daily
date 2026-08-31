@@ -58,9 +58,12 @@ jobs:
 
           if [ "$STATUS_CODE" = "200" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
+            PAGE_SHA=$(python -c 'import json; print(json.load(open("page-check.json", encoding="utf-8")).get("sha", ""))')
+            echo "page_sha=$PAGE_SHA" >> "$GITHUB_OUTPUT"
             echo "Today's AI account opportunity page already exists."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "page_sha=" >> "$GITHUB_OUTPUT"
             echo "Today's AI account opportunity page is missing."
           fi
 
@@ -184,22 +187,31 @@ jobs:
           PY
 
       - name: Verify today's page after trigger
+        id: verify_page
         if: (steps.check.outputs.healthy != 'true' || github.event.inputs.force == 'true') && steps.trigger.outputs.quality_skipped != 'true'
         shell: bash
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+          PREVIOUS_PAGE_SHA: ${{ steps.check.outputs.page_sha }}
         run: |
           PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
 
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
+            STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" \
+              -H "User-Agent: github-actions" \
+              -H "Cache-Control: no-cache" \
+              "$PAGE_URL?ref=main")
             if [ "$STATUS_CODE" = "200" ]; then
-              echo "Verified today's AI account opportunity page on attempt ${attempt}."
-              exit 0
+              PAGE_SHA=$(python -c 'import json; print(json.load(open("verify-page.json", encoding="utf-8")).get("sha", ""))')
+              if [ -n "$PAGE_SHA" ] && { [ -z "$PREVIOUS_PAGE_SHA" ] || [ "$PAGE_SHA" != "$PREVIOUS_PAGE_SHA" ]; }; then
+                echo "page_sha=$PAGE_SHA" >> "$GITHUB_OUTPUT"
+                echo "Verified the newly published AI account opportunity page on attempt ${attempt}."
+                exit 0
+              fi
             fi
 
-            echo "Page not visible yet on attempt ${attempt}, waiting..."
+            echo "New page revision not visible yet on attempt ${attempt}, waiting..."
             sleep 8
           done
 
@@ -257,8 +269,15 @@ jobs:
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
+          PUBLISHED_PAGE_SHA: ${{ steps.verify_page.outputs.page_sha }}
+          EXISTING_PAGE_SHA: ${{ steps.check.outputs.page_sha }}
         run: |
-          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
+          PAGE_REF="${PUBLISHED_PAGE_SHA:-$EXISTING_PAGE_SHA}"
+          if [ -z "$PAGE_REF" ]; then
+            echo "::error::Unable to resolve the exact account opportunity page revision."
+            exit 1
+          fi
+          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md?ref=${PAGE_REF}"
           STATUS_CODE=$(curl -sS -o publication-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
           if [ "$STATUS_CODE" != "200" ]; then
             echo "::error::Unable to fetch account opportunity page content for validation (status=${STATUS_CODE})."
