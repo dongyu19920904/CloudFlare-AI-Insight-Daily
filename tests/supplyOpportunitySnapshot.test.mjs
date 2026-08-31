@@ -77,12 +77,16 @@ test("rejects stale and untrusted supply snapshots", () => {
 });
 
 test("loads JSON with timeout and response bounds without throwing into the daily", async () => {
+  let redirectMode = null;
   const ok = await loadSupplyOpportunitySnapshot({}, {
     now: new Date("2026-08-31T06:45:00Z"),
-    fetchImpl: async () => new Response(JSON.stringify(payload()), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
+    fetchImpl: async (_url, options) => {
+      redirectMode = options.redirect;
+      return new Response(JSON.stringify(payload()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
   });
   const failed = await loadSupplyOpportunitySnapshot({}, {
     now: new Date("2026-08-31T06:45:00Z"),
@@ -93,6 +97,7 @@ test("loads JSON with timeout and response bounds without throwing into the dail
   });
 
   assert.equal(ok.error, null);
+  assert.equal(redirectMode, "manual");
   assert.equal(ok.snapshot.signals.length, 1);
   assert.equal(failed.snapshot, null);
   assert.match(failed.error, /not JSON/);

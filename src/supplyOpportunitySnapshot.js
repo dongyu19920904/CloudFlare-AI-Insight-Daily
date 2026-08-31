@@ -182,7 +182,9 @@ export async function loadSupplyOpportunitySnapshot(
     sourceUrl = resolveSnapshotUrl(env);
     const response = await fetchImpl(sourceUrl, {
       headers: { Accept: "application/json" },
-      redirect: "error",
+      // Cloudflare Workers supports follow/manual, but not the browser-only
+      // redirect:error mode. Manual still lets us reject every 3xx response.
+      redirect: "manual",
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`snapshot HTTP ${response.status}`);
