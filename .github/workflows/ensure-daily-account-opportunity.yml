@@ -270,19 +270,17 @@ jobs:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
           PUBLISHED_PAGE_SHA: ${{ steps.verify_page.outputs.page_sha }}
-          EXISTING_PAGE_SHA: ${{ steps.check.outputs.page_sha }}
         run: |
-          PAGE_REF="${PUBLISHED_PAGE_SHA:-$EXISTING_PAGE_SHA}"
-          if [ -z "$PAGE_REF" ]; then
-            echo "::error::Unable to resolve the exact account opportunity page revision."
+          if [ -n "$PUBLISHED_PAGE_SHA" ]; then
+            PAGE_RESPONSE_SOURCE=verify-page.json
+          else
+            PAGE_RESPONSE_SOURCE=page-check.json
+          fi
+          if [ ! -s "$PAGE_RESPONSE_SOURCE" ]; then
+            echo "::error::Unable to resolve the exact account opportunity page response."
             exit 1
           fi
-          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md?ref=${PAGE_REF}"
-          STATUS_CODE=$(curl -sS -o publication-page.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
-          if [ "$STATUS_CODE" != "200" ]; then
-            echo "::error::Unable to fetch account opportunity page content for validation (status=${STATUS_CODE})."
-            exit 1
-          fi
+          cp "$PAGE_RESPONSE_SOURCE" publication-page.json
 
           MODE=account-opportunity \
           ACCOUNT_OPPORTUNITY_VALIDATION_PROFILE=pre-0803-actionable \
