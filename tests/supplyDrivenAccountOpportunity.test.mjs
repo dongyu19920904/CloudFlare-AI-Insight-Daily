@@ -86,3 +86,40 @@ test("builds a factual seller daily and drops unrelated industry news", () => {
   assert.doesNotMatch(visible, /[：—–]/);
   assert.doesNotMatch(visible, /不是.{0,50}而是|并非.{0,50}而是/);
 });
+
+test("does not label a general Codex update as direct ChatGPT Plus supply context", () => {
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-08-31",
+    snapshot,
+    industryCandidates: [{
+      label: "Codex 产品更新",
+      supportingItems: [{
+        title: "ChatGPT 用户获得一项 Codex 编程更新",
+        description: "OpenAI 介绍新的编程能力。",
+        url: "https://example.com/codex-update",
+      }],
+    }],
+  });
+
+  assert.match(result.markdown, /不用无关新闻填充/);
+  assert.doesNotMatch(result.markdown, /example\.com\/codex-update/);
+});
+
+test("keeps a direct primary-source ChatGPT Plus account change as context", () => {
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-08-31",
+    snapshot,
+    industryCandidates: [{
+      label: "ChatGPT Plus 账号政策更新",
+      supportingItems: [{
+        title: "ChatGPT Plus subscription account policy update",
+        description: "The official page changes a ChatGPT Plus account rule.",
+        url: "https://openai.com/chatgpt-plus-account-policy",
+        source: "OpenAI official",
+      }],
+    }],
+  });
+
+  assert.match(result.markdown, /openai\.com\/chatgpt-plus-account-policy/);
+  assert.doesNotMatch(result.markdown, /不用无关新闻填充/);
+});

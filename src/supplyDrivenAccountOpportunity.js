@@ -1,9 +1,13 @@
+import { classifyOpportunityEvidence } from "./opportunityEvidence.js";
+
 const OPPORTUNITY_KINDS = new Set(["restock", "price_drop", "supply_gap"]);
 const RISK_KINDS = new Set(["stockout", "price_rise", "crowded"]);
 
 function cleanArticleText(value, maxLength = 900) {
   return String(value || "")
     .replace(/[\r\n]+/g, " ")
+    .replace(/\bout_of_stock\s*→\s*in_stock\b/gi, "缺货转为有货")
+    .replace(/\bin_stock\s*→\s*out_of_stock\b/gi, "有货转为缺货")
     .replace(/[：:]/g, "，")
     .replace(/[—–]/g, "，")
     .replace(/\s+/g, " ")
@@ -84,12 +88,18 @@ function candidateMatchesSignals(candidate, signals) {
     ...(candidate?.supportingItems || []).flatMap((item) => [item?.title, item?.description, item?.source]),
   ].join(" ").toLowerCase();
   return signals.some((signal) => {
-    const text = `${signal.product.name} ${signal.product.platform}`.toLowerCase();
-    const terms = [
+    const productText = `${signal.product.name} ${signal.product.platform}`.toLowerCase();
+    const brand = [
       "chatgpt", "openai", "claude", "anthropic", "gemini", "google ai",
-      "grok", "cursor", "kiro", "windsurf", "perplexity", "suno",
-    ].filter((term) => text.includes(term));
-    return terms.some((term) => candidateText.includes(term));
+      "grok", "cursor", "kiro", "windsurf", "perplexity", "suno", "icloud",
+    ].find((term) => productText.includes(term));
+    if (!brand || !candidateText.includes(brand)) return false;
+
+    const tier = ["plus", "pro", "team", "business", "enterprise", "year"]
+      .find((term) => productText.includes(term));
+    if (tier) return candidateText.includes(tier);
+
+    return /账号|账户|订阅|价格|额度|政策|地区|登录|注册|验证|接码|account|subscription|plan|price|quota|limit|policy|region|login|verification|email/.test(candidateText);
   });
 }
 
@@ -97,7 +107,8 @@ function relatedIndustryLine(candidates, signals) {
   const candidate = (candidates || []).find((item) => candidateMatchesSignals(item, signals));
   const source = candidate?.supportingItems?.find((item) => {
     try {
-      return new URL(item?.url).protocol === "https:";
+      return new URL(item?.url).protocol === "https:" &&
+        classifyOpportunityEvidence(item, item?.type).isPrimary;
     } catch {
       return false;
     }
@@ -113,12 +124,12 @@ function relatedIndustryLine(candidates, signals) {
 function actionMarkdown(signal) {
   const product = signal.product;
   const warranty = Number.isFinite(product.warrantyPrice)
-    ? formatMoney(product.warrantyPrice)
+    ? `明确质保报价最低 ${formatMoney(product.warrantyPrice)}`
     : "暂无明确质保价";
   return [
     `### ${cleanArticleText(signal.label, 60)} ${cleanArticleText(product.name, 120)}`,
     "",
-    `- **货源证据** [打开 ${cleanArticleText(product.name, 100)} 标准商品页](${product.productUrl})。${cleanArticleText(signal.evidence)}`,
+    `- **货源证据** [打开 ${cleanArticleText(product.name, 100)}标准商品页](${product.productUrl})。${cleanArticleText(signal.evidence)}`,
     `- **库存与价格** 当前最低进货参考 ${formatMoney(product.lowestPrice)}，${warranty}，可购买报价 ${product.availableOfferCount} 条。快照观察时间 ${formatShanghaiTime(signal.observedAt || product.updatedAt)}。`,
     `- **买家怎么选** ${cleanArticleText(signal.buyerAction)}`,
     `- **卖家今天做** ${cleanArticleText(signal.sellerAction)}`,
@@ -153,7 +164,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
       "## 今日货源结论",
       "",
       `- **快照** 本次快照生成于 ${formatShanghaiTime(snapshot.generatedAt)}，最近有效货源变化记录于 ${formatShanghaiTime(snapshot.latestObservedAt)}，数据来自[爱窝啦·货源雷达实时商机](${snapshot.source})。`,
-      `- **卖家动作** 今天先核验 ${cleanArticleText(lead.product.name, 120)} 的规格、交付和售后，再决定小量采购、继续接单或暂停。`,
+      `- **卖家动作** 今天先核验 ${cleanArticleText(lead.product.name, 120)}的规格、交付和售后，再决定小量采购、继续接单或暂停。`,
       "- **最大风险** 最低价可能对应日卡、镜像、反代或短质保商品。规格没有对齐时，任何价差和利润计算都没有参考价值。",
       "",
       "## 实时货源盘面",
@@ -176,7 +187,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
       "",
       "## 今日三步",
       "",
-      `- **今天核验** 打开[${cleanArticleText(lead.product.name, 100)} 标准商品页](${lead.product.productUrl})，对齐规格并复核当前库存。`,
+      `- **今天核验** 打开[${cleanArticleText(lead.product.name, 100)}标准商品页](${lead.product.productUrl})，核对规格并复核当前库存。`,
       `- **今天算账** 用[利润计算器](${lead.product.profitCalculatorUrl})填写进货、支付、退款、售后和获客成本，算出自己的保本价。`,
       "- **今天记录** 记录真实询问、成交规格、交付失败和退款原因。没有询问、利润不足或货源不稳时停止放大。",
       "",
