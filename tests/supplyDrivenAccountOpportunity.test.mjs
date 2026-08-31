@@ -93,6 +93,7 @@ const snapshot = {
     product({ name: "Grok Super", slug: "grok-super", categoryId: "grok", price: 20, count: 80 }),
     product({ name: "Cursor 账号", slug: "cursor-account", categoryId: "ai-coding", price: 30, count: 15 }),
     product({ name: "Suno 账号", slug: "suno-account", categoryId: "ai-creative", price: 18, count: 7 }),
+    product({ name: "OpenAI / ChatGPT 接码", slug: "openai-phone-verification", categoryId: "verification", price: 1, count: 12 }),
   ],
   categories: [
     { id: "chatgpt", name: "ChatGPT", productCount: 3, availableProductCount: 3, availableOfferCount: 677, lowestPrice: 3.3 },
@@ -101,6 +102,7 @@ const snapshot = {
     { id: "grok", name: "Grok", productCount: 1, availableProductCount: 1, availableOfferCount: 80, lowestPrice: 20 },
     { id: "ai-coding", name: "AI 编程", productCount: 1, availableProductCount: 1, availableOfferCount: 15, lowestPrice: 30 },
     { id: "ai-creative", name: "AI 创作与效率", productCount: 1, availableProductCount: 1, availableOfferCount: 7, lowestPrice: 18 },
+    { id: "verification", name: "接码与验证", productCount: 1, availableProductCount: 1, availableOfferCount: 12, lowestPrice: 1 },
   ],
 };
 
@@ -139,6 +141,8 @@ test("builds a factual seller daily and drops unrelated industry news", () => {
   assert.match(result.markdown, /## 核心商品备货表/);
   assert.match(result.markdown, /## 平台货源地图/);
   assert.match(result.markdown, /## 暂停接单与同类替代/);
+  assert.match(result.markdown, /账号验证辅助/);
+  assert.doesNotMatch(result.markdown, /接码/);
   assert.match(result.markdown, /公开报价[\s\S]*3349 条/);
   assert.match(result.markdown, /card-products\/chatgpt-plus/);
   assert.match(result.markdown, /card-products\/claude-pro/);

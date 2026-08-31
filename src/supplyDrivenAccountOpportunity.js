@@ -24,7 +24,7 @@ const CATEGORY_NAMES = new Map([
   ["ai-coding", "AI 编程"],
   ["ai-creative", "AI 创作与效率"],
   ["email", "邮箱"],
-  ["verification", "接码与验证"],
+  ["verification", "账号验证辅助"],
   ["social", "社媒与账号"],
   ["api-payment", "API 与支付"],
   ["other", "其他"],
@@ -259,14 +259,17 @@ function actionMarkdown(signal) {
 }
 
 function categoryMarketMarkdown(category, products) {
+  const categoryName = CATEGORY_NAMES.get(category.id) || category.name;
   const leaders = products
     .filter((product) => product.categoryId === category.id && product.availableOfferCount > 0)
     .sort(productOrder);
   const leader = leaders[0];
-  const leadText = leader
-    ? `先看[${cleanArticleText(leader.name, 100)}](${leader.productUrl})。`
-    : "当前没有可购买代表商品，暂停新增接单。";
-  return `- **${cleanArticleText(category.name, 80)}** ${category.productCount} 个标准商品，${category.availableProductCount} 个可购买，可购买报价 ${category.availableOfferCount} 条，最低参考 ${formatMoney(category.lowestPrice)}。${leadText}`;
+  const leadText = category.id === "verification"
+    ? "仅作货源规模观察，不进入本期推荐清单。"
+    : leader
+      ? `先看[${cleanArticleText(leader.name, 100)}](${leader.productUrl})。`
+      : "当前没有可购买代表商品，暂停新增接单。";
+  return `- **${cleanArticleText(categoryName, 80)}** ${category.productCount} 个标准商品，${category.availableProductCount} 个可购买，可购买报价 ${category.availableOfferCount} 条，最低参考 ${formatMoney(category.lowestPrice)}。${leadText}`;
 }
 
 function pausedProductMarkdown(product, products) {
