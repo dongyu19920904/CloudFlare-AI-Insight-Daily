@@ -1629,6 +1629,10 @@ const SUPPLY_DRIVEN_ACTION_FIELDS = [
   "停止条件",
 ];
 
+const SAFE_SUPPLY_CATEGORY_NAMES = new Map([
+  ["verification", "账号验证辅助"],
+]);
+
 function isAllowedPublicSupplyUrl(value) {
   try {
     const parsed = new URL(value);
@@ -1770,18 +1774,19 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     extractSection(visibleMarkdown, /^##\s+平台货源地图(?:\s|$).*$/im)
   );
   for (const category of expectedCategories || []) {
-    const escapedName = String(category?.name || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const expectedName = SAFE_SUPPLY_CATEGORY_NAMES.get(category?.id) || category?.name || "";
+    const escapedName = String(expectedName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (!escapedName) continue;
     const categoryLine = categorySection.split(/\r?\n/).find((line) =>
       new RegExp(`\\*\\*${escapedName}\\*\\*`).test(line)
     ) || "";
     if (!categoryLine) {
-      issues.push(`平台货源地图缺少分类: ${category.name}`);
+      issues.push(`平台货源地图缺少分类: ${expectedName}`);
       continue;
     }
     for (const value of [category.productCount, category.availableProductCount, category.availableOfferCount]) {
       if (!new RegExp(`(?:^|\\D)${Number(value)}(?:\\D|$)`).test(categoryLine)) {
-        issues.push(`平台货源地图中的${category.name}统计与快照不一致`);
+        issues.push(`平台货源地图中的${expectedName}统计与快照不一致`);
         break;
       }
     }

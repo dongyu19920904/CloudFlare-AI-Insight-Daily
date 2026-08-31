@@ -51,14 +51,24 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
       },
     }],
     products: [],
-    categories: [{
-      id: "chatgpt",
-      name: "ChatGPT",
-      productCount: 1,
-      availableProductCount: 1,
-      availableOfferCount: 220,
-      lowestPrice: 3.3,
-    }],
+    categories: [
+      {
+        id: "chatgpt",
+        name: "ChatGPT",
+        productCount: 1,
+        availableProductCount: 1,
+        availableOfferCount: 220,
+        lowestPrice: 3.3,
+      },
+      {
+        id: "verification",
+        name: "接码与验证",
+        productCount: 6,
+        availableProductCount: 6,
+        availableOfferCount: 909,
+        lowestPrice: 0.31,
+      },
+    ],
   };
   snapshot.products = [snapshot.signals[0].product];
   const { markdown } = buildSupplyDrivenAccountOpportunityMarkdown({
@@ -81,6 +91,8 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
   });
   assert.deepEqual(valid.issues, []);
   assert.equal(valid.opportunityCount, 1);
+  assert.match(markdown, /账号验证辅助/);
+  assert.doesNotMatch(markdown, /接码/);
 
   const invented = validateSupplyDrivenAccountOpportunityPublication({
     markdown: markdown.replace("**公开报价** 3349 条", "**公开报价** 9999 条"),
