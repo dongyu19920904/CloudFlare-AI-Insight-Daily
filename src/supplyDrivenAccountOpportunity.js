@@ -163,7 +163,11 @@ function signalScore(signal) {
 
 export function selectDailySupplySignals(snapshot, limit = 4) {
   const candidates = [...(snapshot?.signals || [])]
-    .filter((signal) => signal?.product?.slug && signal?.product?.productUrl)
+    .filter((signal) =>
+      signal?.product?.slug &&
+      signal?.product?.productUrl &&
+      CORE_CATEGORY_IDS.includes(signal.product.categoryId)
+    )
     .sort((a, b) => signalScore(b) - signalScore(a));
   const selected = [];
   const seen = new Set();

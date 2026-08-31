@@ -113,6 +113,25 @@ test("selects a popular opportunity and a risk instead of the first three source
   assert.equal(selected.length, 4);
 });
 
+test("keeps verification products visible in the market map but out of actionable signals", () => {
+  const verificationSignal = signal({
+    kind: "restock",
+    name: "ChatGPT Plus 接码",
+    slug: "chatgpt-plus-verification",
+    price: 0.31,
+    count: 493,
+  });
+  verificationSignal.product.categoryId = "verification";
+  verificationSignal.product.categoryName = "接码与验证";
+  const selected = selectDailySupplySignals({
+    ...snapshot,
+    signals: [verificationSignal, ...snapshot.signals.slice(0, 3)],
+  });
+
+  assert.ok(selected.length >= 2);
+  assert.ok(selected.every((item) => item.product.categoryId !== "verification"));
+});
+
 test("builds an available cross-platform merchant board and isolates unavailable products", () => {
   const selected = selectMerchantCoreProducts(snapshot);
   assert.equal(selected.length, 8);
