@@ -66,6 +66,7 @@ import {
 import {
     buildSupplyDrivenAccountOpportunityMarkdown,
 } from '../supplyDrivenAccountOpportunity.js';
+import { buildAccountOpportunityContextOptions } from '../accountOpportunityContext.js';
 import {
     extractGithubTopProjectsFromMarkdown,
     filterGithubProjectsAgainstRecentTop,
@@ -1259,7 +1260,7 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
 
     if (options.preferCachedData) {
         allUnifiedData = await loadCachedUnifiedData(env, dateStr, {
-            requireAllSourceTypes: true,
+            requireAllSourceTypes: !options.cachedOnly,
             debugInfo,
         });
         if (allUnifiedData) {
@@ -1269,20 +1270,28 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
     }
 
     if (!allUnifiedData) {
-        const foloCookie = await loadFoloCookie(env);
-        allUnifiedData = await fetchAllData(env, foloCookie);
-        debugInfo.usedCachedDailySourceData = false;
+        if (options.cachedOnly) {
+            allUnifiedData = Object.fromEntries(
+                Object.keys(dataSources).map((sourceType) => [sourceType, []])
+            );
+            debugInfo.usedCachedDailySourceData = false;
+            debugInfo.sourceFetchSkipped = true;
+            console.log(`[Scheduled] No cached auxiliary source data for ${dateStr}; skipping live source fetch.`);
+        } else {
+            const foloCookie = await loadFoloCookie(env);
+            allUnifiedData = await fetchAllData(env, foloCookie);
+            debugInfo.usedCachedDailySourceData = false;
+        }
     }
 
     debugInfo.sourceItemCounts = countUnifiedDataItems(allUnifiedData);
     debugInfo.totalSourceItemCount = sumItemCounts(debugInfo.sourceItemCounts);
 
     const replayLookbackDays = Math.max(1, Number.parseInt(env.DAILY_REPLAY_LOOKBACK_DAYS || '3', 10) || 3);
-    const { previousDate, items: previousTopItems, allItems: previousDailyItems = [] } = await loadPreviousTopItems(
-        env,
-        dateStr,
-        replayLookbackDays
-    );
+    const { previousDate, items: previousTopItems, allItems: previousDailyItems = [] } = options.skipDailyReplay
+        ? { previousDate: null, items: [], allItems: [] }
+        : await loadPreviousTopItems(env, dateStr, replayLookbackDays);
+    debugInfo.previousDayReplaySkipped = Boolean(options.skipDailyReplay);
     let previousOpportunityDate = null;
     let previousOpportunityReplaySignals = { matchedRuleIds: [], matchedTerms: [], primaryLane: null };
     let recentOpportunityReplayMemory = createEmptyOpportunityReplayMemory();
@@ -2903,16 +2912,15 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 
     await reportScheduledProgress(options, 'account-opportunity', 'loading-sources', 10);
-    const [scheduledContext, supplySnapshotResult] = await Promise.all([
-        loadScheduledContext(env, dateStr, debugInfo, {
-            preferCachedData: true,
-            loadOpportunityReplay: true,
-            includeCurrentOpportunityReplay: true,
-            skipSourceCacheWrite: dryRun,
-        }),
-        loadSupplyOpportunitySnapshot(env),
-    ]);
+    const supplySnapshotResult = await loadSupplyOpportunitySnapshot(env);
     recordSupplySnapshotDebug(debugInfo, supplySnapshotResult);
+    const supplyDriven = Boolean(supplySnapshotResult.snapshot);
+    const scheduledContext = await loadScheduledContext(
+        env,
+        dateStr,
+        debugInfo,
+        buildAccountOpportunityContextOptions({ supplyDriven, dryRun })
+    );
     const {
         allUnifiedData,
         previousOpportunityReplaySignals,
