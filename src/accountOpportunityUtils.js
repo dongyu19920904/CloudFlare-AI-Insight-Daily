@@ -8,9 +8,11 @@ const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE = "{{< latest-account-opportunity >}}";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
-  "根据爱窝啦·货源雷达的实时库存、可售报价与价格异动，给 AI 账号卖家当天采购、接单、利润核算和停止建议。";
+  "爱窝啦 AI 账号商家经营日报，根据实时货源、库存、报价与价格异动整理当天备货、接单、利润核算、断货替代和停止建议。";
 
-export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION} 只在证据达到门槛时更新。`;
+export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE = "爱窝啦 AI 账号商家经营日报";
+export const DEFAULT_ACCOUNT_OPPORTUNITY_LINK_TITLE = "AI账号商家经营日报";
+export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION} 货源事实为主，官方变化只作辅助。`;
 const ACCOUNT_OBSERVATION_HARD_SIGNAL =
   "今天没有取得可由官方页面确认的海外 AI 账号、价格、额度或政策新变化；不新增商品。";
 
@@ -773,13 +775,14 @@ function removeFrontMatterLine(frontMatter, field) {
 
 function buildAccountOpportunityHomeFrontMatter(dateStr, options = {}) {
   const {
-    title = "AI账号商机",
+    title = DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
+    linkTitle = DEFAULT_ACCOUNT_OPPORTUNITY_LINK_TITLE,
     description = DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     sectionPrefix = "/account-opportunity",
   } = options;
 
   return `---
-linkTitle: AI账号商机
+linkTitle: ${linkTitle}
 title: ${title}
 type: account-opportunity
 breadcrumbs: false
@@ -799,7 +802,8 @@ export function updateAccountOpportunityHomeIndexContent(
   options = {}
 ) {
   const {
-    title = "AI账号商机",
+    title = DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
+    linkTitle = DEFAULT_ACCOUNT_OPPORTUNITY_LINK_TITLE,
     description = DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     sectionPrefix = "/account-opportunity",
   } = options;
@@ -816,6 +820,8 @@ export function updateAccountOpportunityHomeIndexContent(
       "type",
       "account-opportunity"
     );
+    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "title", title);
+    frontMatter = replaceOrInsertFrontMatterLine(frontMatter, "linkTitle", linkTitle);
     frontMatter = replaceOrInsertFrontMatterLine(
       frontMatter,
       "description",
@@ -824,6 +830,7 @@ export function updateAccountOpportunityHomeIndexContent(
   } else {
     frontMatter = buildAccountOpportunityHomeFrontMatter(dateStr, {
       title,
+      linkTitle,
       description,
       sectionPrefix,
     });

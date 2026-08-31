@@ -1622,12 +1622,11 @@ export function validateAccountOpportunityPublication({
 }
 
 const SUPPLY_DRIVEN_ACTION_FIELDS = [
-  "货源证据",
-  "库存与价格",
-  "买家怎么选",
-  "卖家今天做",
-  "利润怎么核",
-  "风险与停止",
+  "异动证据",
+  "采购动作",
+  "报价动作",
+  "售后检查",
+  "停止条件",
 ];
 
 function isAllowedPublicSupplyUrl(value) {
@@ -1650,6 +1649,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   allowedSupplyUrls = null,
   expectedStats = null,
   expectedProductSlugs = [],
+  expectedCoreProductSlugs = [],
+  expectedPausedProductSlugs = [],
+  expectedCategories = [],
   aivoraLinkPolicy = { allowedUrls: [] },
 }) {
   const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
@@ -1657,12 +1659,14 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     label: "实时货源账号商机页面",
     minChars: 700,
     requiredPhrases: [
-      "## 今日货源结论",
-      "## 实时货源盘面",
-      "## 今日可执行货源",
-      "## 行业信号",
-      "## 买家避坑",
-      "## 今日三步",
+      "## 今日经营判断",
+      "## 今日经营看板",
+      "## 核心商品备货表",
+      "## 今日异动与补货",
+      "## 平台货源地图",
+      "## 暂停接单与同类替代",
+      "## 报价与利润纪律",
+      "## 今日执行单",
       ...SUPPLY_DRIVEN_ACTION_FIELDS,
     ],
     forbiddenPatterns: [
@@ -1679,53 +1683,107 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   }
 
   const summary = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+今日货源结论(?:\s|$).*$/im)
+    extractSection(visibleMarkdown, /^##\s+今日经营判断(?:\s|$).*$/im)
   );
   const summaryLines = summary.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (summaryLines.length !== 3 || summaryLines.some((line) => !/^[-*+]\s+/.test(line))) {
-    issues.push("今日货源结论必须恰好是 3 个一级列表项");
+    issues.push("今日经营判断必须恰好是 3 个一级列表项");
   }
-  for (const label of ["快照", "卖家动作", "最大风险"]) {
+  for (const label of ["货源状态", "接单方向", "停止条件"]) {
     if (!summaryLines.some((line) => line.includes(`**${label}**`))) {
-      issues.push(`今日货源结论缺少“${label}”`);
+      issues.push(`今日经营判断缺少“${label}”`);
+    }
+  }
+
+  const coreSection = extractSection(
+    visibleMarkdown,
+    /^##\s+核心商品备货表(?:\s|$).*$/im
+  );
+  const coreProductSlugs = [...coreSection.matchAll(
+    /https:\/\/supply\.aivora\.cn\/card-products\/([a-z0-9-]+)/gi
+  )].map((match) => match[1]);
+  const uniqueCoreProductSlugs = [...new Set(coreProductSlugs)];
+  if (uniqueCoreProductSlugs.length < 1 || uniqueCoreProductSlugs.length > 8) {
+    issues.push("核心商品备货表必须包含 1 至 8 个当前可买商品");
+  }
+  if (!/进货参考/.test(coreSection) || !/可购买报价/.test(coreSection) || !/今日动作/.test(coreSection)) {
+    issues.push("核心商品备货表缺少进货参考、可购买报价或今日动作");
+  }
+  for (const slug of expectedCoreProductSlugs || []) {
+    if (!uniqueCoreProductSlugs.includes(slug)) {
+      issues.push(`核心商品备货表缺少已选商品: ${slug}`);
     }
   }
 
   const actionSection = extractSection(
     visibleMarkdown,
-    /^##\s+今日可执行货源(?:\s|$).*$/im
+    /^##\s+今日异动与补货(?:\s|$).*$/im
   );
   const actions = extractLevel3Blocks(actionSection);
-  if (actions.length < 1 || actions.length > 3) {
-    issues.push("实时货源日报必须包含 1 至 3 个可执行货源");
+  if (actions.length < 1 || actions.length > 4) {
+    issues.push("账号商家经营日报必须包含 1 至 4 个货源异动");
   }
   for (const block of actions) {
     if (/^###\s+\[[^\]]+\]\(https?:\/\//m.test(block)) {
-      issues.push("可执行货源标题必须是纯文本");
+      issues.push("货源异动标题必须是纯文本");
     }
     for (const field of SUPPLY_DRIVEN_ACTION_FIELDS) {
       const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       if (!new RegExp(`^-\\s*\\*\\*${escaped}\\*\\*\\s+\\S`, "m").test(block)) {
-        issues.push(`可执行货源缺少“${field}”字段`);
+        issues.push(`货源异动缺少“${field}”字段`);
       }
     }
     if (!/https:\/\/supply\.aivora\.cn\/card-products\/[a-z0-9-]+/i.test(block)) {
-      issues.push("每个可执行货源必须链接到标准商品页");
+      issues.push("每个货源异动必须链接到标准商品页");
     }
     if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(block)) {
-      issues.push("每个可执行货源必须提供利润计算入口");
+      issues.push("每个货源异动必须提供利润计算入口");
     }
   }
 
   const actionSteps = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+今日三步(?:\s|$).*$/im)
+    extractSection(visibleMarkdown, /^##\s+今日执行单(?:\s|$).*$/im)
   ).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (actionSteps.length !== 3 || actionSteps.some((line) => !/^[-*+]\s+/.test(line))) {
-    issues.push("实时货源日报的今日三步必须恰好是 3 个一级列表项");
+    issues.push("账号商家经营日报的今日执行单必须恰好是 3 个一级列表项");
   }
-  for (const label of ["今天核验", "今天算账", "今天记录"]) {
+  for (const label of ["上架前", "采购前", "收盘后"]) {
     if (!actionSteps.some((line) => line.includes(`**${label}**`))) {
-      issues.push(`实时货源日报的今日三步缺少“${label}”`);
+      issues.push(`账号商家经营日报的今日执行单缺少“${label}”`);
+    }
+  }
+
+  const pausedSection = extractSection(
+    visibleMarkdown,
+    /^##\s+暂停接单与同类替代(?:\s|$).*$/im
+  );
+  for (const slug of expectedPausedProductSlugs || []) {
+    if (!pausedSection.includes(`https://supply.aivora.cn/card-products/${slug}`)) {
+      issues.push(`暂停接单清单缺少已知缺货商品: ${slug}`);
+    }
+    if (uniqueCoreProductSlugs.includes(slug)) {
+      issues.push(`缺货商品不得进入核心备货表: ${slug}`);
+    }
+  }
+
+  const categorySection = getSectionBody(
+    extractSection(visibleMarkdown, /^##\s+平台货源地图(?:\s|$).*$/im)
+  );
+  for (const category of expectedCategories || []) {
+    const escapedName = String(category?.name || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!escapedName) continue;
+    const categoryLine = categorySection.split(/\r?\n/).find((line) =>
+      new RegExp(`\\*\\*${escapedName}\\*\\*`).test(line)
+    ) || "";
+    if (!categoryLine) {
+      issues.push(`平台货源地图缺少分类: ${category.name}`);
+      continue;
+    }
+    for (const value of [category.productCount, category.availableProductCount, category.availableOfferCount]) {
+      if (!new RegExp(`(?:^|\\D)${Number(value)}(?:\\D|$)`).test(categoryLine)) {
+        issues.push(`平台货源地图中的${category.name}统计与快照不一致`);
+        break;
+      }
     }
   }
 
@@ -1759,9 +1817,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
       ["lowSupplyProductCount", "低供给观察数"],
     ]) {
       if (!new RegExp(`(?:^|\\D)${Number(expectedStats[field])}(?:\\D|$)`).test(getSectionBody(
-        extractSection(visibleMarkdown, /^##\s+实时货源盘面(?:\s|$).*$/im)
+        extractSection(visibleMarkdown, /^##\s+今日经营看板(?:\s|$).*$/im)
       ))) {
-        issues.push(`实时货源盘面缺少快照中的${label}`);
+        issues.push(`今日经营看板缺少快照中的${label}`);
       }
     }
   }

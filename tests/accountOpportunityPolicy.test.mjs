@@ -12,6 +12,7 @@ import {
   normalizeAccountOpportunityHardSignalLinks,
   normalizeAccountOpportunityObservationMarkdown,
   qualifyAccountOpportunityCandidates,
+  updateAccountOpportunityHomeIndexContent,
 } from "../src/accountOpportunityUtils.js";
 
 function makeCandidate(overrides = {}) {
@@ -492,4 +493,23 @@ test("account hard-signal normalization rebuilds a bounded signal from a body li
   );
   assert.match(normalized, /不证明账号、价格、额度或政策变化，相关事实仍待官方确认/);
   assert.doesNotMatch(normalized, /社区讨论了一种海外 AI 工具用法/);
+});
+
+test("account opportunity home is renamed to the merchant operating daily without changing its route type", () => {
+  const current = `---
+linkTitle: AI账号商机
+title: 爱窝啦 AI 账号商机
+type: account-opportunity
+breadcrumbs: false
+description: "旧说明"
+---
+
+旧正文`;
+  const updated = updateAccountOpportunityHomeIndexContent(current, "新正文", "2026-08-31");
+
+  assert.match(updated, /linkTitle: AI账号商家经营日报/);
+  assert.match(updated, /title: 爱窝啦 AI 账号商家经营日报/);
+  assert.match(updated, /type: account-opportunity/);
+  assert.match(updated, /\{\{< latest-account-opportunity >\}\}/);
+  assert.doesNotMatch(updated, /旧正文/);
 });

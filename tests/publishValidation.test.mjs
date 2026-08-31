@@ -11,6 +11,7 @@ import { buildSupplyDrivenAccountOpportunityMarkdown } from "../src/supplyDriven
 
 test("supply-driven account daily accepts only snapshot-backed facts and links", () => {
   const snapshot = {
+    schemaVersion: 2,
     source: "https://supply.aivora.cn/opportunities",
     generatedAt: "2026-08-31T06:40:00Z",
     latestObservedAt: "2026-08-31T06:35:00Z",
@@ -37,6 +38,8 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
         slug: "chatgpt-plus",
         name: "ChatGPT Plus 试用订阅",
         platform: "ChatGPT",
+        categoryId: "chatgpt",
+        categoryName: "ChatGPT",
         lowestPrice: 3.3,
         warrantyPrice: 44,
         availableOfferCount: 220,
@@ -47,7 +50,17 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
         profitCalculatorUrl: "https://supply.aivora.cn/profit-calculator?product=chatgpt-plus&cost=3.30",
       },
     }],
+    products: [],
+    categories: [{
+      id: "chatgpt",
+      name: "ChatGPT",
+      productCount: 1,
+      availableProductCount: 1,
+      availableOfferCount: 220,
+      lowestPrice: 3.3,
+    }],
   };
+  snapshot.products = [snapshot.signals[0].product];
   const { markdown } = buildSupplyDrivenAccountOpportunityMarkdown({
     dateStr: "2026-08-31",
     snapshot,
@@ -63,12 +76,14 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
     allowedSupplyUrls,
     expectedStats: snapshot.stats,
     expectedProductSlugs: ["chatgpt-plus"],
+    expectedCoreProductSlugs: ["chatgpt-plus"],
+    expectedCategories: snapshot.categories,
   });
   assert.deepEqual(valid.issues, []);
   assert.equal(valid.opportunityCount, 1);
 
   const invented = validateSupplyDrivenAccountOpportunityPublication({
-    markdown: markdown.replace("可购买报价共 3349 条", "可购买报价共 9999 条"),
+    markdown: markdown.replace("**公开报价** 3349 条", "**公开报价** 9999 条"),
     allowedSupplyUrls,
     expectedStats: snapshot.stats,
     expectedProductSlugs: ["chatgpt-plus"],

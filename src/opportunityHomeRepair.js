@@ -9,6 +9,7 @@ import {
 } from './opportunityUtils.js';
 import {
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
+    DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
     buildAccountOpportunityPaths,
     updateAccountOpportunityHomeIndexContent,
 } from './accountOpportunityUtils.js';
@@ -87,7 +88,7 @@ export function buildOpportunityHomeRepairContent(existingHomeContent, pageConte
 
 export function buildAccountOpportunityHomeRepairContent(existingHomeContent, pageContent, dateStr) {
     return updateAccountOpportunityHomeIndexContent(existingHomeContent, pageContent, dateStr, {
-        title: extractFrontMatterField(pageContent, 'title') || undefined,
+        title: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
         description: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
         sectionPrefix: '/account-opportunity',
     });
@@ -111,6 +112,7 @@ export async function repairAccountOpportunityHomePointer(env, dateStr) {
         logPrefix: 'AccountOpportunityHomeRepair',
         buildPaths: buildAccountOpportunityPaths,
         updateHome: updateAccountOpportunityHomeIndexContent,
+        title: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
         description: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
         sectionPrefix: '/account-opportunity',
     });

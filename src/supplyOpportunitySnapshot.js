@@ -6,6 +6,21 @@ const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_SIGNALS = 12;
 const MAX_CATEGORIES = 20;
+const MAX_PRODUCTS = 80;
+
+const CATEGORY_NAMES = new Map([
+  ["chatgpt", "ChatGPT"],
+  ["claude", "Claude"],
+  ["gemini", "Gemini"],
+  ["grok", "Grok"],
+  ["ai-coding", "AI 编程"],
+  ["ai-creative", "AI 创作与效率"],
+  ["email", "邮箱"],
+  ["verification", "接码与验证"],
+  ["social", "社媒与账号"],
+  ["api-payment", "API 与支付"],
+  ["other", "其他"],
+]);
 
 const ALLOWED_SNAPSHOT_HOSTS = new Set([
   "supply.aivora.cn",
@@ -55,16 +70,55 @@ function parseExternalHttpsUrl(value) {
   }
 }
 
+function inferCategoryId(product) {
+  const text = `${product?.name || ""} ${product?.platform || ""}`.toLowerCase();
+  if (/chatgpt|openai|codex/.test(text)) return "chatgpt";
+  if (/claude|anthropic/.test(text)) return "claude";
+  if (/gemini|google ai/.test(text)) return "gemini";
+  if (/grok|xai/.test(text)) return "grok";
+  if (/cursor|kiro|windsurf|coding/.test(text)) return "ai-coding";
+  if (/perplexity|suno|dreamina|即梦|seedance/.test(text)) return "ai-creative";
+  if (/gmail|outlook|hotmail|icloud|邮箱|email/.test(text)) return "email";
+  if (/接码|kyc|验证/.test(text)) return "verification";
+  if (/telegram|twitter|推特|apple id|社媒/.test(text)) return "social";
+  if (/api|虚拟卡|礼品卡|支付/.test(text)) return "api-payment";
+  return "other";
+}
+
+function parseProduct(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const slug = boundedText(value.slug, 100).toLowerCase();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+  const productUrl = parseAllowedUrl(value.productUrl, [`/card-products/${slug}`]);
+  const profitCalculatorUrl = parseAllowedUrl(value.profitCalculatorUrl, ["/profit-calculator"]);
+  const name = boundedText(value.name, 160);
+  if (!name || !productUrl || !profitCalculatorUrl) return null;
+  const requestedCategoryId = boundedText(value.categoryId, 80).toLowerCase();
+  const categoryId = CATEGORY_NAMES.has(requestedCategoryId)
+    ? requestedCategoryId
+    : inferCategoryId(value);
+
+  return {
+    slug,
+    name,
+    platform: boundedText(value.platform, 120),
+    categoryId,
+    categoryName: boundedText(value.categoryName, 120) || CATEGORY_NAMES.get(categoryId) || "其他",
+    lowestPrice: nonNegativeNumber(value.lowestPrice, { nullable: true }),
+    warrantyPrice: nonNegativeNumber(value.warrantyPrice, { nullable: true }),
+    availableOfferCount: nonNegativeNumber(value.availableOfferCount, { integer: true }),
+    updatedAt: nullableIsoDate(value.updatedAt),
+    sortOrder: nonNegativeNumber(value.sortOrder, { integer: true }),
+    platformSortOrder: nonNegativeNumber(value.platformSortOrder, { integer: true }),
+    productUrl,
+    profitCalculatorUrl,
+  };
+}
+
 function parseSignal(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const product = value.product;
-  if (!product || typeof product !== "object" || Array.isArray(product)) return null;
-  const slug = boundedText(product.slug, 100).toLowerCase();
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
-  const productUrl = parseAllowedUrl(product.productUrl, [`/card-products/${slug}`]);
-  const profitCalculatorUrl = parseAllowedUrl(product.profitCalculatorUrl, ["/profit-calculator"]);
-  const name = boundedText(product.name, 160);
-  if (!name || !productUrl || !profitCalculatorUrl) return null;
+  const product = parseProduct(value.product);
+  if (!product) return null;
 
   const kind = boundedText(value.kind, 30);
   if (!["restock", "stockout", "price_drop", "price_rise", "supply_gap", "crowded"].includes(kind)) return null;
@@ -72,7 +126,7 @@ function parseSignal(value) {
   if (!["opportunity", "warning", "watch"].includes(tone)) return null;
 
   return {
-    id: boundedText(value.id, 240) || `${kind}:${slug}`,
+    id: boundedText(value.id, 240) || `${kind}:${product.slug}`,
     kind,
     tone,
     label: boundedText(value.label, 80),
@@ -83,19 +137,7 @@ function parseSignal(value) {
     stopCondition: boundedText(value.stopCondition, 700),
     observedAt: nullableIsoDate(value.observedAt),
     sourceUrl: parseExternalHttpsUrl(value.sourceUrl),
-    product: {
-      slug,
-      name,
-      platform: boundedText(product.platform, 120),
-      lowestPrice: nonNegativeNumber(product.lowestPrice, { nullable: true }),
-      warrantyPrice: nonNegativeNumber(product.warrantyPrice, { nullable: true }),
-      availableOfferCount: nonNegativeNumber(product.availableOfferCount, { integer: true }),
-      updatedAt: nullableIsoDate(product.updatedAt),
-      sortOrder: nonNegativeNumber(product.sortOrder, { integer: true }),
-      platformSortOrder: nonNegativeNumber(product.platformSortOrder, { integer: true }),
-      productUrl,
-      profitCalculatorUrl,
-    },
+    product,
   };
 }
 
@@ -103,7 +145,7 @@ export function parseSupplyOpportunitySnapshot(value, { now = new Date() } = {})
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("snapshot payload is not an object");
   }
-  if (value.schemaVersion !== 1) throw new Error("unsupported snapshot schema");
+  if (![1, 2].includes(value.schemaVersion)) throw new Error("unsupported snapshot schema");
   const source = parseAllowedUrl(value.source, ["/opportunities"]);
   if (!source) throw new Error("snapshot source is not allowed");
   const generatedAt = nullableIsoDate(value.generatedAt);
@@ -129,6 +171,23 @@ export function parseSupplyOpportunitySnapshot(value, { now = new Date() } = {})
     .filter(Boolean);
   if (!signals.length) throw new Error("snapshot has no usable supply signals");
 
+  const parsedProducts = (Array.isArray(value.products) ? value.products : [])
+    .slice(0, MAX_PRODUCTS)
+    .map(parseProduct)
+    .filter(Boolean);
+  if (value.schemaVersion === 2 && !parsedProducts.length) {
+    throw new Error("snapshot has no usable merchant products");
+  }
+  const productsBySlug = new Map();
+  for (const product of parsedProducts) productsBySlug.set(product.slug, product);
+  if (value.schemaVersion === 1) {
+    for (const signal of signals) {
+      if (!productsBySlug.has(signal.product.slug)) {
+        productsBySlug.set(signal.product.slug, signal.product);
+      }
+    }
+  }
+
   const categories = (Array.isArray(value.categories) ? value.categories : [])
     .slice(0, MAX_CATEGORIES)
     .map((category) => ({
@@ -143,7 +202,7 @@ export function parseSupplyOpportunitySnapshot(value, { now = new Date() } = {})
     .filter((category) => category.id && category.name);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: value.schemaVersion,
     source,
     generatedAt,
     latestObservedAt,
@@ -159,6 +218,7 @@ export function parseSupplyOpportunitySnapshot(value, { now = new Date() } = {})
     },
     signals,
     categories,
+    products: [...productsBySlug.values()],
   };
 }
 
@@ -217,6 +277,7 @@ export function recordSupplySnapshotDebug(debugInfo, result) {
   debugInfo.accountOpportunitySupplyObservationAgeMinutes =
     snapshot?.observationAgeMinutes ?? null;
   debugInfo.accountOpportunitySupplySignalCount = snapshot?.signals?.length || 0;
+  debugInfo.accountOpportunitySupplyProductCount = snapshot?.products?.length || 0;
   debugInfo.accountOpportunitySupplyAvailableOfferCount = snapshot?.stats?.availableOfferCount || 0;
 }
 

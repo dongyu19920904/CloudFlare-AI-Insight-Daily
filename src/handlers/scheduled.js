@@ -40,6 +40,7 @@ import {
     buildAccountOpportunityPaths,
     buildRejectedAccountOpportunityDigest,
     DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION,
+    DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     formatAccountOpportunityCandidatesForPrompt,
     insertAccountOpportunityAivoraLink,
@@ -2043,9 +2044,9 @@ async function generateAccountOpportunityMarkdown(
         });
         const allowedSupplyUrls = [
             options.supplySnapshot.source,
-            ...supplyResult.selectedSignals.flatMap((signal) => [
-                signal.product.productUrl,
-                signal.product.profitCalculatorUrl,
+            ...(options.supplySnapshot.products || []).flatMap((product) => [
+                product.productUrl,
+                product.profitCalculatorUrl,
             ]),
         ];
         const validation = validateSupplyDrivenAccountOpportunityPublication({
@@ -2055,10 +2056,17 @@ async function generateAccountOpportunityMarkdown(
             expectedProductSlugs: supplyResult.selectedSignals.map(
                 (signal) => signal.product.slug
             ),
+            expectedCoreProductSlugs: supplyResult.coreProducts.map(
+                (product) => product.slug
+            ),
+            expectedPausedProductSlugs: supplyResult.pausedProducts.map(
+                (product) => product.slug
+            ),
+            expectedCategories: supplyResult.categories,
             aivoraLinkPolicy: { allowedUrls: [] },
         });
 
-        debugInfo.accountOpportunityPipelineVersion = 'supply-snapshot-v1';
+        debugInfo.accountOpportunityPipelineVersion = 'supply-merchant-daily-v2';
         debugInfo.accountOpportunitySupplyDriven = true;
         debugInfo.accountOpportunityModelCalls = 0;
         debugInfo.accountOpportunityCandidateCount = overseasPreviewCandidates.length;
@@ -2069,6 +2077,12 @@ async function generateAccountOpportunityMarkdown(
                 kind: signal.kind,
                 tone: signal.tone,
             }));
+        debugInfo.accountOpportunityMerchantCoreProducts =
+            supplyResult.coreProducts.map((product) => product.slug);
+        debugInfo.accountOpportunityPausedSupplyProducts =
+            supplyResult.pausedProducts.map((product) => product.slug);
+        debugInfo.accountOpportunityMerchantCategoryCount =
+            supplyResult.categories.length;
         debugInfo.accountOpportunityGenerated = true;
 
         return {
@@ -2426,10 +2440,7 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
 }
 
 async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityPaths, accountOpportunityMarkdownContent) {
-    const accountOpportunityTitleBase = env.DAILY_TITLE.includes('日报')
-        ? env.DAILY_TITLE.replace('日报', '账号商机')
-        : `${env.DAILY_TITLE} 账号商机`;
-    const accountOpportunityPageTitle = `${accountOpportunityTitleBase} ${formatDateToChinese(dateStr)}`;
+    const accountOpportunityPageTitle = `${DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE} ${formatDateToChinese(dateStr)}`;
     const accountOpportunityDescription = DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION;
     const accountOpportunityPageContent = buildDailyContentWithFrontMatter(dateStr, accountOpportunityMarkdownContent, {
         title: accountOpportunityPageTitle,
@@ -2469,7 +2480,7 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
         accountOpportunityMarkdownContent,
         dateStr,
         {
-            title: accountOpportunityPageTitle,
+            title: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
             description: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
             sectionPrefix: '/account-opportunity',
         }

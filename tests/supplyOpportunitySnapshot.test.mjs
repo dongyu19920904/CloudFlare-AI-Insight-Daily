@@ -53,6 +53,25 @@ function payload(overrides = {}) {
   };
 }
 
+function merchantProduct(overrides = {}) {
+  return {
+    slug: "chatgpt-plus",
+    name: "ChatGPT Plus 正价代充",
+    platform: "ChatGPT",
+    categoryId: "chatgpt",
+    categoryName: "ChatGPT",
+    lowestPrice: 111,
+    warrantyPrice: 112.11,
+    availableOfferCount: 220,
+    updatedAt: "2026-08-31T06:35:00Z",
+    sortOrder: 1001,
+    platformSortOrder: 20,
+    productUrl: "https://supply.aivora.cn/card-products/chatgpt-plus",
+    profitCalculatorUrl: "https://supply.aivora.cn/profit-calculator?product=ChatGPT+Plus&cost=111.00",
+    ...overrides,
+  };
+}
+
 test("parses a fresh bounded supply snapshot", () => {
   const snapshot = parseSupplyOpportunitySnapshot(payload(), {
     now: new Date("2026-08-31T06:45:00Z"),
@@ -61,6 +80,44 @@ test("parses a fresh bounded supply snapshot", () => {
   assert.equal(snapshot.observationAgeMinutes, 10);
   assert.equal(snapshot.stats.availableOfferCount, 3349);
   assert.equal(snapshot.signals[0].product.slug, "chatgpt-plus");
+  assert.equal(snapshot.products[0].categoryId, "chatgpt");
+});
+
+test("parses the V2 merchant product board while keeping V1 compatibility", () => {
+  const v2 = parseSupplyOpportunitySnapshot(payload({
+    schemaVersion: 2,
+    products: [
+      merchantProduct(),
+      merchantProduct({
+        slug: "claude-pro",
+        name: "Claude Pro",
+        platform: "Claude",
+        categoryId: "claude",
+        categoryName: "Claude",
+        productUrl: "https://supply.aivora.cn/card-products/claude-pro",
+      }),
+    ],
+  }), { now: new Date("2026-08-31T06:45:00Z") });
+
+  assert.equal(v2.schemaVersion, 2);
+  assert.equal(v2.products.length, 2);
+  assert.equal(v2.products[1].categoryName, "Claude");
+  assert.throws(
+    () => parseSupplyOpportunitySnapshot(payload({ schemaVersion: 2, products: [] }), {
+      now: new Date("2026-08-31T06:45:00Z"),
+    }),
+    /no usable merchant products/,
+  );
+});
+
+test("drops merchant products with untrusted product links", () => {
+  assert.throws(
+    () => parseSupplyOpportunitySnapshot(payload({
+      schemaVersion: 2,
+      products: [merchantProduct({ productUrl: "https://example.com/card-products/chatgpt-plus" })],
+    }), { now: new Date("2026-08-31T06:45:00Z") }),
+    /no usable merchant products/,
+  );
 });
 
 test("rejects stale and untrusted supply snapshots", () => {

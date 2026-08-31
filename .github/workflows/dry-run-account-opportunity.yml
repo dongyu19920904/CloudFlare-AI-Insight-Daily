@@ -79,19 +79,21 @@ jobs:
           mismatches = [f"{key}={debug.get(key)!r}" for key, value in expected.items() if debug.get(key) != value]
           if mismatches:
               raise SystemExit("Dry-run contract failed: " + ", ".join(mismatches))
-          if debug.get("accountOpportunityPipelineVersion") != "supply-snapshot-v1":
-              raise SystemExit("Dry-run did not use supply-snapshot-v1")
+          if debug.get("accountOpportunityPipelineVersion") != "supply-merchant-daily-v2":
+              raise SystemExit("Dry-run did not use supply-merchant-daily-v2")
           if debug.get("accountOpportunityModelCalls") != 0:
               raise SystemExit("Supply-driven generation unexpectedly used an AI model")
 
           markdown = debug.get("accountOpportunityDryRunMarkdown") or ""
           required = [
-              "## 今日货源结论",
-              "## 实时货源盘面",
-              "## 今日可执行货源",
-              "## 行业信号",
-              "## 买家避坑",
-              "## 今日三步",
+              "## 今日经营判断",
+              "## 今日经营看板",
+              "## 核心商品备货表",
+              "## 今日异动与补货",
+              "## 平台货源地图",
+              "## 暂停接单与同类替代",
+              "## 报价与利润纪律",
+              "## 今日执行单",
               "https://supply.aivora.cn/card-products/",
               "https://supply.aivora.cn/profit-calculator?",
           ]
@@ -101,10 +103,19 @@ jobs:
           Path("account-opportunity-dry-run.md").write_text(markdown, encoding="utf-8")
 
           selected = debug.get("accountOpportunitySelectedSupplySignals") or []
+          core = debug.get("accountOpportunityMerchantCoreProducts") or []
+          if len(core) < 6:
+              raise SystemExit(f"Merchant board is too narrow: {len(core)} core products")
+          if len(set(core)) != len(core):
+              raise SystemExit("Merchant board contains duplicate products")
+          if (debug.get("accountOpportunityMerchantCategoryCount") or 0) < 4:
+              raise SystemExit("Merchant market map covers fewer than four categories")
+          if (debug.get("accountOpportunitySupplyProductCount") or 0) < len(core):
+              raise SystemExit("Supply snapshot product board is incomplete")
           print(
-              "Supply dry-run passed: "
+              "Merchant daily dry-run passed: "
               f"offers={debug.get('accountOpportunitySupplyAvailableOfferCount')}, "
-              f"signals={len(selected)}, model_calls=0"
+              f"products={len(core)}, signals={len(selected)}, model_calls=0"
           )
           PY
 
