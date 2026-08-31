@@ -165,7 +165,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
       "",
       `- **快照** 本次快照生成于 ${formatShanghaiTime(snapshot.generatedAt)}，最近有效货源变化记录于 ${formatShanghaiTime(snapshot.latestObservedAt)}，数据来自[爱窝啦·货源雷达实时商机](${snapshot.source})。`,
       `- **卖家动作** 今天先核验 ${cleanArticleText(lead.product.name, 120)}的规格、交付和售后，再决定小量采购、继续接单或暂停。`,
-      "- **最大风险** 最低价可能对应日卡、镜像、反代或短质保商品。规格没有对齐时，任何价差和利润计算都没有参考价值。",
+      "- **最大风险** 最低价可能对应日卡、镜像、反代或短质保商品。规格没有核对清楚时，任何价差和利润计算都没有参考价值。",
       "",
       "## 实时货源盘面",
       "",
