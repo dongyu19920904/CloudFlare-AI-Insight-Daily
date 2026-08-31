@@ -25,7 +25,7 @@ jobs:
       contents: read
     env:
       WORKER_BASE_URL: https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev
-      FRONTEND_REPO: dongyu19920904/Hextra-AI-Insight-Daily
+      ACCOUNT_CONTENT_REPO: dongyu19920904/Aivora-Supply-Radar
 
     steps:
       - name: Checkout backend repo
@@ -52,7 +52,7 @@ jobs:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
         run: |
-          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
+          PAGE_URL="https://api.github.com/repos/${ACCOUNT_CONTENT_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
           STATUS_CODE=$(curl -sS -o page-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$PAGE_URL")
           echo "status=$STATUS_CODE" >> "$GITHUB_OUTPUT"
 
@@ -67,9 +67,9 @@ jobs:
             echo "Today's AI account opportunity page is missing."
           fi
 
-          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/_index.md"
+          HOME_URL="https://api.github.com/repos/${ACCOUNT_CONTENT_REPO}/contents/content/cn/account-opportunity/_index.md"
           HOME_STATUS_CODE=$(curl -sS -o home-check.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
-          EXPECTED_HOME_NEXT="/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}"
+          EXPECTED_HOME_NEXT="/opportunities/${TARGET_DATE}"
           HOME_CURRENT="false"
 
           if [ "$HOME_STATUS_CODE" = "200" ]; then
@@ -195,7 +195,7 @@ jobs:
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
           PREVIOUS_PAGE_SHA: ${{ steps.check.outputs.page_sha }}
         run: |
-          PAGE_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
+          PAGE_URL="https://api.github.com/repos/${ACCOUNT_CONTENT_REPO}/contents/content/cn/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}.md"
 
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             STATUS_CODE=$(curl -sS -o verify-page.json -w "%{http_code}" \
@@ -225,8 +225,8 @@ jobs:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
         run: |
-          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/_index.md"
-          EXPECTED_HOME_NEXT="/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}"
+          HOME_URL="https://api.github.com/repos/${ACCOUNT_CONTENT_REPO}/contents/content/cn/account-opportunity/_index.md"
+          EXPECTED_HOME_NEXT="/opportunities/${TARGET_DATE}"
 
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             STATUS_CODE=$(curl -sS -o verify-home.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
@@ -298,8 +298,8 @@ jobs:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           YEAR_MONTH: ${{ steps.target.outputs.year_month }}
         run: |
-          HOME_URL="https://api.github.com/repos/${FRONTEND_REPO}/contents/content/cn/account-opportunity/_index.md"
-          EXPECTED_HOME_NEXT="/account-opportunity/${YEAR_MONTH}/${TARGET_DATE}"
+          HOME_URL="https://api.github.com/repos/${ACCOUNT_CONTENT_REPO}/contents/content/cn/account-opportunity/_index.md"
+          EXPECTED_HOME_NEXT="/opportunities/${TARGET_DATE}"
           STATUS_CODE=$(curl -sS -o publication-home.json -w "%{http_code}" -H "User-Agent: github-actions" "$HOME_URL")
           if [ "$STATUS_CODE" != "200" ]; then
             echo "::error::Unable to fetch account opportunity home content for validation (status=${STATUS_CODE})."

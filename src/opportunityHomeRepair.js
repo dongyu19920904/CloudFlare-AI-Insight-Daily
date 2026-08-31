@@ -11,6 +11,7 @@ import {
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
     DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
     buildAccountOpportunityPaths,
+    resolveAccountOpportunityGitHubEnv,
     updateAccountOpportunityHomeIndexContent,
 } from './accountOpportunityUtils.js';
 
@@ -107,13 +108,13 @@ export async function repairOpportunityHomePointer(env, dateStr) {
 }
 
 export async function repairAccountOpportunityHomePointer(env, dateStr) {
-    return repairSectionHomePointer(env, dateStr, {
+    return repairSectionHomePointer(resolveAccountOpportunityGitHubEnv(env), dateStr, {
         label: 'AI account opportunity',
         logPrefix: 'AccountOpportunityHomeRepair',
         buildPaths: buildAccountOpportunityPaths,
         updateHome: updateAccountOpportunityHomeIndexContent,
         title: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
         description: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
-        sectionPrefix: '/account-opportunity',
+        sectionPrefix: '/opportunities',
     });
 }

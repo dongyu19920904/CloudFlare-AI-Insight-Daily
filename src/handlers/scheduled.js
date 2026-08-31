@@ -47,6 +47,7 @@ import {
     normalizeAccountOpportunityHardSignalLinks,
     normalizeAccountOpportunityObservationMarkdown,
     qualifyAccountOpportunityCandidates,
+    resolveAccountOpportunityGitHubEnv,
     updateAccountOpportunityHomeIndexContent,
 } from '../accountOpportunityUtils.js';
 import { runIsolatedAccountOpportunity } from '../accountOpportunityIsolation.js';
@@ -581,7 +582,10 @@ async function loadRecentOpportunityReplayMemory(env, dateStr, options = {}) {
 
     for (const target of targets) {
         try {
-            const markdown = await getGitHubFileContent(env, target.path);
+            const targetEnv = target.section === 'account-opportunity'
+                ? resolveAccountOpportunityGitHubEnv(env)
+                : env;
+            const markdown = await getGitHubFileContent(targetEnv, target.path);
             loadedCount += 1;
             memory = mergeOpportunityReplayMemories(
                 memory,
@@ -2440,6 +2444,7 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
 }
 
 async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityPaths, accountOpportunityMarkdownContent) {
+    const accountGitHubEnv = resolveAccountOpportunityGitHubEnv(env);
     const accountOpportunityPageTitle = `${DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE} ${formatDateToChinese(dateStr)}`;
     const accountOpportunityDescription = DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION;
     const accountOpportunityPageContent = buildDailyContentWithFrontMatter(dateStr, accountOpportunityMarkdownContent, {
@@ -2447,20 +2452,20 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
         description: accountOpportunityDescription,
     });
 
-    const existingAccountOpportunityPageSha = await getGitHubFileSha(env, accountOpportunityPaths.pagePath);
+    const existingAccountOpportunityPageSha = await getGitHubFileSha(accountGitHubEnv, accountOpportunityPaths.pagePath);
     await createOrUpdateGitHubFile(
-        env,
+        accountGitHubEnv,
         accountOpportunityPaths.pagePath,
         accountOpportunityPageContent,
         `${existingAccountOpportunityPageSha ? 'Update' : 'Create'} AI account opportunity page for ${dateStr} (Scheduled)`,
         existingAccountOpportunityPageSha
     );
 
-    const existingAccountOpportunityMonthIndexSha = await getGitHubFileSha(env, accountOpportunityPaths.monthDirectoryIndexPath);
+    const existingAccountOpportunityMonthIndexSha = await getGitHubFileSha(accountGitHubEnv, accountOpportunityPaths.monthDirectoryIndexPath);
     if (!existingAccountOpportunityMonthIndexSha) {
         const accountOpportunityMonthIndexContent = buildMonthDirectoryIndex(accountOpportunityPaths.yearMonth, { sidebarOpen: true });
         await createOrUpdateGitHubFile(
-            env,
+            accountGitHubEnv,
             accountOpportunityPaths.monthDirectoryIndexPath,
             accountOpportunityMonthIndexContent,
             `Create AI account opportunity month directory index for ${accountOpportunityPaths.yearMonth} (Scheduled)`,
@@ -2470,7 +2475,7 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
 
     let existingAccountOpportunityHomeContent = '';
     try {
-        existingAccountOpportunityHomeContent = await getGitHubFileContent(env, accountOpportunityPaths.homePath);
+        existingAccountOpportunityHomeContent = await getGitHubFileContent(accountGitHubEnv, accountOpportunityPaths.homePath);
     } catch (error) {
         console.warn(`[Scheduled][AccountOpportunity] Home page not found, will create a new one.`);
     }
@@ -2482,12 +2487,12 @@ async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityP
         {
             title: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE,
             description: DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION,
-            sectionPrefix: '/account-opportunity',
+            sectionPrefix: '/opportunities',
         }
     );
-    const existingAccountOpportunityHomeSha = await getGitHubFileSha(env, accountOpportunityPaths.homePath);
+    const existingAccountOpportunityHomeSha = await getGitHubFileSha(accountGitHubEnv, accountOpportunityPaths.homePath);
     await createOrUpdateGitHubFile(
-        env,
+        accountGitHubEnv,
         accountOpportunityPaths.homePath,
         accountOpportunityHomeContent,
         `${existingAccountOpportunityHomeSha ? 'Update' : 'Create'} AI account opportunity home page for ${dateStr} (Scheduled)`,
@@ -2591,7 +2596,7 @@ async function handleScheduledAccountOpportunityBackup(event, env, ctx, specifie
     const dateStr = specifiedDate || getISODate();
     const accountOpportunityPaths = buildAccountOpportunityPaths(dateStr);
     await reportScheduledProgress(options, 'account-opportunity-backup', 'checking-output', 15);
-    const health = await checkScheduledOutputHealth(env, {
+    const health = await checkScheduledOutputHealth(resolveAccountOpportunityGitHubEnv(env), {
         pagePath: accountOpportunityPaths.pagePath,
         homePath: accountOpportunityPaths.homePath,
         expectedHomeNext: accountOpportunityPaths.publicPath.replace(/\/$/, ''),

@@ -750,7 +750,19 @@ export function buildAccountOpportunityPaths(dateStr) {
     pagePath: `content/cn/account-opportunity/${yearMonth}/${dateStr}.md`,
     monthDirectoryIndexPath: `content/cn/account-opportunity/${yearMonth}/_index.md`,
     homePath: "content/cn/account-opportunity/_index.md",
-    publicPath: `/account-opportunity/${yearMonth}/${dateStr}/`,
+    publicPath: `/opportunities/${dateStr}`,
+  };
+}
+
+export function resolveAccountOpportunityGitHubEnv(env = {}) {
+  return {
+    ...env,
+    GITHUB_REPO_OWNER:
+      env.ACCOUNT_OPPORTUNITY_GITHUB_REPO_OWNER || env.GITHUB_REPO_OWNER,
+    GITHUB_REPO_NAME:
+      env.ACCOUNT_OPPORTUNITY_GITHUB_REPO_NAME || env.GITHUB_REPO_NAME,
+    GITHUB_BRANCH:
+      env.ACCOUNT_OPPORTUNITY_GITHUB_BRANCH || env.GITHUB_BRANCH || "main",
   };
 }
 
