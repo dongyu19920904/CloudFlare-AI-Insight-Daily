@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes wrangler@4.127.1 deployments status --name "$WORKER_NAME" > deployments.txt 2>&1 || true
-          npx --yes wrangler@4.127.1 tail "$WORKER_NAME" --format json --sampling-rate 1 > tail.jsonl 2>&1 &
+          npx --yes wrangler@4.127.1 tail "$WORKER_NAME" --format json --sampling-rate 0.99 > tail.jsonl 2>&1 &
           tail_pid=$!
           cleanup() {
             kill "$tail_pid" 2>/dev/null || true
@@ -44,6 +44,11 @@ jobs:
           }
           trap cleanup EXIT
           sleep 12
+          if ! kill -0 "$tail_pid" 2>/dev/null; then
+            cat tail.jsonl
+            echo "Worker tail exited before requests were sent" >&2
+            exit 1
+          fi
 
           : > http-statuses.txt
           paths=(/ /card-products /changes /opportunities /opportunities/archive /opportunities/2026-09-01)
