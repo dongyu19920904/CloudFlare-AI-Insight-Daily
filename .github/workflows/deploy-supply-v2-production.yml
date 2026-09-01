@@ -28,6 +28,7 @@ concurrency:
 env:
   PRODUCTION_URL: https://supply.aivora.cn
   PRODUCTION_WORKER_URL: https://aivora-supply-radar-v2.sabrinamisan090.workers.dev
+  PAGES_EDGE_URL: https://aivora-supply-radar-edge.pages.dev
   NEXT_PUBLIC_SITE_URL: https://supply.aivora.cn
   NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPPLY_V2_SUPABASE_URL }}
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPPLY_V2_SUPABASE_ANON_KEY }}
@@ -160,14 +161,24 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
-          node - "$RELEASE_SHA" <<'NODE'
+          edge_purge_token="$(openssl rand -hex 32)"
+          node - "$RELEASE_SHA" "$edge_purge_token" <<'NODE'
           const fs = require('node:fs');
           const release = process.argv[2];
+          const purgeToken = process.argv[3];
           const file = 'public/_worker.js';
           const source = fs.readFileSync(file, 'utf8');
-          const pattern = /^const CACHE_VERSION = "[^"]+";$/m;
-          if (!pattern.test(source)) throw new Error('Pages edge cache version marker is missing');
-          fs.writeFileSync(file, source.replace(pattern, `const CACHE_VERSION = "${release}";`));
+          const versionPattern = /^const CACHE_VERSION = "[^"]+";$/m;
+          const purgePattern = /^const CACHE_PURGE_TOKEN = "[^"]+";$/m;
+          if (!versionPattern.test(source) || !purgePattern.test(source)) {
+            throw new Error('Pages edge deployment markers are missing');
+          }
+          fs.writeFileSync(
+            file,
+            source
+              .replace(versionPattern, `const CACHE_VERSION = "${release}";`)
+              .replace(purgePattern, `const CACHE_PURGE_TOKEN = "${purgeToken}";`),
+          );
           NODE
           grep -F "const CACHE_VERSION = \"$RELEASE_SHA\";" public/_worker.js > /dev/null
           ../v2-web/node_modules/.bin/wrangler pages deploy public \
@@ -176,6 +187,11 @@ jobs:
             --commit-hash "$RELEASE_SHA" \
             --commit-message "Promote Supply Radar V2" \
             --commit-dirty=false
+          purge_response="$(curl --fail --silent --show-error --max-time 30 \
+            --request POST \
+            --header "x-aivora-cache-purge: $edge_purge_token" \
+            "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
+          jq -e '.success == true' <<< "$purge_response" > /dev/null
 
       - name: Verify production domain after edge switch
         shell: bash
@@ -209,10 +225,13 @@ jobs:
               esac
             done
           done
-          curl --fail --silent --show-error --max-time 30 "$PRODUCTION_URL/" > "$RUNNER_TEMP/production-home.html"
+          curl --fail --silent --show-error --max-time 30 \
+            --dump-header "$RUNNER_TEMP/production-home-headers.txt" \
+            "$PRODUCTION_URL/" > "$RUNNER_TEMP/production-home.html"
           grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/production-home.html" > /dev/null
           grep -F '<link rel="canonical" href="https://supply.aivora.cn' "$RUNNER_TEMP/production-home.html" > /dev/null
           grep -F 'application/ld+json' "$RUNNER_TEMP/production-home.html" > /dev/null
+          grep -Fi "x-aivora-edge-release: $RELEASE_SHA" "$RUNNER_TEMP/production-home-headers.txt" > /dev/null
 
           mapfile -t static_assets < <(
             grep -oE '/_next/static/[^" ]+\.(css|js)' "$RUNNER_TEMP/production-home.html" |
@@ -253,7 +272,9 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
+          edge_purge_token="$(openssl rand -hex 32)"
           sed -i "s/^const CACHE_VERSION = .*/const CACHE_VERSION = \"$RELEASE_SHA-rollback-v1\";/" public/_worker.js
+          sed -i "s/^const CACHE_PURGE_TOKEN = .*/const CACHE_PURGE_TOKEN = \"$edge_purge_token\";/" public/_worker.js
           grep -F "const CACHE_VERSION = \"$RELEASE_SHA-rollback-v1\";" public/_worker.js > /dev/null
           jq '.services[0].service = "aivora-supply-radar"' wrangler.jsonc > wrangler.rollback.jsonc
           ../v2-web/node_modules/.bin/wrangler pages deploy public \
@@ -263,6 +284,11 @@ jobs:
             --commit-hash "$RELEASE_SHA" \
             --commit-message "Automatic rollback to Supply Radar V1" \
             --commit-dirty=false
+          purge_response="$(curl --fail --silent --show-error --max-time 30 \
+            --request POST \
+            --header "x-aivora-cache-purge: $edge_purge_token" \
+            "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
+          jq -e '.success == true' <<< "$purge_response" > /dev/null
           for attempt in $(seq 1 18); do
             if curl --fail --silent --show-error --max-time 20 \
               "$PRODUCTION_URL/api/v1/health" > "$RUNNER_TEMP/rollback-health.json" && \
