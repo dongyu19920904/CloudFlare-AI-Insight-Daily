@@ -194,13 +194,31 @@ jobs:
         shell: bash
         env:
           EDGE_PURGE_TOKEN: ${{ steps.edge.outputs.purge_token }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
-          purge_response="$(curl --fail --silent --show-error --max-time 30 \
-            --request POST \
-            --header "x-aivora-cache-purge: $EDGE_PURGE_TOKEN" \
-            "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
-          jq -e '.success == true' <<< "$purge_response" > /dev/null
+          purged=false
+          for attempt in $(seq 1 18); do
+            headers="$RUNNER_TEMP/pages-edge-release-headers.txt"
+            release_status="$(curl --silent --show-error --max-time 30 \
+              --dump-header "$headers" --output /dev/null --write-out '%{http_code}' \
+              "$PAGES_EDGE_URL/?release_probe=$RELEASE_SHA")"
+            release_header="$(awk -F ': ' 'tolower($1) == "x-aivora-edge-release" { gsub("\r", "", $2); print $2 }' "$headers" | tail -1)"
+            if [[ "$release_status" == 200 && "$release_header" == "$RELEASE_SHA" ]]; then
+              purge_body="$RUNNER_TEMP/pages-edge-purge.json"
+              purge_status="$(curl --silent --show-error --max-time 30 \
+                --request POST \
+                --header "x-aivora-cache-purge: $EDGE_PURGE_TOKEN" \
+                --output "$purge_body" --write-out '%{http_code}' \
+                "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
+              if [[ "$purge_status" == 200 ]] && jq -e '.success == true' "$purge_body" > /dev/null; then
+                purged=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$purged" == true ]] || { echo "Pages edge release did not become purge-ready" >&2; exit 1; }
 
       - name: Verify production domain after edge switch
         shell: bash
@@ -286,18 +304,36 @@ jobs:
           sed -i "s/^const CACHE_PURGE_TOKEN = .*/const CACHE_PURGE_TOKEN = \"$edge_purge_token\";/" public/_worker.js
           grep -F "const CACHE_VERSION = \"$RELEASE_SHA-rollback-v1\";" public/_worker.js > /dev/null
           jq '.services[0].service = "aivora-supply-radar"' wrangler.jsonc > wrangler.rollback.jsonc
+          mv wrangler.rollback.jsonc wrangler.jsonc
           ../v2-web/node_modules/.bin/wrangler pages deploy public \
-            --config wrangler.rollback.jsonc \
             --project-name aivora-supply-radar-edge \
             --branch main \
             --commit-hash "$RELEASE_SHA" \
             --commit-message "Automatic rollback to Supply Radar V1" \
             --commit-dirty=false
-          purge_response="$(curl --fail --silent --show-error --max-time 30 \
-            --request POST \
-            --header "x-aivora-cache-purge: $edge_purge_token" \
-            "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
-          jq -e '.success == true' <<< "$purge_response" > /dev/null
+          rollback_release="$RELEASE_SHA-rollback-v1"
+          purged=false
+          for attempt in $(seq 1 18); do
+            headers="$RUNNER_TEMP/pages-edge-rollback-headers.txt"
+            release_status="$(curl --silent --show-error --max-time 30 \
+              --dump-header "$headers" --output /dev/null --write-out '%{http_code}' \
+              "$PAGES_EDGE_URL/?rollback_probe=$rollback_release")"
+            release_header="$(awk -F ': ' 'tolower($1) == "x-aivora-edge-release" { gsub("\r", "", $2); print $2 }' "$headers" | tail -1)"
+            if [[ "$release_status" == 200 && "$release_header" == "$rollback_release" ]]; then
+              purge_body="$RUNNER_TEMP/pages-edge-rollback-purge.json"
+              purge_status="$(curl --silent --show-error --max-time 30 \
+                --request POST \
+                --header "x-aivora-cache-purge: $edge_purge_token" \
+                --output "$purge_body" --write-out '%{http_code}' \
+                "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
+              if [[ "$purge_status" == 200 ]] && jq -e '.success == true' "$purge_body" > /dev/null; then
+                purged=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$purged" == true ]] || { echo "Rollback edge release did not become purge-ready" >&2; exit 1; }
           for attempt in $(seq 1 18); do
             if curl --fail --silent --show-error --max-time 20 \
               "$PRODUCTION_URL/api/v1/health" > "$RUNNER_TEMP/rollback-health.json" && \
