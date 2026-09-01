@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { buildSupplyDrivenAccountOpportunityMarkdown } from "../src/supplyDrivenAccountOpportunity.js";
 
 function writeGitHubContentResponse(markdown) {
   const dir = mkdtempSync(join(tmpdir(), "publication-content-"));
@@ -168,6 +169,76 @@ date: 2026-08-08T00:00:00+08:00
         MODE: "account-opportunity",
         AIVORA_VALIDATED_URLS: "https://www.aivora.cn/",
         TARGET_DATE: "2026-08-08",
+        PAGE_RESPONSE_PATH: pagePath,
+      },
+    }
+  );
+
+  assert.match(output, /::notice title=Publication content validation::/);
+  assert.match(output, /ok=true/);
+});
+
+test("validate-publication-content recognizes the supply-driven V3 account daily", () => {
+  const product = {
+    slug: "chatgpt-plus",
+    name: "ChatGPT Plus 试用订阅",
+    platform: "ChatGPT",
+    categoryId: "chatgpt",
+    categoryName: "ChatGPT",
+    lowestPrice: 3.3,
+    warrantyPrice: 44,
+    availableOfferCount: 220,
+    updatedAt: "2026-09-01T06:35:00Z",
+    sortOrder: 1,
+    platformSortOrder: 1,
+    productUrl: "https://supply.aivora.cn/card-products/chatgpt-plus",
+    profitCalculatorUrl: "https://supply.aivora.cn/profit-calculator?product=chatgpt-plus&cost=3.30",
+  };
+  const snapshot = {
+    schemaVersion: 2,
+    source: "https://supply.aivora.cn/opportunities",
+    generatedAt: "2026-09-01T06:40:00Z",
+    latestObservedAt: "2026-09-01T06:35:00Z",
+    stats: {
+      productCount: 1,
+      availableProductCount: 1,
+      availableOfferCount: 220,
+      recentChangeCount: 1,
+      recentChangeCountCapped: false,
+      lowSupplyProductCount: 0,
+    },
+    products: [product],
+    categories: [],
+    signals: [{
+      id: "restock:chatgpt-plus",
+      kind: "restock",
+      tone: "opportunity",
+      label: "补货恢复",
+      title: "ChatGPT Plus 出现可购买货源",
+      evidence: "库存状态由缺货转为有货，连续快照已经确认。",
+      buyerAction: "打开详情比较规格、售后和交付方式。",
+      sellerAction: "核验交付以后小量采购，再按真实成本接单。",
+      stopCondition: "规格不清楚、交付失败或没有利润时停止。",
+      observedAt: "2026-09-01T06:35:00Z",
+      product,
+    }],
+  };
+  const { markdown } = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-01",
+    snapshot,
+  });
+  const pagePath = writeGitHubContentResponse(`---\ntitle: AI 账号商机日报\n---\n\n${markdown}`);
+
+  const output = execFileSync(
+    "node",
+    [".github/scripts/validate-publication-content.mjs"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        MODE: "account-opportunity",
+        TARGET_DATE: "2026-09-01",
         PAGE_RESPONSE_PATH: pagePath,
       },
     }

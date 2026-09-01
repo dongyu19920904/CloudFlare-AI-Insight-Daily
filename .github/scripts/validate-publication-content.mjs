@@ -91,7 +91,7 @@ function validateByMode(mode, markdown) {
   }
 
   if (mode === "account-opportunity") {
-    if (/^##\s+(?:实时货源盘面|今日经营看板)(?:\s|$)/m.test(body)) {
+    if (/^##\s+(?:实时货源盘面|今日经营看板|今日能不能做)(?:\s|$)/m.test(body)) {
       return validateSupplyDrivenAccountOpportunityPublication({
         markdown: body,
         aivoraLinkPolicy: { allowedUrls: parseValidatedAivoraUrls() },
