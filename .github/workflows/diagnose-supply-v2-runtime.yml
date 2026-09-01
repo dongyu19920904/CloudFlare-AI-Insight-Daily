@@ -1,0 +1,104 @@
+name: Diagnose Supply Radar V2 Runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-supply-radar-v2-runtime
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WORKER_NAME: aivora-supply-radar-v2
+      PRODUCTION_URL: https://supply.aivora.cn
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate diagnostic credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]] || { echo "Missing CLOUDFLARE_ACCOUNT_ID" >&2; exit 1; }
+          [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo "Missing CLOUDFLARE_API_TOKEN" >&2; exit 1; }
+
+      - name: Capture production exceptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.127.1 deployments status --name "$WORKER_NAME" > deployments.txt 2>&1 || true
+          npx --yes wrangler@4.127.1 tail "$WORKER_NAME" --format json --sampling-rate 1 > tail.jsonl 2>&1 &
+          tail_pid=$!
+          cleanup() {
+            kill "$tail_pid" 2>/dev/null || true
+            wait "$tail_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          sleep 12
+
+          : > http-statuses.txt
+          paths=(/ /card-products /changes /opportunities /opportunities/archive /opportunities/2026-09-01)
+          for attempt in $(seq 1 6); do
+            for path in "${paths[@]}"; do
+              status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' "$PRODUCTION_URL$path" || echo curl_failed)"
+              printf '%s %s %s\n' "$attempt" "$status" "$path" >> http-statuses.txt
+            done
+          done
+          sleep 12
+          cleanup
+          trap - EXIT
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          records = []
+          for line in Path('tail.jsonl').read_text(encoding='utf-8', errors='replace').splitlines():
+              try:
+                  event = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              outcome = str(event.get('outcome') or event.get('event', {}).get('outcome') or '')
+              exceptions = event.get('exceptions') or event.get('event', {}).get('exceptions') or []
+              logs = event.get('logs') or event.get('event', {}).get('logs') or []
+              if outcome.lower() not in ('', 'ok') or exceptions:
+                  records.append({'outcome': outcome, 'exceptions': exceptions, 'logs': logs})
+
+          Path('exceptions.json').write_text(
+              json.dumps(records, ensure_ascii=False, indent=2),
+              encoding='utf-8',
+          )
+          print(f'Captured exception events: {len(records)}')
+          for record in records[:20]:
+              print(json.dumps(record, ensure_ascii=False))
+          PY
+
+          {
+            echo '### Supply Radar V2 runtime diagnosis'
+            echo '```text'
+            sort -k2,2 -k3,3 http-statuses.txt | uniq -c
+            echo '```'
+            echo "Exception events: $(python -c 'import json; print(len(json.load(open("exceptions.json", encoding="utf-8"))))')"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-v2-runtime-diagnosis
+          path: |
+            deployments.txt
+            http-statuses.txt
+            tail.jsonl
+            exceptions.json
+          if-no-files-found: warn
+          retention-days: 3
