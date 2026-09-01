@@ -162,6 +162,8 @@ jobs:
         run: |
           set -euo pipefail
           edge_purge_token="$(openssl rand -hex 32)"
+          echo "::add-mask::$edge_purge_token"
+          echo "purge_token=$edge_purge_token" >> "$GITHUB_OUTPUT"
           node - "$RELEASE_SHA" "$edge_purge_token" <<'NODE'
           const fs = require('node:fs');
           const release = process.argv[2];
@@ -187,9 +189,16 @@ jobs:
             --commit-hash "$RELEASE_SHA" \
             --commit-message "Promote Supply Radar V2" \
             --commit-dirty=false
+
+      - name: Purge obsolete Pages edge cache
+        shell: bash
+        env:
+          EDGE_PURGE_TOKEN: ${{ steps.edge.outputs.purge_token }}
+        run: |
+          set -euo pipefail
           purge_response="$(curl --fail --silent --show-error --max-time 30 \
             --request POST \
-            --header "x-aivora-cache-purge: $edge_purge_token" \
+            --header "x-aivora-cache-purge: $EDGE_PURGE_TOKEN" \
             "$PAGES_EDGE_URL/__aivora_release_cache_purge")"
           jq -e '.success == true' <<< "$purge_response" > /dev/null
 
