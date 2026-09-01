@@ -126,6 +126,7 @@ jobs:
             --var "NEXT_PUBLIC_SITE_URL:$NEXT_PUBLIC_SITE_URL" \
             --var "NEXT_PUBLIC_SUPABASE_URL:$NEXT_PUBLIC_SUPABASE_URL" \
             --var "LEGACY_RADAR_API_URL:$LEGACY_RADAR_API_URL" \
+            --var "WORKER_CACHE_VERSION:$RELEASE_SHA" \
             --message "Supply Radar V2 production $RELEASE_SHA"
 
       - name: Verify V2 Worker before edge switch
@@ -136,14 +137,18 @@ jobs:
           for attempt in $(seq 1 18); do
             offers_status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/direct-offers.json" \
               --write-out '%{http_code}' "$PRODUCTION_WORKER_URL/api/products/chatgpt-plus/offers?limit=50&offset=0")"
-            home_status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/direct-home.html" \
+            home_status="$(curl --silent --show-error --max-time 30 \
+              --dump-header "$RUNNER_TEMP/direct-home-headers.txt" \
+              --output "$RUNNER_TEMP/direct-home.html" \
               --write-out '%{http_code}' "$PRODUCTION_WORKER_URL/")"
             if [[ "$offers_status" == 200 ]] && [[ "$home_status" == 200 ]] && \
               jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
                 "$RUNNER_TEMP/direct-offers.json" > /dev/null && \
               grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/direct-home.html" > /dev/null && \
               grep -F '<link rel="canonical" href="https://supply.aivora.cn' \
-                "$RUNNER_TEMP/direct-home.html" > /dev/null; then
+                "$RUNNER_TEMP/direct-home.html" > /dev/null && \
+              grep -Fi "x-aivora-worker-release: ${{ steps.release.outputs.sha }}" \
+                "$RUNNER_TEMP/direct-home-headers.txt" > /dev/null; then
               ready=true
               break
             fi
