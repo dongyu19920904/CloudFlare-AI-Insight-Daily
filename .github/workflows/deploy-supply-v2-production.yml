@@ -186,10 +186,18 @@ jobs:
           done
           [[ "$ready" == true ]] || { echo "Production domain did not switch to V2" >&2; exit 1; }
 
-          paths=(/ /card-products /channels /opportunities /changes /official-prices /community /submit /sitemap.xml /robots.txt)
-          for path in "${paths[@]}"; do
-            status="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$PRODUCTION_URL$path")"
-            [[ "$status" == 200 ]] || { echo "Production route $path returned HTTP $status" >&2; exit 1; }
+          paths=(/ /card-products /channels /opportunities /opportunities/archive /opportunities/2026-09-01 /changes /official-prices /community /submit /sitemap.xml /robots.txt)
+          for attempt in $(seq 1 6); do
+            for path in "${paths[@]}"; do
+              headers="$RUNNER_TEMP/production-headers-$attempt.txt"
+              status="$(curl --silent --show-error --max-time 30 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "$PRODUCTION_URL$path")"
+              cache_state="$(awk -F ': ' 'tolower($1) == "x-aivora-edge-cache" { gsub("\\r", "", $2); print $2 }' "$headers" | tail -1)"
+              [[ "$status" == 200 ]] || { echo "Production route $path returned HTTP $status on attempt $attempt" >&2; exit 1; }
+              case "$cache_state" in
+                HIT|MISS|BYPASS|STALE) ;;
+                *) echo "Production route $path did not pass through the resilient V2 edge (state: ${cache_state:-missing})" >&2; exit 1 ;;
+              esac
+            done
           done
           curl --fail --silent --show-error --max-time 30 "$PRODUCTION_URL/" > "$RUNNER_TEMP/production-home.html"
           grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/production-home.html" > /dev/null

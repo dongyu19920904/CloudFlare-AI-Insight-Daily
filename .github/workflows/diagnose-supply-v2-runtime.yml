@@ -72,6 +72,8 @@ jobs:
                   event = json.loads(line)
               except json.JSONDecodeError:
                   continue
+              if not isinstance(event, dict):
+                  continue
               outcome = str(event.get('outcome') or event.get('event', {}).get('outcome') or '')
               exceptions = event.get('exceptions') or event.get('event', {}).get('exceptions') or []
               logs = event.get('logs') or event.get('event', {}).get('logs') or []
