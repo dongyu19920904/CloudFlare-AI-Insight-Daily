@@ -160,6 +160,16 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
+          node - "$RELEASE_SHA" <<'NODE'
+          const fs = require('node:fs');
+          const release = process.argv[2];
+          const file = 'public/_worker.js';
+          const source = fs.readFileSync(file, 'utf8');
+          const pattern = /^const CACHE_VERSION = "[^"]+";$/m;
+          if (!pattern.test(source)) throw new Error('Pages edge cache version marker is missing');
+          fs.writeFileSync(file, source.replace(pattern, `const CACHE_VERSION = "${release}";`));
+          NODE
+          grep -F "const CACHE_VERSION = \"$RELEASE_SHA\";" public/_worker.js > /dev/null
           ../v2-web/node_modules/.bin/wrangler pages deploy public \
             --project-name aivora-supply-radar-edge \
             --branch main \
@@ -204,6 +214,25 @@ jobs:
           grep -F '<link rel="canonical" href="https://supply.aivora.cn' "$RUNNER_TEMP/production-home.html" > /dev/null
           grep -F 'application/ld+json' "$RUNNER_TEMP/production-home.html" > /dev/null
 
+          mapfile -t static_assets < <(
+            grep -oE '/_next/static/[^" ]+\.(css|js)' "$RUNNER_TEMP/production-home.html" |
+              sort -u |
+              head -8
+          )
+          [[ "${#static_assets[@]}" -gt 0 ]] || { echo "Production HTML did not expose static assets" >&2; exit 1; }
+          for asset in "${static_assets[@]}"; do
+            headers="$RUNNER_TEMP/static-headers.txt"
+            status="$(curl --silent --show-error --max-time 30 --dump-header "$headers" --output /dev/null \
+              --write-out '%{http_code}' "$PRODUCTION_URL$asset")"
+            content_type="$(awk -F ': ' 'tolower($1) == "content-type" { gsub("\\r", "", $2); print tolower($2) }' "$headers" | tail -1)"
+            [[ "$status" == 200 ]] || { echo "Static asset $asset returned HTTP $status" >&2; exit 1; }
+            case "$asset:$content_type" in
+              *.css*:text/css*) ;;
+              *.js*:application/javascript*|*.js*:text/javascript*) ;;
+              *) echo "Static asset $asset returned unexpected content type: ${content_type:-missing}" >&2; exit 1 ;;
+            esac
+          done
+
           total="$(jq -r '.pageInfo.total' "$RUNNER_TEMP/production-offers.json")"
           {
             echo "### Supply Radar V2 production"
@@ -224,6 +253,8 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
+          sed -i "s/^const CACHE_VERSION = .*/const CACHE_VERSION = \"$RELEASE_SHA-rollback-v1\";/" public/_worker.js
+          grep -F "const CACHE_VERSION = \"$RELEASE_SHA-rollback-v1\";" public/_worker.js > /dev/null
           jq '.services[0].service = "aivora-supply-radar"' wrangler.jsonc > wrangler.rollback.jsonc
           ../v2-web/node_modules/.bin/wrangler pages deploy public \
             --config wrangler.rollback.jsonc \
