@@ -16,19 +16,8 @@ const CATEGORY_ORDER = [
   "api-payment",
   "other",
 ];
-const CATEGORY_NAMES = new Map([
-  ["chatgpt", "ChatGPT"],
-  ["claude", "Claude"],
-  ["gemini", "Gemini"],
-  ["grok", "Grok"],
-  ["ai-coding", "AI 编程"],
-  ["ai-creative", "AI 创作与效率"],
-  ["email", "邮箱"],
-  ["verification", "账号验证辅助"],
-  ["social", "社媒与账号"],
-  ["api-payment", "API 与支付"],
-  ["other", "其他"],
-]);
+const ABNORMAL_LOW_PRICE_RATIO = 0.05;
+const MIN_OFFERS_FOR_PRICE_ANOMALY = 5;
 
 function cleanArticleText(value, maxLength = 900) {
   return String(value || "")
@@ -42,8 +31,13 @@ function cleanArticleText(value, maxLength = 900) {
     .slice(0, maxLength);
 }
 
+function positiveMoney(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
 function formatMoney(value) {
-  return Number.isFinite(value) ? `¥${Number(value).toFixed(2)}` : "暂无可购买报价";
+  return positiveMoney(value) !== null ? `¥${Number(value).toFixed(2)}` : "暂无可复核成本";
 }
 
 function formatShanghaiTime(value) {
@@ -110,9 +104,55 @@ function snapshotProducts(snapshot) {
   return [...unique.values()].sort(productOrder);
 }
 
-export function selectMerchantCoreProducts(snapshot, limit = 8) {
-  const products = snapshotProducts(snapshot).filter(
-    (product) => product.availableOfferCount > 0 && CORE_CATEGORY_IDS.includes(product.categoryId),
+export function resolveMerchantCostReference(product) {
+  const lowestPrice = positiveMoney(product?.lowestPrice);
+  const warrantyPrice = positiveMoney(product?.warrantyPrice);
+  const availableOfferCount = Math.max(0, Number(product?.availableOfferCount) || 0);
+  const abnormalLowestPrice = Boolean(
+    lowestPrice !== null &&
+    warrantyPrice !== null &&
+    availableOfferCount >= MIN_OFFERS_FOR_PRICE_ANOMALY &&
+    lowestPrice < warrantyPrice * ABNORMAL_LOW_PRICE_RATIO
+  );
+  const referencePrice = abnormalLowestPrice
+    ? warrantyPrice
+    : lowestPrice ?? warrantyPrice;
+
+  return {
+    referencePrice,
+    lowestPrice,
+    warrantyPrice,
+    abnormalLowestPrice,
+    label: abnormalLowestPrice
+      ? "异常最低价已隔离，暂用明确质保报价"
+      : lowestPrice !== null
+        ? "目录最低公开报价"
+        : warrantyPrice !== null
+          ? "明确质保报价"
+          : "暂无可复核成本",
+  };
+}
+
+function profitCalculatorUrl(product, referencePrice) {
+  try {
+    const url = new URL(product.profitCalculatorUrl);
+    if (positiveMoney(referencePrice) !== null) {
+      url.searchParams.set("cost", Number(referencePrice).toFixed(2));
+    } else {
+      url.searchParams.delete("cost");
+    }
+    return url.toString();
+  } catch {
+    return product.profitCalculatorUrl;
+  }
+}
+
+export function selectMerchantCoreProducts(snapshot, limit = 4) {
+  const products = snapshotProducts(snapshot).filter((product) =>
+    product.availableOfferCount > 0 &&
+    CORE_CATEGORY_IDS.includes(product.categoryId) &&
+    resolveMerchantCostReference(product).referencePrice !== null &&
+    !resolveMerchantCostReference(product).abnormalLowestPrice
   );
   const selected = [];
   const seen = new Set();
@@ -122,17 +162,28 @@ export function selectMerchantCoreProducts(snapshot, limit = 8) {
     selected.push(product);
   };
 
-  for (const categoryId of CORE_CATEGORY_IDS) {
-    const quota = categoryId === "chatgpt" ? 3 : 1;
-    products.filter((product) => product.categoryId === categoryId).slice(0, quota).forEach(add);
+  products.filter((product) => product.categoryId === "chatgpt").slice(0, 2).forEach(add);
+  for (const categoryId of CORE_CATEGORY_IDS.slice(1)) {
+    add(products.find((product) => product.categoryId === categoryId));
   }
   products.forEach(add);
   return selected;
 }
 
-export function selectPausedProducts(snapshot, limit = 5) {
+export function selectPausedProducts(snapshot, limit = 3) {
   return snapshotProducts(snapshot)
-    .filter((product) => product.availableOfferCount === 0)
+    .filter((product) =>
+      product.availableOfferCount === 0 && CORE_CATEGORY_IDS.includes(product.categoryId)
+    )
+    .slice(0, Math.max(0, limit));
+}
+
+export function selectAnomalousPriceProducts(snapshot, limit = 3) {
+  return snapshotProducts(snapshot)
+    .filter((product) =>
+      CORE_CATEGORY_IDS.includes(product.categoryId) &&
+      resolveMerchantCostReference(product).abnormalLowestPrice
+    )
     .slice(0, Math.max(0, limit));
 }
 
@@ -158,10 +209,11 @@ function signalScore(signal) {
     crowded: 120,
   }[signal.kind] || 0;
   const sortPenalty = Math.min(200, Number(signal.product?.sortOrder || 0));
-  return popularityScore(signal) + kindScore - sortPenalty;
+  const anomalyBoost = resolveMerchantCostReference(signal.product).abnormalLowestPrice ? 350 : 0;
+  return popularityScore(signal) + kindScore + anomalyBoost - sortPenalty;
 }
 
-export function selectDailySupplySignals(snapshot, limit = 4) {
+export function selectDailySupplySignals(snapshot, limit = 2) {
   const candidates = [...(snapshot?.signals || [])]
     .filter((signal) =>
       signal?.product?.slug &&
@@ -178,6 +230,7 @@ export function selectDailySupplySignals(snapshot, limit = 4) {
     selected.push(signal);
   };
 
+  add(candidates.find((signal) => resolveMerchantCostReference(signal.product).abnormalLowestPrice));
   add(candidates.find((signal) => OPPORTUNITY_KINDS.has(signal.kind)));
   add(candidates.find((signal) => RISK_KINDS.has(signal.kind)));
   for (const signal of candidates) add(signal);
@@ -197,12 +250,10 @@ function candidateMatchesProducts(candidate, products) {
       "grok", "cursor", "kiro", "windsurf", "perplexity", "suno", "icloud",
     ].find((term) => productText.includes(term));
     if (!brand || !candidateText.includes(brand)) return false;
-
     const tier = ["plus", "pro", "team", "business", "enterprise", "year"]
       .find((term) => productText.includes(term));
     if (tier) return candidateText.includes(tier);
-
-    return /账号|账户|订阅|价格|额度|政策|地区|登录|注册|验证|接码|account|subscription|plan|price|quota|limit|policy|region|login|verification|email/.test(candidateText);
+    return /账号|账户|订阅|价格|额度|政策|地区|登录|注册|验证|account|subscription|plan|price|quota|limit|policy|region|login|verification|email/.test(candidateText);
   });
 }
 
@@ -221,59 +272,81 @@ function relatedIndustrySection(candidates, products) {
     .replace(/[\[\]()]/g, "");
   return [
     "",
-    "## 官方变化与经营影响",
+    "## 一条相关官方变化",
     "",
-    `[${label}](${source.url})与今天备货表中的商品直接相关。先核对它是否改变套餐、额度、地区、登录或售后说明，再更新商品页和客服话术。库存、金额和可购买报价仍以货源快照为准。`,
+    `[${label}](${source.url})与今天的商品直接相关。先核对套餐、额度、地区、登录或售后说明是否改变，再更新商品页和客服话术。货源金额与库存仍以当天快照和原始页面为准。`,
   ];
 }
 
-function coreProductAction(product) {
-  if (product.availableOfferCount >= 100) {
-    return "可以复核接单，公开报价密集。先比规格、更新时间和售后，避免只靠低价竞争。";
-  }
-  if (product.availableOfferCount >= 6) {
-    return "可以复核接单。采购前确认原始货源仍有库存，再按自己的保本价报价。";
-  }
-  return "只做小量验证，公开可买报价较少。先准备同类替代，再决定接单量。";
-}
-
-function coreProductMarkdown(product) {
-  const warranty = Number.isFinite(product.warrantyPrice)
-    ? `明确质保参考 ${formatMoney(product.warrantyPrice)}`
-    : "暂无明确质保参考";
+function newSellerFirstOrderMarkdown(product) {
+  const cost = resolveMerchantCostReference(product);
+  const calculatorUrl = profitCalculatorUrl(product, cost.referencePrice);
+  const anomalyNote = cost.abnormalLowestPrice
+    ? `目录最低价 ${formatMoney(cost.lowestPrice)} 与明确质保参考 ${formatMoney(cost.warrantyPrice)} 严重倒挂，日报没有把最低价当作成本。`
+    : `当前成本口径为${cost.label} ${formatMoney(cost.referencePrice)}，付款前仍要核对同规格货源。`;
   return [
-    `- **[${cleanArticleText(product.name, 100)}](${product.productUrl})**`,
-    `  - 进货参考 ${formatMoney(product.lowestPrice)}，${warranty}，可购买报价 ${product.availableOfferCount} 条。`,
-    `  - 今日动作 ${coreProductAction(product)}`,
-    `  - [核算这款商品的保本价](${product.profitCalculatorUrl})`,
+    `### [${cleanArticleText(product.name, 100)}](${product.productUrl})`,
+    "",
+    `- **成本口径** ${anomalyNote}`,
+    `- **为什么选它** 当前有 ${product.availableOfferCount} 条可购买报价，便于准备至少两个同规格来源。报价数量只代表供给，不代表今天一定有人购买。`,
+    `- **利润入口** [把 ${formatMoney(cost.referencePrice)} 带入利润计算器](${calculatorUrl})，再填写自己的实际售价、支付费、退款损耗、售后和获客成本。`,
+    "- **按这个顺序做**",
+    "  1. 打开标准商品页，从同规格报价中准备两个仍有货的来源，逐个核对账号形态、期限、登录、交付和质保。",
+    "  2. 用自己的真实售价计算保本价。计算结果没有正利润时不要发布。",
+    "  3. 商品说明只写已经核验的规格。收到订单后再次检查库存，再采购交付。",
+    "- **第一单门槛** 已有可触达的买家或销售入口，至少两个同规格来源仍有效，售后和退款边界能够写清。少一项都先观察。",
+    "- **停止条件** 找不到同规格替代、原始页失效、实际售价低于保本价，或无法承担一次退款损耗时停止接单。",
   ].join("\n");
 }
 
-function actionMarkdown(signal) {
-  const product = signal.product;
+function oldMerchantAction(signal, fallbackProduct) {
+  const product = signal?.product || fallbackProduct;
+  const cost = resolveMerchantCostReference(product);
+  if (cost.abnormalLowestPrice) return "暂停按最低价核算";
+  if (signal?.kind === "stockout") return "准备替代货源";
+  if (signal?.kind === "price_drop" || signal?.kind === "price_rise") return "重新核价";
+  if (signal?.kind === "restock") return "复核恢复接单";
+  if (product.availableOfferCount <= 5) return "只做小量验证";
+  return "复核后继续接单";
+}
+
+function oldMerchantMarkdown(product, signal) {
+  const cost = resolveMerchantCostReference(product);
+  const calculatorUrl = profitCalculatorUrl(product, cost.referencePrice);
+  const evidence = cost.abnormalLowestPrice
+    ? `最低价 ${formatMoney(cost.lowestPrice)} 已隔离，待复核成本采用 ${formatMoney(cost.referencePrice)}。`
+    : `可复核成本 ${formatMoney(cost.referencePrice)}，当前可购买报价 ${product.availableOfferCount} 条。`;
   return [
-    `### ${cleanArticleText(signal.label, 60)} ${cleanArticleText(product.name, 120)}`,
+    `### ${oldMerchantAction(signal, product)}，[${cleanArticleText(product.name, 100)}](${product.productUrl})`,
     "",
-    `- **异动证据** [打开 ${cleanArticleText(product.name, 100)} 标准商品页](${product.productUrl})。${cleanArticleText(signal.evidence)}`,
-    `- **采购动作** ${cleanArticleText(signal.sellerAction)}`,
-    `- **报价动作** 用[利润计算器](${product.profitCalculatorUrl})重新填写进货、支付、退款损耗、售后和获客成本。实际成交价低于保本价时停止接单。`,
-    `- **售后检查** ${cleanArticleText(signal.buyerAction)}`,
+    `- **当前盘面** ${evidence}`,
+    `- **开盘动作** ${signal ? cleanArticleText(signal.sellerAction, 420) : "核对现有订单所用规格和同源库存，再用今天的成本重算保本价。"}`,
+    `- **核价入口** [用日报成本重新计算](${calculatorUrl})。只用自己的真实成交价作比较。`,
+    `- **停止条件** ${signal ? cleanArticleText(signal.stopCondition, 420) : "同源库存失效、替代成本超过当前售价，或交付与售后边界不清楚时暂停。"}`,
+  ].join("\n");
+}
+
+function signalMarkdown(signal) {
+  const product = signal.product;
+  const cost = resolveMerchantCostReference(product);
+  const calculatorUrl = profitCalculatorUrl(product, cost.referencePrice);
+  const title = cost.abnormalLowestPrice
+    ? `异常低价待核 ${cleanArticleText(product.name, 100)}`
+    : `${cleanArticleText(signal.label, 60)} ${cleanArticleText(product.name, 100)}`;
+  const evidence = cost.abnormalLowestPrice
+    ? `目录最低价 ${formatMoney(cost.lowestPrice)} 与明确质保参考 ${formatMoney(cost.warrantyPrice)} 严重倒挂，最低价没有进入成本计算。`
+    : cleanArticleText(signal.evidence, 520);
+  const action = cost.abnormalLowestPrice
+    ? "暂停使用最低价接单，打开商品页核对规格、原始来源和质保以后再决定。"
+    : cleanArticleText(signal.sellerAction, 520);
+  return [
+    `### ${title}`,
+    "",
+    `- **异动证据** [打开 ${cleanArticleText(product.name, 100)} 标准商品页](${product.productUrl})。${evidence}`,
+    `- **经营动作** ${action}`,
+    `- **成本口径** [按 ${formatMoney(cost.referencePrice)} 重新核算](${calculatorUrl})。这个金额仍需回到同规格原始货源复核。`,
     `- **停止条件** ${cleanArticleText(signal.stopCondition)}`,
   ].join("\n");
-}
-
-function categoryMarketMarkdown(category, products) {
-  const categoryName = CATEGORY_NAMES.get(category.id) || category.name;
-  const leaders = products
-    .filter((product) => product.categoryId === category.id && product.availableOfferCount > 0)
-    .sort(productOrder);
-  const leader = leaders[0];
-  const leadText = category.id === "verification"
-    ? "仅作货源规模观察，不进入本期推荐清单。"
-    : leader
-      ? `先看[${cleanArticleText(leader.name, 100)}](${leader.productUrl})。`
-      : "当前没有可购买代表商品，暂停新增接单。";
-  return `- **${cleanArticleText(categoryName, 80)}** ${category.productCount} 个标准商品，${category.availableProductCount} 个可购买，可购买报价 ${category.availableOfferCount} 条，最低参考 ${formatMoney(category.lowestPrice)}。${leadText}`;
 }
 
 function pausedProductMarkdown(product, products) {
@@ -281,9 +354,28 @@ function pausedProductMarkdown(product, products) {
     .filter((item) => item.categoryId === product.categoryId && item.availableOfferCount > 0)
     .sort(productOrder)[0];
   const replacementText = replacement
-    ? `可以改看同类的[${cleanArticleText(replacement.name, 100)}](${replacement.productUrl})，两者规格不一定相同，接单前重新核对。`
+    ? `可以改看同类的[${cleanArticleText(replacement.name, 100)}](${replacement.productUrl})，两者规格不同的地方要重新核对。`
     : "当前没有可验证的同类替代，继续暂停新增接单。";
-  return `- **[${cleanArticleText(product.name, 100)}](${product.productUrl})** 当前可购买报价 0 条。暂停按旧库存新增接单。${replacementText}`;
+  return `- **[${cleanArticleText(product.name, 100)}](${product.productUrl})** 当前可购买报价为 0。暂停按旧库存新增接单。${replacementText}`;
+}
+
+function anomalousProductMarkdown(product) {
+  const cost = resolveMerchantCostReference(product);
+  return `- **[${cleanArticleText(product.name, 100)}](${product.productUrl})** 目录最低价 ${formatMoney(cost.lowestPrice)} 与明确质保参考 ${formatMoney(cost.warrantyPrice)} 严重倒挂。日报已隔离最低价，付款前核对规格、来源和质保。`;
+}
+
+function selectOldMerchantActions(coreProducts, signals, anomalousProducts = [], limit = 3) {
+  const selected = [];
+  const seen = new Set();
+  const add = (product, signal = null) => {
+    if (!product?.slug || seen.has(product.slug) || selected.length >= limit) return;
+    seen.add(product.slug);
+    selected.push({ product, signal });
+  };
+  for (const product of anomalousProducts) add(product);
+  for (const signal of signals) add(signal.product, signal);
+  for (const product of coreProducts) add(product);
+  return selected;
 }
 
 export function buildSupplyDrivenAccountOpportunityMarkdown({
@@ -292,23 +384,23 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
   industryCandidates = [],
 }) {
   const products = snapshotProducts(snapshot);
-  const coreProducts = selectMerchantCoreProducts(snapshot, 8);
-  const pausedProducts = selectPausedProducts(snapshot, 5);
-  const selectedSignals = selectDailySupplySignals(snapshot, 4);
+  const coreProducts = selectMerchantCoreProducts(snapshot, 4);
+  const anomalousProducts = selectAnomalousPriceProducts(snapshot, 1);
+  const pausedProducts = selectPausedProducts(snapshot, 3 - anomalousProducts.length);
+  const selectedSignals = selectDailySupplySignals(snapshot, 2);
   if (!coreProducts.length) throw new Error("no usable merchant products for the daily");
   if (!selectedSignals.length) throw new Error("no usable supply signals for the daily");
   const lead = coreProducts[0];
+  const leadCost = resolveMerchantCostReference(lead);
+  const oldMerchantActions = selectOldMerchantActions(coreProducts, selectedSignals, anomalousProducts, 3);
   const stats = snapshot.stats;
   const changeCount = stats.recentChangeCountCapped
     ? `至少 ${stats.recentChangeCount} 条，接口只取最新 ${stats.recentChangeCount} 条`
     : `${stats.recentChangeCount} 条`;
-  const categories = [...(snapshot.categories || [])]
-    .filter((category) => category?.id && category?.name)
-    .sort((a, b) => CATEGORY_ORDER.indexOf(a.id) - CATEGORY_ORDER.indexOf(b.id));
   const metadata = {
     entity: `supply:${lead.slug}:merchant-daily`,
-    businessModel: "supply-merchant-daily-v2",
-    deliveryType: "merchant-operating-sheet",
+    businessModel: "supply-merchant-daily-v3",
+    deliveryType: "merchant-opening-and-closing-sheet",
     commercialSignature: `supply:merchant:${lead.slug}:${dateStr}`,
     offerFamily: `supply:${lead.slug}`,
     preferredLane: "account",
@@ -317,57 +409,64 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
     ...coreProducts,
     ...selectedSignals.map((signal) => signal.product),
   ].map((product) => [product.slug, product])).values()];
+  const holdItems = [
+    ...anomalousProducts.map((product) => ({ type: "anomaly", product })),
+    ...pausedProducts.map((product) => ({ type: "paused", product })),
+  ];
+  const allowedSupplyUrls = [...new Set([
+    snapshot.source,
+    ...products.flatMap((product) => [
+      product.productUrl,
+      product.profitCalculatorUrl,
+      profitCalculatorUrl(product, resolveMerchantCostReference(product).referencePrice),
+    ]),
+  ].filter(Boolean))];
 
   return {
     markdown: [
-      "## 今日经营判断",
+      "## 今日能不能做",
       "",
-      `- **货源状态** 本次快照生成于 ${formatShanghaiTime(snapshot.generatedAt)}，最近有效货源观察记录于 ${formatShanghaiTime(snapshot.latestObservedAt)}。货源雷达收录 ${stats.productCount} 个标准商品，其中 ${stats.availableProductCount} 个当前存在可购买报价。`,
-      `- **接单方向** 今天先复核 ${cleanArticleText(lead.name, 120)}，再按核心商品备货表逐项处理。备货表只表示当前有公开可买报价，不代表销量或需求。`,
-      "- **停止条件** 商品规格、交付、登录方式、质保或退款边界没有核对清楚，原始货源失效，或者实际成交价低于保本价时停止接单。",
+      `- **经营结论** 新手今天只验证 [${cleanArticleText(lead.name, 100)}](${lead.productUrl})。先核对两个同规格来源，再按 ${formatMoney(leadCost.referencePrice)} 填入自己的真实成本。没有现成买家入口时不囤货。`,
+      `- **数据时间** 快照生成于 ${formatShanghaiTime(snapshot.generatedAt)}，最近有效货源观察记录于 ${formatShanghaiTime(snapshot.latestObservedAt)}。`,
+      "- **全局停止** 原始货源失效、规格无法对齐、交付与退款边界不清楚，或者自己的实际售价低于保本价时停止接单。",
       "",
-      "## 今日经营看板",
+      "## 新手第一单",
       "",
-      `数据来自[爱窝啦·货源雷达实时商机](${snapshot.source})，所有数字属于同一次快照。`,
+      newSellerFirstOrderMarkdown(lead),
       "",
-      `- **标准商品** ${stats.productCount} 个，用来统一跨站商品名称和规格入口。`,
-      `- **当前可买** ${stats.availableProductCount} 个，完全缺货商品单独放入暂停清单。`,
-      `- **公开报价** ${stats.availableOfferCount} 条，只代表可比较的公开货源，不代表销量。`,
-      `- **货源异动** 最近 24 小时 ${changeCount}，只采用连续快照能够确认的变化。`,
-      `- **低供给观察** ${stats.lowSupplyProductCount} 个，报价少也可能来自需求不足，先小量验证。`,
+      "## 老商家开盘单",
       "",
-      "## 核心商品备货表",
+      "先处理下面三项，再检查自己的待交付订单。没有列出的商品继续按原规则经营，不因日报自动扩量。",
       "",
-      "这份清单按平台顺序、当前是否有货和站内商品顺序选出。金额是进货参考，卖家仍需核对具体账号形态、期限、登录和质保。",
+      oldMerchantActions.map(({ product, signal }) => oldMerchantMarkdown(product, signal)).join("\n\n"),
       "",
-      coreProducts.map(coreProductMarkdown).join("\n"),
+      "## 今日货源证据",
       "",
-      "## 今日异动与补货",
+      `数据来自[实时货源商机台](${snapshot.source})，下面的数字属于同一次快照。`,
       "",
-      selectedSignals.map(actionMarkdown).join("\n\n"),
+      `- **标准商品** ${stats.productCount} 个，其中 ${stats.availableProductCount} 个当前存在可购买报价。`,
+      `- **公开报价** ${stats.availableOfferCount} 条，只代表可比较货源，不代表销量或需求。`,
+      `- **货源异动** 最近 24 小时 ${changeCount}。`,
+      `- **低供给观察** ${stats.lowSupplyProductCount} 个，报价少也可能来自需求不足。`,
+      "- **完整盘面** 平台分类、全部异动和当前库存留在实时商机台，日报不重复抄一遍。",
       "",
-      "## 平台货源地图",
+      "## 今日关键异动",
       "",
-      categories.map((category) => categoryMarketMarkdown(category, products)).join("\n"),
+      selectedSignals.map(signalMarkdown).join("\n\n"),
       "",
-      "## 暂停接单与同类替代",
+      "## 暂停和异常清单",
       "",
-      pausedProducts.length
-        ? pausedProducts.map((product) => pausedProductMarkdown(product, products)).join("\n")
-        : "当前快照中的标准商品都至少有 1 条可购买报价。库存仍会变化，付款和接单前要再次打开标准商品页复核。",
+      holdItems.length
+        ? holdItems.map((item) => item.type === "anomaly"
+          ? anomalousProductMarkdown(item.product)
+          : pausedProductMarkdown(item.product, products)).join("\n")
+        : "当前没有发现达到隔离门槛的极端低价，核心目录也没有新增完全缺货商品。付款前仍要再次打开原始页面。",
       "",
-      "## 报价与利润纪律",
+      "## 收盘复盘",
       "",
-      "- **规格先对齐** 售卖规格与进货规格一致以后再比较金额。日卡、共享、镜像、代充、成品号和不同质保不能混算。",
-      `- **成本填完整** 从[${cleanArticleText(lead.name, 100)} 利润计算器](${lead.profitCalculatorUrl})开始，把进货、支付、退款损耗、售后和获客成本全部填入。`,
-      "- **质保单独核** 最低进货参考与明确质保参考相差较大时，先查交付和退款边界，不直接按最低价接带质保订单。",
-      "- **保本线要执行** 用自己的真实成交价比较保本价。实际成交价低于保本价，或者只能依靠不清楚的规格压价时停止接单。",
-      "",
-      "## 今日执行单",
-      "",
-      "- **上架前** 核对商品名、账号形态、期限、可用端、登录方式、验证方式、交付时间、质保和退款说明。",
-      `- **采购前** 重新打开[${cleanArticleText(lead.name, 100)} 标准商品页](${lead.productUrl})和原始货源，确认库存与页面说明仍然有效。`,
-      "- **收盘后** 记录每款商品的真实询问、成交规格、成交价、交付失败和退款原因，明天再决定扩大、减少或暂停。",
+      "- **记录真实结果** 写下每款商品的询问数、成交数、实际成交规格和成交价。没有询问也要记录。",
+      "- **核算真实损耗** 用实际采购成本重算毛利，并记录交付失败、退款、补发和售后耗时。",
+      "- **决定明天动作** 只有真实毛利为正、交付稳定并且货源仍可复核时才扩大。其余商品维持小量或暂停。",
       ...relatedIndustrySection(industryCandidates, officialProducts),
       "",
       `<!-- opportunity-replay: ${JSON.stringify(metadata)} -->`,
@@ -375,8 +474,8 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
     selectedSignals,
     coreProducts,
     pausedProducts,
-    categories,
+    anomalousProducts,
+    oldMerchantActions,
+    allowedSupplyUrls,
   };
 }
-
-export { CATEGORY_NAMES };

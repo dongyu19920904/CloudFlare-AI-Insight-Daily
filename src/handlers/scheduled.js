@@ -2056,11 +2056,7 @@ async function generateAccountOpportunityMarkdown(
             industryCandidates: overseasPreviewCandidates,
         });
         const allowedSupplyUrls = [
-            options.supplySnapshot.source,
-            ...(options.supplySnapshot.products || []).flatMap((product) => [
-                product.productUrl,
-                product.profitCalculatorUrl,
-            ]),
+            ...supplyResult.allowedSupplyUrls,
         ];
         const validation = validateSupplyDrivenAccountOpportunityPublication({
             markdown: supplyResult.markdown,
@@ -2069,17 +2065,20 @@ async function generateAccountOpportunityMarkdown(
             expectedProductSlugs: supplyResult.selectedSignals.map(
                 (signal) => signal.product.slug
             ),
-            expectedCoreProductSlugs: supplyResult.coreProducts.map(
-                (product) => product.slug
-            ),
+            expectedCoreProductSlugs: [...new Set([
+                supplyResult.coreProducts[0]?.slug,
+                ...supplyResult.oldMerchantActions.map(({ product }) => product.slug),
+            ].filter(Boolean))],
             expectedPausedProductSlugs: supplyResult.pausedProducts.map(
                 (product) => product.slug
             ),
-            expectedCategories: supplyResult.categories,
+            expectedAnomalousProductSlugs: supplyResult.anomalousProducts.map(
+                (product) => product.slug
+            ),
             aivoraLinkPolicy: { allowedUrls: [] },
         });
 
-        debugInfo.accountOpportunityPipelineVersion = 'supply-merchant-daily-v2';
+        debugInfo.accountOpportunityPipelineVersion = 'supply-merchant-daily-v3';
         debugInfo.accountOpportunitySupplyDriven = true;
         debugInfo.accountOpportunityModelCalls = 0;
         debugInfo.accountOpportunityCandidateCount = overseasPreviewCandidates.length;
@@ -2094,8 +2093,10 @@ async function generateAccountOpportunityMarkdown(
             supplyResult.coreProducts.map((product) => product.slug);
         debugInfo.accountOpportunityPausedSupplyProducts =
             supplyResult.pausedProducts.map((product) => product.slug);
-        debugInfo.accountOpportunityMerchantCategoryCount =
-            supplyResult.categories.length;
+        debugInfo.accountOpportunityAnomalousPriceProducts =
+            supplyResult.anomalousProducts.map((product) => product.slug);
+        debugInfo.accountOpportunityMerchantActionCount =
+            supplyResult.oldMerchantActions.length;
         debugInfo.accountOpportunityGenerated = true;
 
         return {

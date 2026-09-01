@@ -8,10 +8,10 @@ const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE = "{{< latest-account-opportunity >}}";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
-  "爱窝啦 AI 账号商家经营日报，根据实时货源、库存、报价与价格异动整理当天备货、接单、利润核算、断货替代和停止建议。";
+  "爱窝啦 AI 账号商机日报，用实时货源生成新手第一单、老商家开盘动作、成本核算、停单提醒和收盘复盘。";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE = "爱窝啦 AI 账号商家经营日报";
-export const DEFAULT_ACCOUNT_OPPORTUNITY_LINK_TITLE = "AI账号商家经营日报";
+export const DEFAULT_ACCOUNT_OPPORTUNITY_LINK_TITLE = "AI账号商机日报";
 export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_DESCRIPTION = `${DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION} 货源事实为主，官方变化只作辅助。`;
 const ACCOUNT_OBSERVATION_HARD_SIGNAL =
   "今天没有取得可由官方页面确认的海外 AI 账号、价格、额度或政策新变化；不新增商品。";

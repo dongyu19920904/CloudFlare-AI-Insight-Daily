@@ -507,7 +507,7 @@ description: "旧说明"
 旧正文`;
   const updated = updateAccountOpportunityHomeIndexContent(current, "新正文", "2026-08-31");
 
-  assert.match(updated, /linkTitle: AI账号商家经营日报/);
+  assert.match(updated, /linkTitle: AI账号商机日报/);
   assert.match(updated, /title: 爱窝啦 AI 账号商家经营日报/);
   assert.match(updated, /type: account-opportunity/);
   assert.match(updated, /\{\{< latest-account-opportunity >\}\}/);

@@ -63,7 +63,7 @@ description: "new"
     "2026-06-22",
   );
 
-  assert.match(repaired, /^linkTitle: AI账号商家经营日报$/m);
+  assert.match(repaired, /^linkTitle: AI账号商机日报$/m);
   assert.match(repaired, /^title: 爱窝啦 AI 账号商家经营日报$/m);
   assert.match(repaired, /^type: account-opportunity$/m);
   assert.doesNotMatch(repaired, /^next:/m);

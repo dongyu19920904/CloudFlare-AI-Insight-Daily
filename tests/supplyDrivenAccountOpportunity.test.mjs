@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   buildSupplyDrivenAccountOpportunityMarkdown,
+  resolveMerchantCostReference,
+  selectAnomalousPriceProducts,
   selectDailySupplySignals,
   selectMerchantCoreProducts,
   selectPausedProducts,
@@ -35,7 +37,7 @@ function signal({ kind, name, slug, tone = "opportunity", price = 10, count = 5 
       categoryId,
       categoryName: categoryId,
       lowestPrice: price,
-      warrantyPrice: price + 20,
+      warrantyPrice: price * 1.2,
       availableOfferCount: count,
       updatedAt: "2026-08-31T06:35:00Z",
       sortOrder: 1,
@@ -54,7 +56,7 @@ function product({ name, slug, categoryId, price, count, sortOrder = 1 }) {
     categoryId,
     categoryName: categoryId,
     lowestPrice: price,
-    warrantyPrice: price === null ? null : price + 20,
+    warrantyPrice: price === null ? null : price * 1.2,
     availableOfferCount: count,
     updatedAt: "2026-08-31T06:35:00Z",
     sortOrder,
@@ -110,10 +112,10 @@ test("selects a popular opportunity and a risk instead of the first three source
   const selected = selectDailySupplySignals(snapshot);
   assert.equal(selected[0].product.slug, "chatgpt-plus");
   assert.equal(selected[1].product.slug, "chatgpt-pro");
-  assert.equal(selected.length, 4);
+  assert.equal(selected.length, 2);
 });
 
-test("keeps verification products visible in the market map but out of actionable signals", () => {
+test("keeps verification products out of actionable signals", () => {
   const verificationSignal = signal({
     kind: "restock",
     name: "ChatGPT Plus 接码",
@@ -132,14 +134,61 @@ test("keeps verification products visible in the market map but out of actionabl
   assert.ok(selected.every((item) => item.product.categoryId !== "verification"));
 });
 
-test("builds an available cross-platform merchant board and isolates unavailable products", () => {
+test("builds a short merchant board and isolates unavailable products", () => {
   const selected = selectMerchantCoreProducts(snapshot);
-  assert.equal(selected.length, 8);
+  assert.equal(selected.length, 4);
   assert.equal(selected[0].slug, "chatgpt-plus-recharge");
-  assert.deepEqual(selected.slice(0, 3).map((item) => item.categoryId), ["chatgpt", "chatgpt", "chatgpt"]);
-  assert.ok(new Set(selected.map((item) => item.categoryId)).size >= 6);
+  assert.deepEqual(selected.slice(0, 2).map((item) => item.categoryId), ["chatgpt", "chatgpt"]);
+  assert.ok(new Set(selected.map((item) => item.categoryId)).size >= 3);
   assert.ok(selected.every((item) => item.availableOfferCount > 0));
   assert.deepEqual(selectPausedProducts(snapshot).map((item) => item.slug), ["claude-paused"]);
+});
+
+test("isolates an extreme lowest price and uses the warranty reference for merchant math", () => {
+  const suspicious = product({
+    name: "ChatGPT Plus 正价代充",
+    slug: "chatgpt-plus-recharge",
+    categoryId: "chatgpt",
+    price: 1,
+    count: 220,
+    sortOrder: 1001,
+  });
+  suspicious.warrantyPrice = 112.11;
+  const irrelevantSuspicious = product({
+    name: "OpenAI 手机验证",
+    slug: "openai-phone-verification",
+    categoryId: "verification",
+    price: 1,
+    count: 200,
+    sortOrder: 9001,
+  });
+  irrelevantSuspicious.warrantyPrice = 100;
+  const riskySnapshot = {
+    ...snapshot,
+    products: [suspicious, irrelevantSuspicious, ...snapshot.products.slice(1)],
+  };
+
+  assert.deepEqual(resolveMerchantCostReference(suspicious), {
+    referencePrice: 112.11,
+    lowestPrice: 1,
+    warrantyPrice: 112.11,
+    abnormalLowestPrice: true,
+    label: "异常最低价已隔离，暂用明确质保报价",
+  });
+  assert.deepEqual(selectAnomalousPriceProducts(riskySnapshot).map((item) => item.slug), [
+    "chatgpt-plus-recharge",
+  ]);
+
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-01",
+    snapshot: riskySnapshot,
+  });
+  assert.notEqual(result.coreProducts[0].slug, "chatgpt-plus-recharge");
+  assert.match(result.markdown, /最低价 ¥1\.00 已隔离/);
+  assert.match(result.markdown, /cost=112\.11/);
+  assert.ok(result.allowedSupplyUrls.some((url) => url.includes("cost=112.11")));
+  assert.doesNotMatch(result.markdown, /cost=1(?:\.00)?(?:&|\))/);
+  assert.match(result.markdown, /暂停和异常清单[\s\S]*chatgpt-plus-recharge/);
 });
 
 test("builds a factual seller daily and drops unrelated industry news", () => {
@@ -156,20 +205,26 @@ test("builds a factual seller daily and drops unrelated industry news", () => {
     }],
   });
 
-  assert.match(result.markdown, /## 今日经营看板/);
-  assert.match(result.markdown, /## 核心商品备货表/);
-  assert.match(result.markdown, /## 平台货源地图/);
-  assert.match(result.markdown, /## 暂停接单与同类替代/);
-  assert.match(result.markdown, /账号验证辅助/);
+  assert.match(result.markdown, /## 今日能不能做/);
+  assert.match(result.markdown, /## 新手第一单/);
+  assert.match(result.markdown, /## 老商家开盘单/);
+  assert.match(result.markdown, /## 今日货源证据/);
+  assert.match(result.markdown, /## 今日关键异动/);
+  assert.match(result.markdown, /## 暂停和异常清单/);
+  assert.match(result.markdown, /## 收盘复盘/);
+  assert.doesNotMatch(result.markdown, /## 平台货源地图/);
   assert.doesNotMatch(result.markdown, /接码/);
   assert.match(result.markdown, /公开报价[\s\S]*3349 条/);
   assert.match(result.markdown, /card-products\/chatgpt-plus/);
   assert.match(result.markdown, /card-products\/claude-pro/);
-  assert.match(result.markdown, /claude-paused[\s\S]*当前可购买报价 0 条/);
+  assert.match(result.markdown, /claude-paused[\s\S]*当前可购买报价为 0/);
   assert.match(result.markdown, /profit-calculator/);
   assert.match(result.markdown, /接口只取最新 100 条/);
   assert.doesNotMatch(result.markdown, /## 官方变化与经营影响/);
   assert.doesNotMatch(result.markdown, /Grok 用户转述/);
+  assert.equal(result.coreProducts.length, 4);
+  assert.equal(result.oldMerchantActions.length, 3);
+  assert.equal(result.selectedSignals.length, 2);
   const visible = result.markdown.replace(/\]\(https?:\/\/[^)]+\)/g, "]");
   assert.doesNotMatch(visible, /[：—–]/);
   assert.doesNotMatch(visible, /不是.{0,50}而是|并非.{0,50}而是/);
@@ -209,5 +264,5 @@ test("keeps a direct primary-source ChatGPT Plus account change as context", () 
   });
 
   assert.match(result.markdown, /openai\.com\/chatgpt-plus-account-policy/);
-  assert.match(result.markdown, /## 官方变化与经营影响/);
+  assert.match(result.markdown, /## 一条相关官方变化/);
 });

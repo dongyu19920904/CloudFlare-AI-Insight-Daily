@@ -87,11 +87,9 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
     expectedStats: snapshot.stats,
     expectedProductSlugs: ["chatgpt-plus"],
     expectedCoreProductSlugs: ["chatgpt-plus"],
-    expectedCategories: snapshot.categories,
   });
   assert.deepEqual(valid.issues, []);
   assert.equal(valid.opportunityCount, 1);
-  assert.match(markdown, /账号验证辅助/);
   assert.doesNotMatch(markdown, /接码/);
 
   const invented = validateSupplyDrivenAccountOpportunityPublication({
@@ -102,6 +100,14 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
   });
   assert.equal(invented.ok, false);
   assert.match(invented.issues.join(" | "), /可购买报价数/);
+
+  const anomalousFirstOrder = validateSupplyDrivenAccountOpportunityPublication({
+    markdown,
+    allowedSupplyUrls,
+    expectedAnomalousProductSlugs: ["chatgpt-plus"],
+  });
+  assert.equal(anomalousFirstOrder.ok, false);
+  assert.match(anomalousFirstOrder.issues.join(" | "), /异常价格商品不得进入新手第一单/);
 });
 
 test("validateDailyPublication accepts the V3 topic structure", () => {

@@ -1623,15 +1623,10 @@ export function validateAccountOpportunityPublication({
 
 const SUPPLY_DRIVEN_ACTION_FIELDS = [
   "异动证据",
-  "采购动作",
-  "报价动作",
-  "售后检查",
+  "经营动作",
+  "成本口径",
   "停止条件",
 ];
-
-const SAFE_SUPPLY_CATEGORY_NAMES = new Map([
-  ["verification", "账号验证辅助"],
-]);
 
 function isAllowedPublicSupplyUrl(value) {
   try {
@@ -1655,7 +1650,7 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   expectedProductSlugs = [],
   expectedCoreProductSlugs = [],
   expectedPausedProductSlugs = [],
-  expectedCategories = [],
+  expectedAnomalousProductSlugs = [],
   aivoraLinkPolicy = { allowedUrls: [] },
 }) {
   const visibleMarkdown = stripOpportunityReplayMetadata(markdown);
@@ -1663,14 +1658,13 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     label: "实时货源账号商机页面",
     minChars: 700,
     requiredPhrases: [
-      "## 今日经营判断",
-      "## 今日经营看板",
-      "## 核心商品备货表",
-      "## 今日异动与补货",
-      "## 平台货源地图",
-      "## 暂停接单与同类替代",
-      "## 报价与利润纪律",
-      "## 今日执行单",
+      "## 今日能不能做",
+      "## 新手第一单",
+      "## 老商家开盘单",
+      "## 今日货源证据",
+      "## 今日关键异动",
+      "## 暂停和异常清单",
+      "## 收盘复盘",
       ...SUPPLY_DRIVEN_ACTION_FIELDS,
     ],
     forbiddenPatterns: [
@@ -1687,54 +1681,85 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   }
 
   const summary = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+今日经营判断(?:\s|$).*$/im)
+    extractSection(visibleMarkdown, /^##\s+今日能不能做(?:\s|$).*$/im)
   );
   const summaryLines = summary.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (summaryLines.length !== 3 || summaryLines.some((line) => !/^[-*+]\s+/.test(line))) {
-    issues.push("今日经营判断必须恰好是 3 个一级列表项");
+    issues.push("今日能不能做必须恰好是 3 个一级列表项");
   }
-  for (const label of ["货源状态", "接单方向", "停止条件"]) {
+  for (const label of ["经营结论", "数据时间", "全局停止"]) {
     if (!summaryLines.some((line) => line.includes(`**${label}**`))) {
-      issues.push(`今日经营判断缺少“${label}”`);
+      issues.push(`今日能不能做缺少“${label}”`);
     }
   }
 
-  const coreSection = extractSection(
+  const firstOrderSection = extractSection(
     visibleMarkdown,
-    /^##\s+核心商品备货表(?:\s|$).*$/im
+    /^##\s+新手第一单(?:\s|$).*$/im
   );
-  const coreProductSlugs = [...coreSection.matchAll(
+  const firstOrderBlocks = extractLevel3Blocks(firstOrderSection);
+  const firstOrderSlugs = [...firstOrderSection.matchAll(
+    /https:\/\/supply\.aivora\.cn\/card-products\/([a-z0-9-]+)/gi
+  )].map((match) => match[1]);
+  const uniqueFirstOrderSlugs = [...new Set(firstOrderSlugs)];
+  if (firstOrderBlocks.length !== 1 || uniqueFirstOrderSlugs.length !== 1) {
+    issues.push("新手第一单必须恰好包含 1 个当前可买商品");
+  }
+  for (const field of ["成本口径", "为什么选它", "利润入口", "按这个顺序做", "第一单门槛", "停止条件"]) {
+    if (!firstOrderSection.includes(`**${field}**`)) {
+      issues.push(`新手第一单缺少“${field}”`);
+    }
+  }
+  if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(firstOrderSection)) {
+    issues.push("新手第一单必须提供利润计算入口");
+  }
+
+  const merchantSection = extractSection(
+    visibleMarkdown,
+    /^##\s+老商家开盘单(?:\s|$).*$/im
+  );
+  const merchantActions = extractLevel3Blocks(merchantSection);
+  if (merchantActions.length < 1 || merchantActions.length > 3) {
+    issues.push("老商家开盘单必须包含 1 至 3 个经营动作");
+  }
+  for (const block of merchantActions) {
+    for (const field of ["当前盘面", "开盘动作", "核价入口", "停止条件"]) {
+      if (!block.includes(`**${field}**`)) {
+        issues.push(`老商家开盘动作缺少“${field}”`);
+      }
+    }
+    if (!/https:\/\/supply\.aivora\.cn\/card-products\/[a-z0-9-]+/i.test(block)) {
+      issues.push("每个老商家开盘动作必须链接到标准商品页");
+    }
+    if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(block)) {
+      issues.push("每个老商家开盘动作必须提供利润计算入口");
+    }
+  }
+
+  const coreSections = `${firstOrderSection}\n${merchantSection}`;
+  const coreProductSlugs = [...coreSections.matchAll(
     /https:\/\/supply\.aivora\.cn\/card-products\/([a-z0-9-]+)/gi
   )].map((match) => match[1]);
   const uniqueCoreProductSlugs = [...new Set(coreProductSlugs)];
-  if (uniqueCoreProductSlugs.length < 1 || uniqueCoreProductSlugs.length > 8) {
-    issues.push("核心商品备货表必须包含 1 至 8 个当前可买商品");
-  }
-  if (!/进货参考/.test(coreSection) || !/可购买报价/.test(coreSection) || !/今日动作/.test(coreSection)) {
-    issues.push("核心商品备货表缺少进货参考、可购买报价或今日动作");
-  }
   for (const slug of expectedCoreProductSlugs || []) {
     if (!uniqueCoreProductSlugs.includes(slug)) {
-      issues.push(`核心商品备货表缺少已选商品: ${slug}`);
+      issues.push(`新手或老商家经营单缺少已选商品: ${slug}`);
     }
   }
 
   const actionSection = extractSection(
     visibleMarkdown,
-    /^##\s+今日异动与补货(?:\s|$).*$/im
+    /^##\s+今日关键异动(?:\s|$).*$/im
   );
   const actions = extractLevel3Blocks(actionSection);
-  if (actions.length < 1 || actions.length > 4) {
-    issues.push("账号商家经营日报必须包含 1 至 4 个货源异动");
+  if (actions.length < 1 || actions.length > 2) {
+    issues.push("账号商机日报必须包含 1 至 2 个关键异动");
   }
   for (const block of actions) {
-    if (/^###\s+\[[^\]]+\]\(https?:\/\//m.test(block)) {
-      issues.push("货源异动标题必须是纯文本");
-    }
     for (const field of SUPPLY_DRIVEN_ACTION_FIELDS) {
       const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       if (!new RegExp(`^-\\s*\\*\\*${escaped}\\*\\*\\s+\\S`, "m").test(block)) {
-        issues.push(`货源异动缺少“${field}”字段`);
+        issues.push(`关键异动缺少“${field}”字段`);
       }
     }
     if (!/https:\/\/supply\.aivora\.cn\/card-products\/[a-z0-9-]+/i.test(block)) {
@@ -1745,50 +1770,36 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     }
   }
 
-  const actionSteps = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+今日执行单(?:\s|$).*$/im)
+  const closingSteps = getSectionBody(
+    extractSection(visibleMarkdown, /^##\s+收盘复盘(?:\s|$).*$/im)
   ).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (actionSteps.length !== 3 || actionSteps.some((line) => !/^[-*+]\s+/.test(line))) {
-    issues.push("账号商家经营日报的今日执行单必须恰好是 3 个一级列表项");
+  if (closingSteps.length !== 3 || closingSteps.some((line) => !/^[-*+]\s+/.test(line))) {
+    issues.push("账号商机日报的收盘复盘必须恰好是 3 个一级列表项");
   }
-  for (const label of ["上架前", "采购前", "收盘后"]) {
-    if (!actionSteps.some((line) => line.includes(`**${label}**`))) {
-      issues.push(`账号商家经营日报的今日执行单缺少“${label}”`);
+  for (const label of ["记录真实结果", "核算真实损耗", "决定明天动作"]) {
+    if (!closingSteps.some((line) => line.includes(`**${label}**`))) {
+      issues.push(`账号商机日报的收盘复盘缺少“${label}”`);
     }
   }
 
   const pausedSection = extractSection(
     visibleMarkdown,
-    /^##\s+暂停接单与同类替代(?:\s|$).*$/im
+    /^##\s+暂停和异常清单(?:\s|$).*$/im
   );
   for (const slug of expectedPausedProductSlugs || []) {
     if (!pausedSection.includes(`https://supply.aivora.cn/card-products/${slug}`)) {
-      issues.push(`暂停接单清单缺少已知缺货商品: ${slug}`);
+      issues.push(`暂停和异常清单缺少已知缺货商品: ${slug}`);
     }
-    if (uniqueCoreProductSlugs.includes(slug)) {
-      issues.push(`缺货商品不得进入核心备货表: ${slug}`);
+    if (uniqueFirstOrderSlugs.includes(slug)) {
+      issues.push(`缺货商品不得进入新手第一单: ${slug}`);
     }
   }
-
-  const categorySection = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+平台货源地图(?:\s|$).*$/im)
-  );
-  for (const category of expectedCategories || []) {
-    const expectedName = SAFE_SUPPLY_CATEGORY_NAMES.get(category?.id) || category?.name || "";
-    const escapedName = String(expectedName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (!escapedName) continue;
-    const categoryLine = categorySection.split(/\r?\n/).find((line) =>
-      new RegExp(`\\*\\*${escapedName}\\*\\*`).test(line)
-    ) || "";
-    if (!categoryLine) {
-      issues.push(`平台货源地图缺少分类: ${expectedName}`);
-      continue;
+  for (const slug of expectedAnomalousProductSlugs || []) {
+    if (!pausedSection.includes(`https://supply.aivora.cn/card-products/${slug}`)) {
+      issues.push(`暂停和异常清单缺少异常价格商品: ${slug}`);
     }
-    for (const value of [category.productCount, category.availableProductCount, category.availableOfferCount]) {
-      if (!new RegExp(`(?:^|\\D)${Number(value)}(?:\\D|$)`).test(categoryLine)) {
-        issues.push(`平台货源地图中的${expectedName}统计与快照不一致`);
-        break;
-      }
+    if (uniqueFirstOrderSlugs.includes(slug)) {
+      issues.push(`异常价格商品不得进入新手第一单: ${slug}`);
     }
   }
 
@@ -1822,9 +1833,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
       ["lowSupplyProductCount", "低供给观察数"],
     ]) {
       if (!new RegExp(`(?:^|\\D)${Number(expectedStats[field])}(?:\\D|$)`).test(getSectionBody(
-        extractSection(visibleMarkdown, /^##\s+今日经营看板(?:\s|$).*$/im)
+        extractSection(visibleMarkdown, /^##\s+今日货源证据(?:\s|$).*$/im)
       ))) {
-        issues.push(`今日经营看板缺少快照中的${label}`);
+        issues.push(`今日货源证据缺少快照中的${label}`);
       }
     }
   }
@@ -1854,7 +1865,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   return {
     ok: issues.length === 0,
     issues,
-    opportunityCount: actions.length,
+    opportunityCount: uniqueFirstOrderSlugs.length,
+    merchantActionCount: merchantActions.length,
+    signalCount: actions.length,
     supplyLinkCount: supplyLinks.length,
     aivoraLinkCount: aivoraValidation.linkCount,
   };

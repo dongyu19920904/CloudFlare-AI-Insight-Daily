@@ -79,21 +79,20 @@ jobs:
           mismatches = [f"{key}={debug.get(key)!r}" for key, value in expected.items() if debug.get(key) != value]
           if mismatches:
               raise SystemExit("Dry-run contract failed: " + ", ".join(mismatches))
-          if debug.get("accountOpportunityPipelineVersion") != "supply-merchant-daily-v2":
-              raise SystemExit("Dry-run did not use supply-merchant-daily-v2")
+          if debug.get("accountOpportunityPipelineVersion") != "supply-merchant-daily-v3":
+              raise SystemExit("Dry-run did not use supply-merchant-daily-v3")
           if debug.get("accountOpportunityModelCalls") != 0:
               raise SystemExit("Supply-driven generation unexpectedly used an AI model")
 
           markdown = debug.get("accountOpportunityDryRunMarkdown") or ""
           required = [
-              "## 今日经营判断",
-              "## 今日经营看板",
-              "## 核心商品备货表",
-              "## 今日异动与补货",
-              "## 平台货源地图",
-              "## 暂停接单与同类替代",
-              "## 报价与利润纪律",
-              "## 今日执行单",
+              "## 今日能不能做",
+              "## 新手第一单",
+              "## 老商家开盘单",
+              "## 今日货源证据",
+              "## 今日关键异动",
+              "## 暂停和异常清单",
+              "## 收盘复盘",
               "https://supply.aivora.cn/card-products/",
               "https://supply.aivora.cn/profit-calculator?",
           ]
@@ -104,12 +103,14 @@ jobs:
 
           selected = debug.get("accountOpportunitySelectedSupplySignals") or []
           core = debug.get("accountOpportunityMerchantCoreProducts") or []
-          if len(core) < 6:
+          if len(core) < 4:
               raise SystemExit(f"Merchant board is too narrow: {len(core)} core products")
           if len(set(core)) != len(core):
               raise SystemExit("Merchant board contains duplicate products")
-          if (debug.get("accountOpportunityMerchantCategoryCount") or 0) < 4:
-              raise SystemExit("Merchant market map covers fewer than four categories")
+          if debug.get("accountOpportunityMerchantActionCount") != 3:
+              raise SystemExit("Merchant opening sheet does not contain exactly three actions")
+          if len(selected) < 1 or len(selected) > 2:
+              raise SystemExit(f"Key signal count is out of bounds: {len(selected)}")
           if (debug.get("accountOpportunitySupplyProductCount") or 0) < len(core):
               raise SystemExit("Supply snapshot product board is incomplete")
           print(
