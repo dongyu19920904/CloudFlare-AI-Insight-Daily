@@ -442,9 +442,12 @@ function selectOldMerchantActions(coreProducts, signals, anomalousProducts = [],
     .slice(0, Math.max(0, limit));
 }
 
-function oldMerchantMarkdown(item, index) {
+function oldMerchantMarkdown(item, index, leadProduct = null) {
   const { product, signal, type } = item;
-  const cost = resolveMerchantCostReference(product);
+  const isLeadReference = leadProduct?.slug === product.slug;
+  const cost = isLeadReference
+    ? resolveNewSellerCostReference(leadProduct)
+    : resolveMerchantCostReference(product);
   let evidence;
   let action;
   let stop;
@@ -458,9 +461,20 @@ function oldMerchantMarkdown(item, index) {
     stop = "无法解释极端价差或质保内容不清楚时暂停。";
   } else if (signal) {
     const source = signal.sourceUrl ? ` [查看原始货源](${signal.sourceUrl})。` : "";
-    evidence = `${cleanArticleText(signal.evidence, 420)} 记录于 ${formatShanghaiTime(signal.observedAt)}。${source}`;
-    action = cleanArticleText(signal.sellerAction, 420);
-    stop = cleanArticleText(signal.stopCondition, 420);
+    if (isLeadReference) {
+      const change = signal.kind === "restock" ? "一个原货源由缺货变为有货"
+        : signal.kind === "stockout" ? "一个原货源由有货变为缺货"
+          : signal.kind === "price_rise" ? "一个原货源记录涨价"
+            : signal.kind === "price_drop" ? "一个原货源记录降价"
+              : "一个原货源记录发生变化";
+      evidence = `${change}，记录于 ${formatShanghaiTime(signal.observedAt)}。${source}这是单条来源变化，上方已核验的同规格分组与进货参考仍是本页核价依据。`;
+      action = "回看上方唯一建议，先重新核对同规格组，再处理已有订单。";
+      stop = "原始来源与上方分组的期限、地区、账号形态或交付方式不一致时停止。";
+    } else {
+      evidence = `${cleanArticleText(signal.evidence, 420)} 记录于 ${formatShanghaiTime(signal.observedAt)}。${source}`;
+      action = cleanArticleText(signal.sellerAction, 420);
+      stop = cleanArticleText(signal.stopCondition, 420);
+    }
   } else {
     evidence = `当前可购买报价 ${product.availableOfferCount} 条，进货参考 ${formatMoney(cost.referencePrice)}。`;
     action = "检查待交付订单使用的货源是否仍有货，再用自己的真实成交价重算不亏钱所需的最低售价。";
@@ -591,7 +605,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
         : "今天没有可比较的连续历史快照。下面只列当前库存和价格风险，不显示涨跌。",
       "",
       oldMerchantActions.length
-        ? oldMerchantActions.map((item, index) => oldMerchantMarkdown(item, index)).join("\n\n")
+        ? oldMerchantActions.map((item, index) => oldMerchantMarkdown(item, index, lead)).join("\n\n")
         : "当前没有需要立即处理的核心商品动作，继续逐单核对已有订单。",
       "",
       "## 今天暂停什么",

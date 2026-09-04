@@ -177,6 +177,27 @@ test("selects one starter product only when two current sources were verified", 
   assert.doesNotMatch(result.markdown, /## 一眼看懂[\s\S]*?两个不同货源站，例如/);
 });
 
+test("keeps the starter price inside its verified spec group in every seller action", () => {
+  const leadProduct = {
+    ...snapshot.products[0],
+    lowestPrice: 111,
+    verifiedReferencePrice: 116.15,
+  };
+  const leadSignal = {
+    ...signal({ kind: "restock", name: leadProduct.name, slug: leadProduct.slug, price: 111, count: 246 }),
+    product: leadProduct,
+  };
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-01",
+    snapshot: { ...snapshot, products: [leadProduct, ...snapshot.products.slice(1)], signals: [leadSignal] },
+  });
+
+  assert.equal(JSON.parse(result.markdown.match(/<!-- opportunity-replay: (.*) -->/)[1]).referenceCost, 116.15);
+  assert.match(result.markdown, /cost=116\.15/);
+  assert.doesNotMatch(result.markdown, /cost=111\.00/);
+  assert.match(result.markdown, /这是单条来源变化/);
+});
+
 test("publishes a pause edition when all core products are unavailable", () => {
   const unavailable = {
     ...snapshot,
