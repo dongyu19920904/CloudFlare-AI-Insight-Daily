@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  enrichSnapshotWithVerifiedSources,
   loadSupplyOpportunitySnapshot,
   parseSupplyOpportunitySnapshot,
 } from "../src/supplyOpportunitySnapshot.js";
@@ -81,6 +82,29 @@ test("parses a fresh bounded supply snapshot", () => {
   assert.equal(snapshot.stats.availableOfferCount, 3349);
   assert.equal(snapshot.signals[0].product.slug, "chatgpt-plus");
   assert.equal(snapshot.products[0].categoryId, "chatgpt");
+});
+
+test("counts distinct current source names without treating offer rows as sources", async () => {
+  const parsed = parseSupplyOpportunitySnapshot(payload({
+    schemaVersion: 2,
+    products: [merchantProduct()],
+  }), { now: new Date("2026-08-31T06:45:00Z") });
+  const enriched = await enrichSnapshotWithVerifiedSources(parsed, {
+    now: new Date("2026-08-31T06:45:00Z"),
+    fetchImpl: async () => new Response(JSON.stringify({
+      items: [
+        { status: "in_stock", price: 111, channel: "货源甲", originalName: "ChatGPT Plus 菲区代充 1个月", url: "https://one.example/item" },
+        { status: "in_stock", price: 112, channel: "货源甲", originalName: "ChatGPT Plus 菲区充值 1个月", url: "https://one.example/item-2" },
+        { status: "in_stock", price: 113, channel: "货源乙", originalName: "ChatGPT Plus 菲律宾充值 1个月", url: "https://two.example/item" },
+        { status: "out_of_stock", price: 80, channel: "货源丙", originalName: "ChatGPT Plus 菲区代充 1个月", url: "https://three.example/item" },
+      ],
+    }), { status: 200, headers: { "content-type": "application/json" } }),
+  });
+
+  assert.equal(enriched.products[0].verifiedSourceCount, 2);
+  assert.deepEqual(enriched.products[0].verifiedSourceNames, ["货源甲", "货源乙"]);
+  assert.equal(enriched.products[0].verifiedSpecLabel, "代充 · 1个月 · 菲律宾");
+  assert.equal(enriched.signals[0].product.verifiedSourceCount, 2);
 });
 
 test("parses the V2 merchant product board while keeping V1 compatibility", () => {

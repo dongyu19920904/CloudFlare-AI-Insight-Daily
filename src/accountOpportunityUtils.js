@@ -8,7 +8,7 @@ const FRONT_MATTER_REGEX = /^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n/;
 const LATEST_ACCOUNT_OPPORTUNITY_SHORTCODE = "{{< latest-account-opportunity >}}";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION =
-  "爱窝啦 AI 账号商机日报，用实时货源生成新手第一单、老商家开盘动作、成本核算、停单提醒和收盘复盘。";
+  "爱窝啦 AI 账号商机日报，用实时货源给出一眼看懂、新手照做、老手看盘、停单提醒和收盘记录。";
 
 export const DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE = "爱窝啦 AI 账号商家经营日报";
 export const DEFAULT_ACCOUNT_OPPORTUNITY_LINK_TITLE = "AI账号商机日报";

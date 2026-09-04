@@ -2062,13 +2062,15 @@ async function generateAccountOpportunityMarkdown(
             markdown: supplyResult.markdown,
             allowedSupplyUrls,
             expectedStats: options.supplySnapshot.stats,
-            expectedProductSlugs: supplyResult.selectedSignals.map(
-                (signal) => signal.product.slug
-            ),
-            expectedCoreProductSlugs: [...new Set([
-                supplyResult.coreProducts[0]?.slug,
+            expectedProductSlugs: [...new Set([
+                supplyResult.leadProduct?.slug,
                 ...supplyResult.oldMerchantActions.map(({ product }) => product.slug),
+                ...supplyResult.pausedProducts.map((product) => product.slug),
+                ...supplyResult.anomalousProducts.map((product) => product.slug),
             ].filter(Boolean))],
+            expectedLeadProductSlug: supplyResult.leadProduct?.slug || null,
+            expectedVerifiedSourceCount: supplyResult.leadProduct?.verifiedSourceCount || 0,
+            expectComparableHistory: supplyResult.hasComparableHistory,
             expectedPausedProductSlugs: supplyResult.pausedProducts.map(
                 (product) => product.slug
             ),
@@ -2091,6 +2093,10 @@ async function generateAccountOpportunityMarkdown(
             }));
         debugInfo.accountOpportunityMerchantCoreProducts =
             supplyResult.coreProducts.map((product) => product.slug);
+        debugInfo.accountOpportunityStarterProduct = supplyResult.leadProduct?.slug || null;
+        debugInfo.accountOpportunityStarterVerifiedSourceCount =
+            supplyResult.leadProduct?.verifiedSourceCount || 0;
+        debugInfo.accountOpportunityHasComparableHistory = supplyResult.hasComparableHistory;
         debugInfo.accountOpportunityPausedSupplyProducts =
             supplyResult.pausedProducts.map((product) => product.slug);
         debugInfo.accountOpportunityAnomalousPriceProducts =

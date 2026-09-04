@@ -7,6 +7,10 @@ const FETCH_TIMEOUT_MS = 8000;
 const MAX_SIGNALS = 12;
 const MAX_CATEGORIES = 20;
 const MAX_PRODUCTS = 80;
+const MAX_SOURCE_VERIFICATION_PRODUCTS = 6;
+const MAX_SOURCE_VERIFICATION_OFFERS = 50;
+const SOURCE_VERIFICATION_TIMEOUT_MS = 5000;
+const CORE_CATEGORY_IDS = new Set(["chatgpt", "claude", "gemini", "grok", "ai-coding", "ai-creative"]);
 
 const CATEGORY_NAMES = new Map([
   ["chatgpt", "ChatGPT"],
@@ -70,6 +74,14 @@ function parseExternalHttpsUrl(value) {
   }
 }
 
+function safeSourceNames(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .map((item) => boundedText(item, 100))
+    .filter(Boolean))]
+    .slice(0, 6);
+}
+
 function inferCategoryId(product) {
   const text = `${product?.name || ""} ${product?.platform || ""}`.toLowerCase();
   if (/chatgpt|openai|codex/.test(text)) return "chatgpt";
@@ -110,8 +122,135 @@ function parseProduct(value) {
     updatedAt: nullableIsoDate(value.updatedAt),
     sortOrder: nonNegativeNumber(value.sortOrder, { integer: true }),
     platformSortOrder: nonNegativeNumber(value.platformSortOrder, { integer: true }),
+    verifiedSourceCount: nonNegativeNumber(value.verifiedSourceCount, { integer: true }),
+    verifiedSourceNames: safeSourceNames(value.verifiedSourceNames),
+    verifiedSpecLabel: boundedText(value.verifiedSpecLabel, 120),
+    sourceVerificationAt: nullableIsoDate(value.sourceVerificationAt),
     productUrl,
     profitCalculatorUrl,
+  };
+}
+
+function sourceVerificationUrl(product) {
+  const url = new URL(`/api/products/${product.slug}/offers`, "https://supply.aivora.cn");
+  url.searchParams.set("availability", "available");
+  url.searchParams.set("limit", String(MAX_SOURCE_VERIFICATION_OFFERS));
+  url.searchParams.set("offset", "0");
+  return url.toString();
+}
+
+function offerSpecification(product, offer) {
+  const productText = `${product?.name || ""} ${product?.slug || ""}`.toLowerCase();
+  const title = boundedText(offer?.originalName, 500).toLowerCase();
+  if (!title) return null;
+  const expectsRecharge = /代充|充值|卡充|recharge/.test(productText);
+  const expectsTrial = /试用|trial/.test(productText);
+  const expectsAccount = /账号|账户|成品|account|free-account/.test(productText);
+  const isRecharge = /代充|充值|卡充|卡密|cdk|recharge/.test(title);
+  const isTrial = /试用|体验|trial/.test(title);
+  const isAccount = /账号|账户|成品|独享|共享|合租|account/.test(title);
+  if (expectsRecharge && !isRecharge) return null;
+  if (expectsTrial && !isTrial) return null;
+  if (expectsAccount && !isAccount) return null;
+  const shape = expectsRecharge || isRecharge
+    ? "代充"
+    : expectsTrial || isTrial
+      ? "试用"
+      : expectsAccount || isAccount
+        ? "账号"
+        : "标准商品";
+  const month = title.match(/(?:^|\D)(\d{1,2})\s*(?:个?月|months?)(?:\D|$)/i);
+  const year = /(?:一年|1\s*年|year|12\s*个?月)/i.test(title);
+  const duration = year ? "12个月" : month ? `${Number(month[1])}个月` : "";
+  const region = /菲区|菲律宾|philippine/.test(title) ? "菲律宾"
+    : /美区|美国|usa|united states/.test(title) ? "美国"
+      : /日区|日本|japan/.test(title) ? "日本"
+        : /港区|香港|hong kong/.test(title) ? "香港"
+          : /土区|土耳其|turkey/.test(title) ? "土耳其"
+            : "";
+  if (shape === "标准商品" && !duration && !region) return null;
+  if (shape === "代充" && !duration && !region) return null;
+  return {
+    key: [shape, duration || "期限未写", region || "地区未写"].join("|"),
+    label: [shape, duration, region].filter(Boolean).join(" · "),
+  };
+}
+
+async function verifyProductSources(product, { fetchImpl, now }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SOURCE_VERIFICATION_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(sourceVerificationUrl(product), {
+      headers: { Accept: "application/json" },
+      redirect: "manual",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    if (!/application\/json/i.test(response.headers.get("content-type") || "")) return null;
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) return null;
+    const payload = JSON.parse(text);
+    const groups = new Map();
+    for (const item of Array.isArray(payload?.items) ? payload.items : []) {
+      if (item?.status !== "in_stock" || nonNegativeNumber(item?.price) <= 0) continue;
+      const channel = boundedText(item?.channel, 100);
+      const url = parseExternalHttpsUrl(item?.url);
+      if (!channel || channel === "未知渠道" || !url) continue;
+      const spec = offerSpecification(product, item);
+      if (!spec) continue;
+      if (!groups.has(spec.key)) groups.set(spec.key, { label: spec.label, sources: new Map() });
+      const sources = groups.get(spec.key).sources;
+      const sourceKey = channel.toLocaleLowerCase("zh-CN");
+      if (!sources.has(sourceKey)) sources.set(sourceKey, channel);
+    }
+    const best = [...groups.values()].sort((a, b) => b.sources.size - a.sources.size)[0];
+    const sources = best?.sources || new Map();
+    return {
+      verifiedSourceCount: sources.size,
+      verifiedSourceNames: [...sources.values()].slice(0, 6),
+      verifiedSpecLabel: best?.label || "",
+      sourceVerificationAt: now.toISOString(),
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function enrichSnapshotWithVerifiedSources(
+  snapshot,
+  { fetchImpl = fetch, now = new Date(), maxProducts = MAX_SOURCE_VERIFICATION_PRODUCTS } = {},
+) {
+  if (!snapshot || snapshot.schemaVersion !== 2) return snapshot;
+  const candidates = (snapshot.products || [])
+    .filter((product) =>
+      CORE_CATEGORY_IDS.has(product.categoryId) &&
+      product.availableOfferCount >= 2 &&
+      (nonNegativeNumber(product.lowestPrice) > 0 || nonNegativeNumber(product.warrantyPrice) > 0)
+    )
+    .slice(0, Math.max(0, maxProducts));
+  const checks = await Promise.all(candidates.map(async (product) => [
+    product.slug,
+    await verifyProductSources(product, { fetchImpl, now }),
+  ]));
+  const verifiedBySlug = new Map(checks.filter(([, result]) => result));
+  const enrich = (product) => ({
+    ...product,
+    ...(verifiedBySlug.get(product.slug) || {
+      verifiedSourceCount: 0,
+      verifiedSourceNames: [],
+      verifiedSpecLabel: "",
+      sourceVerificationAt: null,
+    }),
+  });
+  return {
+    ...snapshot,
+    products: (snapshot.products || []).map(enrich),
+    signals: (snapshot.signals || []).map((signal) => ({
+      ...signal,
+      product: enrich(signal.product),
+    })),
   };
 }
 
@@ -256,7 +395,8 @@ export async function loadSupplyOpportunitySnapshot(
     if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
       throw new Error("snapshot response is too large");
     }
-    const snapshot = parseSupplyOpportunitySnapshot(JSON.parse(text), { now });
+    const parsedSnapshot = parseSupplyOpportunitySnapshot(JSON.parse(text), { now });
+    const snapshot = await enrichSnapshotWithVerifiedSources(parsedSnapshot, { fetchImpl, now });
     return { snapshot, sourceUrl, error: null };
   } catch (error) {
     const message = error?.name === "AbortError"
@@ -279,6 +419,9 @@ export function recordSupplySnapshotDebug(debugInfo, result) {
   debugInfo.accountOpportunitySupplySignalCount = snapshot?.signals?.length || 0;
   debugInfo.accountOpportunitySupplyProductCount = snapshot?.products?.length || 0;
   debugInfo.accountOpportunitySupplyAvailableOfferCount = snapshot?.stats?.availableOfferCount || 0;
+  debugInfo.accountOpportunityVerifiedSourceProductCount = (snapshot?.products || [])
+    .filter((product) => product.verifiedSourceCount >= 2).length;
+  debugInfo.accountOpportunitySourceVerificationRequestLimit = MAX_SOURCE_VERIFICATION_PRODUCTS;
 }
 
 export { DEFAULT_SNAPSHOT_URL };

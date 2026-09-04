@@ -46,6 +46,10 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
         updatedAt: "2026-08-31T06:35:00Z",
         sortOrder: 1,
         platformSortOrder: 1,
+        verifiedSourceCount: 2,
+        verifiedSourceNames: ["货源甲", "货源乙"],
+        verifiedSpecLabel: "试用 · 1个月",
+        sourceVerificationAt: "2026-08-31T06:40:00Z",
         productUrl: "https://supply.aivora.cn/card-products/chatgpt-plus",
         profitCalculatorUrl: "https://supply.aivora.cn/profit-calculator?product=chatgpt-plus&cost=3.30",
       },
@@ -86,14 +90,16 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
     allowedSupplyUrls,
     expectedStats: snapshot.stats,
     expectedProductSlugs: ["chatgpt-plus"],
-    expectedCoreProductSlugs: ["chatgpt-plus"],
+    expectedLeadProductSlug: "chatgpt-plus",
+    expectedVerifiedSourceCount: 2,
+    expectComparableHistory: true,
   });
   assert.deepEqual(valid.issues, []);
   assert.equal(valid.opportunityCount, 1);
   assert.doesNotMatch(markdown, /接码/);
 
   const invented = validateSupplyDrivenAccountOpportunityPublication({
-    markdown: markdown.replace("**公开报价** 3349 条", "**公开报价** 9999 条"),
+    markdown: markdown.replace("**公开报价** 当前 3349 条", "**公开报价** 当前 9999 条"),
     allowedSupplyUrls,
     expectedStats: snapshot.stats,
     expectedProductSlugs: ["chatgpt-plus"],
@@ -107,7 +113,7 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
     expectedAnomalousProductSlugs: ["chatgpt-plus"],
   });
   assert.equal(anomalousFirstOrder.ok, false);
-  assert.match(anomalousFirstOrder.issues.join(" | "), /异常价格商品不得进入新手第一单/);
+  assert.match(anomalousFirstOrder.issues.join(" | "), /异常价格商品不得进入新手推荐/);
 });
 
 test("validateDailyPublication accepts the V3 topic structure", () => {

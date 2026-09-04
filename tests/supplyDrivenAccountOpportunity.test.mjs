@@ -7,6 +7,7 @@ import {
   selectAnomalousPriceProducts,
   selectDailySupplySignals,
   selectMerchantCoreProducts,
+  selectNewSellerProduct,
   selectPausedProducts,
 } from "../src/supplyDrivenAccountOpportunity.js";
 
@@ -42,6 +43,10 @@ function signal({ kind, name, slug, tone = "opportunity", price = 10, count = 5 
       updatedAt: "2026-08-31T06:35:00Z",
       sortOrder: 1,
       platformSortOrder: 1,
+      verifiedSourceCount: 2,
+      verifiedSourceNames: ["货源甲", "货源乙"],
+      verifiedSpecLabel: "代充 · 菲律宾",
+      sourceVerificationAt: "2026-08-31T06:40:00Z",
       productUrl: `https://supply.aivora.cn/card-products/${slug}`,
       profitCalculatorUrl: `https://supply.aivora.cn/profit-calculator?product=${slug}&cost=${price}`,
     },
@@ -61,6 +66,10 @@ function product({ name, slug, categoryId, price, count, sortOrder = 1 }) {
     updatedAt: "2026-08-31T06:35:00Z",
     sortOrder,
     platformSortOrder: 1,
+    verifiedSourceCount: 2,
+    verifiedSourceNames: ["货源甲", "货源乙"],
+    verifiedSpecLabel: "代充 · 菲律宾",
+    sourceVerificationAt: "2026-08-31T06:40:00Z",
     productUrl: `https://supply.aivora.cn/card-products/${slug}`,
     profitCalculatorUrl: `https://supply.aivora.cn/profit-calculator?product=${slug}&cost=${price ?? ""}`,
   };
@@ -144,6 +153,46 @@ test("builds a short merchant board and isolates unavailable products", () => {
   assert.deepEqual(selectPausedProducts(snapshot).map((item) => item.slug), ["claude-paused"]);
 });
 
+test("selects one starter product only when two current sources were verified", () => {
+  assert.equal(selectNewSellerProduct(snapshot)?.slug, "chatgpt-plus-recharge");
+  const oneSource = {
+    ...snapshot,
+    products: snapshot.products.map((item) => ({
+      ...item,
+      verifiedSourceCount: item.availableOfferCount > 0 ? 1 : 0,
+      verifiedSourceNames: item.availableOfferCount > 0 ? ["唯一货源"] : [],
+    })),
+  };
+  assert.equal(selectNewSellerProduct(oneSource), null);
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-01",
+    snapshot: oneSource,
+  });
+  assert.equal(result.leadProduct, null);
+  assert.match(result.markdown, /今日不建议上新/);
+  assert.doesNotMatch(result.markdown, /## 一眼看懂[\s\S]*?两个不同货源站，例如/);
+});
+
+test("publishes a pause edition when all core products are unavailable", () => {
+  const unavailable = {
+    ...snapshot,
+    products: snapshot.products.map((item) => ({
+      ...item,
+      availableOfferCount: ["verification", "other"].includes(item.categoryId) ? item.availableOfferCount : 0,
+      lowestPrice: ["verification", "other"].includes(item.categoryId) ? item.lowestPrice : null,
+      warrantyPrice: null,
+      verifiedSourceCount: 0,
+      verifiedSourceNames: [],
+    })),
+    signals: [],
+  };
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({ dateStr: "2026-09-01", snapshot: unavailable });
+  assert.equal(result.leadProduct, null);
+  assert.match(result.markdown, /今日不建议上新/);
+  assert.match(result.markdown, /当前可购买报价为 0/);
+  assert.match(result.markdown, /今天没有可比较的连续历史快照/);
+});
+
 test("isolates an extreme lowest price and uses the warranty reference for merchant math", () => {
   const suspicious = product({
     name: "ChatGPT Plus 正价代充",
@@ -184,11 +233,11 @@ test("isolates an extreme lowest price and uses the warranty reference for merch
     snapshot: riskySnapshot,
   });
   assert.notEqual(result.coreProducts[0].slug, "chatgpt-plus-recharge");
-  assert.match(result.markdown, /最低价 ¥1\.00 已隔离/);
+  assert.match(result.markdown, /最低价 ¥1\.00[\s\S]{0,80}已隔离/);
   assert.match(result.markdown, /cost=112\.11/);
   assert.ok(result.allowedSupplyUrls.some((url) => url.includes("cost=112.11")));
   assert.doesNotMatch(result.markdown, /cost=1(?:\.00)?(?:&|\))/);
-  assert.match(result.markdown, /暂停和异常清单[\s\S]*chatgpt-plus-recharge/);
+  assert.match(result.markdown, /今天暂停什么[\s\S]*chatgpt-plus-recharge/);
 });
 
 test("builds a factual seller daily and drops unrelated industry news", () => {
@@ -205,13 +254,14 @@ test("builds a factual seller daily and drops unrelated industry news", () => {
     }],
   });
 
-  assert.match(result.markdown, /## 今日能不能做/);
-  assert.match(result.markdown, /## 新手第一单/);
-  assert.match(result.markdown, /## 老商家开盘单/);
-  assert.match(result.markdown, /## 今日货源证据/);
-  assert.match(result.markdown, /## 今日关键异动/);
-  assert.match(result.markdown, /## 暂停和异常清单/);
-  assert.match(result.markdown, /## 收盘复盘/);
+  assert.match(result.markdown, /## 今天一句话/);
+  assert.match(result.markdown, /## 选择你的阅读方式/);
+  assert.match(result.markdown, /## 一眼看懂/);
+  assert.match(result.markdown, /## 新手今天照着做/);
+  assert.match(result.markdown, /## 老商家今天看这三项/);
+  assert.match(result.markdown, /## 今天暂停什么/);
+  assert.match(result.markdown, /## 数据和判断依据/);
+  assert.match(result.markdown, /## 收盘填写结果/);
   assert.doesNotMatch(result.markdown, /## 平台货源地图/);
   assert.doesNotMatch(result.markdown, /接码/);
   assert.match(result.markdown, /公开报价[\s\S]*3349 条/);
@@ -224,10 +274,32 @@ test("builds a factual seller daily and drops unrelated industry news", () => {
   assert.doesNotMatch(result.markdown, /Grok 用户转述/);
   assert.equal(result.coreProducts.length, 4);
   assert.equal(result.oldMerchantActions.length, 3);
-  assert.equal(result.selectedSignals.length, 2);
+  assert.ok(result.selectedSignals.length >= 1 && result.selectedSignals.length <= 3);
   const visible = result.markdown.replace(/\]\(https?:\/\/[^)]+\)/g, "]");
-  assert.doesNotMatch(visible, /[：—–]/);
+  assert.doesNotMatch(visible, /[—–]/);
   assert.doesNotMatch(visible, /不是.{0,50}而是|并非.{0,50}而是/);
+});
+
+test("does not invent price movement without comparable snapshots", () => {
+  const noHistory = {
+    ...snapshot,
+    signals: [signal({ kind: "crowded", name: "ChatGPT Plus 正价代充", slug: "chatgpt-plus-recharge", price: 111, count: 218 })],
+  };
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({ dateStr: "2026-09-01", snapshot: noHistory });
+  assert.equal(result.hasComparableHistory, false);
+  assert.match(result.markdown, /今天没有可比较的连续历史快照/);
+  assert.doesNotMatch(result.markdown, /出现 \d+(?:\.\d+)?% (?:涨价|降价)/);
+});
+
+test("prioritizes stockout and significant price changes for experienced sellers", () => {
+  const stockout = signal({ kind: "stockout", name: "ChatGPT Pro 20x", slug: "chatgpt-pro", tone: "warning", price: 179, count: 239 });
+  const rise = signal({ kind: "price_rise", name: "Claude Pro", slug: "claude-pro", tone: "warning", price: 120, count: 49 });
+  const drop = signal({ kind: "price_drop", name: "Gemini Pro", slug: "gemini-pro", price: 2.58, count: 233 });
+  const changed = { ...snapshot, signals: [drop, rise, stockout], products: snapshot.products.filter((item) => item.availableOfferCount > 0) };
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({ dateStr: "2026-09-01", snapshot: changed });
+  assert.equal(result.hasComparableHistory, true);
+  assert.equal(result.oldMerchantActions.length, 3);
+  assert.deepEqual(result.oldMerchantActions.map((item) => item.signal?.kind), ["stockout", "price_rise", "price_drop"]);
 });
 
 test("does not label a general Codex update as direct ChatGPT Plus supply context", () => {
@@ -264,5 +336,5 @@ test("keeps a direct primary-source ChatGPT Plus account change as context", () 
   });
 
   assert.match(result.markdown, /openai\.com\/chatgpt-plus-account-policy/);
-  assert.match(result.markdown, /## 一条相关官方变化/);
+  assert.match(result.markdown, /\*\*相关官方变化\*\*/);
 });

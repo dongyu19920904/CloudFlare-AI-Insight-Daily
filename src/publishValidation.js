@@ -1621,13 +1621,6 @@ export function validateAccountOpportunityPublication({
   };
 }
 
-const SUPPLY_DRIVEN_ACTION_FIELDS = [
-  "异动证据",
-  "经营动作",
-  "成本口径",
-  "停止条件",
-];
-
 function isAllowedPublicSupplyUrl(value) {
   try {
     const parsed = new URL(value);
@@ -1648,7 +1641,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   allowedSupplyUrls = null,
   expectedStats = null,
   expectedProductSlugs = [],
-  expectedCoreProductSlugs = [],
+  expectedLeadProductSlug = undefined,
+  expectedVerifiedSourceCount = undefined,
+  expectComparableHistory = null,
   expectedPausedProductSlugs = [],
   expectedAnomalousProductSlugs = [],
   aivoraLinkPolicy = { allowedUrls: [] },
@@ -1658,14 +1653,14 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     label: "实时货源账号商机页面",
     minChars: 700,
     requiredPhrases: [
-      "## 今日能不能做",
-      "## 新手第一单",
-      "## 老商家开盘单",
-      "## 今日货源证据",
-      "## 今日关键异动",
-      "## 暂停和异常清单",
-      "## 收盘复盘",
-      ...SUPPLY_DRIVEN_ACTION_FIELDS,
+      "## 今天一句话",
+      "## 选择你的阅读方式",
+      "## 一眼看懂",
+      "## 新手今天照着做",
+      "## 老商家今天看这三项",
+      "## 今天暂停什么",
+      "## 数据和判断依据",
+      "## 收盘填写结果",
     ],
     forbiddenPatterns: [
       ...MODEL_MANIPULATION_PATTERNS,
@@ -1681,125 +1676,133 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   }
 
   const summary = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+今日能不能做(?:\s|$).*$/im)
+    extractSection(visibleMarkdown, /^##\s+今天一句话(?:\s|$).*$/im)
   );
   const summaryLines = summary.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (summaryLines.length !== 3 || summaryLines.some((line) => !/^[-*+]\s+/.test(line))) {
-    issues.push("今日能不能做必须恰好是 3 个一级列表项");
+  if (summaryLines.length !== 4 || summaryLines.some((line) => !/^[-*+]\s+/.test(line))) {
+    issues.push("今天一句话必须恰好是 4 个一级列表项");
   }
-  for (const label of ["经营结论", "数据时间", "全局停止"]) {
+  for (const label of ["今天建议", "现在点击", "最大风险", "数据时间"]) {
     if (!summaryLines.some((line) => line.includes(`**${label}**`))) {
-      issues.push(`今日能不能做缺少“${label}”`);
+      issues.push(`今天一句话缺少“${label}”`);
     }
+  }
+  const summaryPlainText = summary
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_`#>-]/g, "")
+    .replace(/\s+/g, "");
+  if ([...summaryPlainText].length > 300) {
+    issues.push("今天一句话超过 300 个可见字符");
   }
 
-  const firstOrderSection = extractSection(
+  const modeSection = extractSection(
     visibleMarkdown,
-    /^##\s+新手第一单(?:\s|$).*$/im
+    /^##\s+选择你的阅读方式(?:\s|$).*$/im
   );
-  const firstOrderBlocks = extractLevel3Blocks(firstOrderSection);
-  const firstOrderSlugs = [...firstOrderSection.matchAll(
+  for (const label of ["一眼看懂", "新手照做", "老手看盘"]) {
+    if (!modeSection.includes(`**${label}**`)) issues.push(`阅读方式缺少“${label}”`);
+  }
+
+  const overviewSection = extractSection(
+    visibleMarkdown,
+    /^##\s+一眼看懂(?:\s|$).*$/im
+  );
+  const overviewSlugs = [...overviewSection.matchAll(
     /https:\/\/supply\.aivora\.cn\/card-products\/([a-z0-9-]+)/gi
   )].map((match) => match[1]);
-  const uniqueFirstOrderSlugs = [...new Set(firstOrderSlugs)];
-  if (firstOrderBlocks.length !== 1 || uniqueFirstOrderSlugs.length !== 1) {
-    issues.push("新手第一单必须恰好包含 1 个当前可买商品");
+  const uniqueOverviewSlugs = [...new Set(overviewSlugs)];
+  if (uniqueOverviewSlugs.length > 1) {
+    issues.push("一眼看懂最多只能推荐 1 个商品");
   }
-  for (const field of ["成本口径", "为什么选它", "利润入口", "按这个顺序做", "第一单门槛", "停止条件"]) {
-    if (!firstOrderSection.includes(`**${field}**`)) {
-      issues.push(`新手第一单缺少“${field}”`);
+  if (expectedLeadProductSlug) {
+    if (uniqueOverviewSlugs.length !== 1 || uniqueOverviewSlugs[0] !== expectedLeadProductSlug) {
+      issues.push(`一眼看懂缺少合格新手商品: ${expectedLeadProductSlug}`);
     }
+    if (Number(expectedVerifiedSourceCount) < 2) {
+      issues.push("新手推荐商品必须有至少两个可复核来源");
+    }
+    if (!overviewSection.includes(`${Number(expectedVerifiedSourceCount)} 个不同货源站`)) {
+      issues.push("一眼看懂缺少已核验的货源站数量");
+    }
+    if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(overviewSection)) {
+      issues.push("一眼看懂必须提供利润计算入口");
+    }
+  } else if (expectedLeadProductSlug === null && !/今日不建议上新/.test(overviewSection)) {
+    issues.push("没有合格新手商品时必须明确写今日不建议上新");
   }
-  if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(firstOrderSection)) {
-    issues.push("新手第一单必须提供利润计算入口");
+
+  const beginnerSection = extractSection(
+    visibleMarkdown,
+    /^##\s+新手今天照着做(?:\s|$).*$/im
+  );
+  const beginnerSteps = [...beginnerSection.matchAll(/^\s*\d+\.\s+\S.*$/gm)];
+  if (beginnerSteps.length < 1 || beginnerSteps.length > 6) {
+    issues.push("新手今天照着做必须包含 1 至 6 个步骤");
+  }
+  if (expectedLeadProductSlug) {
+    if (!beginnerSection.includes("付款前再次确认库存")) {
+      issues.push("商品说明草稿必须提醒付款前再次确认库存");
+    }
+    if (!/自己的售价/.test(beginnerSection)) {
+      issues.push("新手步骤必须要求用户填写自己的售价");
+    }
   }
 
   const merchantSection = extractSection(
     visibleMarkdown,
-    /^##\s+老商家开盘单(?:\s|$).*$/im
+    /^##\s+老商家今天看这三项(?:\s|$).*$/im
   );
   const merchantActions = extractLevel3Blocks(merchantSection);
-  if (merchantActions.length < 1 || merchantActions.length > 3) {
-    issues.push("老商家开盘单必须包含 1 至 3 个经营动作");
+  if (merchantActions.length > 3) {
+    issues.push("老商家今天看这三项最多只能包含 3 个经营动作");
   }
   for (const block of merchantActions) {
-    for (const field of ["当前盘面", "开盘动作", "核价入口", "停止条件"]) {
+    for (const field of ["发生了什么", "现在先做", "何时停止"]) {
       if (!block.includes(`**${field}**`)) {
-        issues.push(`老商家开盘动作缺少“${field}”`);
+        issues.push(`老商家动作缺少“${field}”`);
       }
     }
     if (!/https:\/\/supply\.aivora\.cn\/card-products\/[a-z0-9-]+/i.test(block)) {
-      issues.push("每个老商家开盘动作必须链接到标准商品页");
-    }
-    if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(block)) {
-      issues.push("每个老商家开盘动作必须提供利润计算入口");
+      issues.push("每个老商家动作必须链接到标准商品页");
     }
   }
-
-  const coreSections = `${firstOrderSection}\n${merchantSection}`;
-  const coreProductSlugs = [...coreSections.matchAll(
-    /https:\/\/supply\.aivora\.cn\/card-products\/([a-z0-9-]+)/gi
-  )].map((match) => match[1]);
-  const uniqueCoreProductSlugs = [...new Set(coreProductSlugs)];
-  for (const slug of expectedCoreProductSlugs || []) {
-    if (!uniqueCoreProductSlugs.includes(slug)) {
-      issues.push(`新手或老商家经营单缺少已选商品: ${slug}`);
-    }
+  if (expectComparableHistory === false && !/今天没有可比较的连续历史快照/.test(merchantSection)) {
+    issues.push("缺少连续历史快照时必须明确说明不能显示涨跌");
   }
-
-  const actionSection = extractSection(
-    visibleMarkdown,
-    /^##\s+今日关键异动(?:\s|$).*$/im
-  );
-  const actions = extractLevel3Blocks(actionSection);
-  if (actions.length < 1 || actions.length > 2) {
-    issues.push("账号商机日报必须包含 1 至 2 个关键异动");
-  }
-  for (const block of actions) {
-    for (const field of SUPPLY_DRIVEN_ACTION_FIELDS) {
-      const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (!new RegExp(`^-\\s*\\*\\*${escaped}\\*\\*\\s+\\S`, "m").test(block)) {
-        issues.push(`关键异动缺少“${field}”字段`);
-      }
-    }
-    if (!/https:\/\/supply\.aivora\.cn\/card-products\/[a-z0-9-]+/i.test(block)) {
-      issues.push("每个货源异动必须链接到标准商品页");
-    }
-    if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(block)) {
-      issues.push("每个货源异动必须提供利润计算入口");
-    }
+  if (expectComparableHistory === true && !/最近 24 小时有 \d+ 个可比较的连续快照变化/.test(merchantSection)) {
+    issues.push("存在连续历史快照时必须说明可比较变化数量");
   }
 
   const closingSteps = getSectionBody(
-    extractSection(visibleMarkdown, /^##\s+收盘复盘(?:\s|$).*$/im)
+    extractSection(visibleMarkdown, /^##\s+收盘填写结果(?:\s|$).*$/im)
   ).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (closingSteps.length !== 3 || closingSteps.some((line) => !/^[-*+]\s+/.test(line))) {
-    issues.push("账号商机日报的收盘复盘必须恰好是 3 个一级列表项");
+    issues.push("收盘填写结果必须恰好是 3 个一级列表项");
   }
-  for (const label of ["记录真实结果", "核算真实损耗", "决定明天动作"]) {
+  for (const label of ["今天询问和成交", "实际成本和损耗", "明天怎么做"]) {
     if (!closingSteps.some((line) => line.includes(`**${label}**`))) {
-      issues.push(`账号商机日报的收盘复盘缺少“${label}”`);
+      issues.push(`收盘填写结果缺少“${label}”`);
     }
   }
 
   const pausedSection = extractSection(
     visibleMarkdown,
-    /^##\s+暂停和异常清单(?:\s|$).*$/im
+    /^##\s+今天暂停什么(?:\s|$).*$/im
   );
   for (const slug of expectedPausedProductSlugs || []) {
     if (!pausedSection.includes(`https://supply.aivora.cn/card-products/${slug}`)) {
-      issues.push(`暂停和异常清单缺少已知缺货商品: ${slug}`);
+      issues.push(`今天暂停什么缺少已知缺货商品: ${slug}`);
     }
-    if (uniqueFirstOrderSlugs.includes(slug)) {
-      issues.push(`缺货商品不得进入新手第一单: ${slug}`);
+    if (uniqueOverviewSlugs.includes(slug)) {
+      issues.push(`缺货商品不得进入新手推荐: ${slug}`);
     }
   }
   for (const slug of expectedAnomalousProductSlugs || []) {
     if (!pausedSection.includes(`https://supply.aivora.cn/card-products/${slug}`)) {
-      issues.push(`暂停和异常清单缺少异常价格商品: ${slug}`);
+      issues.push(`今天暂停什么缺少异常价格商品: ${slug}`);
     }
-    if (uniqueFirstOrderSlugs.includes(slug)) {
-      issues.push(`异常价格商品不得进入新手第一单: ${slug}`);
+    if (uniqueOverviewSlugs.includes(slug)) {
+      issues.push(`异常价格商品不得进入新手推荐: ${slug}`);
     }
   }
 
@@ -1833,9 +1836,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
       ["lowSupplyProductCount", "低供给观察数"],
     ]) {
       if (!new RegExp(`(?:^|\\D)${Number(expectedStats[field])}(?:\\D|$)`).test(getSectionBody(
-        extractSection(visibleMarkdown, /^##\s+今日货源证据(?:\s|$).*$/im)
+        extractSection(visibleMarkdown, /^##\s+数据和判断依据(?:\s|$).*$/im)
       ))) {
-        issues.push(`今日货源证据缺少快照中的${label}`);
+        issues.push(`数据和判断依据缺少快照中的${label}`);
       }
     }
   }
@@ -1846,9 +1849,6 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   }
 
   const proseWithoutUrls = visibleMarkdown.replace(/\]\(https?:\/\/[^)]+\)/g, "]");
-  if (/[：—–]/.test(proseWithoutUrls)) {
-    issues.push("实时货源日报正文不得使用冒号或破折号式写法");
-  }
   if (/不是.{0,60}而是|并非.{0,60}而是|看似.{0,60}实则/.test(proseWithoutUrls)) {
     issues.push("实时货源日报正文不得使用翻案句式");
   }
@@ -1865,9 +1865,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   return {
     ok: issues.length === 0,
     issues,
-    opportunityCount: uniqueFirstOrderSlugs.length,
+    opportunityCount: uniqueOverviewSlugs.length,
     merchantActionCount: merchantActions.length,
-    signalCount: actions.length,
+    beginnerStepCount: beginnerSteps.length,
     supplyLinkCount: supplyLinks.length,
     aivoraLinkCount: aivoraValidation.linkCount,
   };
