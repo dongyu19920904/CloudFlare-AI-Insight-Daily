@@ -84,7 +84,7 @@ test("parses a fresh bounded supply snapshot", () => {
   assert.equal(snapshot.products[0].categoryId, "chatgpt");
 });
 
-test("counts distinct current source names without treating offer rows as sources", async () => {
+test("counts distinct current source sites and keeps the reference price in one exact spec group", async () => {
   const parsed = parseSupplyOpportunitySnapshot(payload({
     schemaVersion: 2,
     products: [merchantProduct()],
@@ -93,9 +93,10 @@ test("counts distinct current source names without treating offer rows as source
     now: new Date("2026-08-31T06:45:00Z"),
     fetchImpl: async () => new Response(JSON.stringify({
       items: [
-        { status: "in_stock", price: 111, channel: "货源甲", originalName: "ChatGPT Plus 菲区代充 1个月", url: "https://one.example/item" },
-        { status: "in_stock", price: 112, channel: "货源甲", originalName: "ChatGPT Plus 菲区充值 1个月", url: "https://one.example/item-2" },
+        { status: "in_stock", price: 111, channel: "货源甲", originalName: "ChatGPT Plus 菲区代充 1个月", url: "https://shop.one.example/item" },
+        { status: "in_stock", price: 112, channel: "同站另一店", originalName: "ChatGPT Plus 菲区充值 1个月", url: "https://other.one.example/item-2" },
         { status: "in_stock", price: 113, channel: "货源乙", originalName: "ChatGPT Plus 菲律宾充值 1个月", url: "https://two.example/item" },
+        { status: "in_stock", price: 80, channel: "规格不同", originalName: "ChatGPT Plus 菲律宾充值 3个月", url: "https://three.example/item" },
         { status: "out_of_stock", price: 80, channel: "货源丙", originalName: "ChatGPT Plus 菲区代充 1个月", url: "https://three.example/item" },
       ],
     }), { status: 200, headers: { "content-type": "application/json" } }),
@@ -104,6 +105,8 @@ test("counts distinct current source names without treating offer rows as source
   assert.equal(enriched.products[0].verifiedSourceCount, 2);
   assert.deepEqual(enriched.products[0].verifiedSourceNames, ["货源甲", "货源乙"]);
   assert.equal(enriched.products[0].verifiedSpecLabel, "代充 · 1个月 · 菲律宾");
+  assert.equal(enriched.products[0].verifiedOfferCount, 3);
+  assert.equal(enriched.products[0].verifiedReferencePrice, 111);
   assert.equal(enriched.signals[0].product.verifiedSourceCount, 2);
 });
 

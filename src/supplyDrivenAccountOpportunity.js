@@ -282,14 +282,32 @@ function verifiedSourceCount(product) {
   return Math.max(0, Number(product?.verifiedSourceCount) || 0);
 }
 
+function verifiedOfferCount(product) {
+  return Math.max(0, Number(product?.verifiedOfferCount) || 0);
+}
+
+function resolveNewSellerCostReference(product) {
+  const price = positiveMoney(product?.verifiedReferencePrice);
+  return {
+    ...resolveMerchantCostReference(product),
+    referencePrice: price,
+    label: price === null
+      ? "同一规格组暂无可确认价格"
+      : `已核验“${cleanArticleText(product.verifiedSpecLabel, 120)}”组内的最低公开报价`,
+  };
+}
+
 export function selectNewSellerProduct(snapshot) {
   return snapshotProducts(snapshot).find((product) => {
     const cost = resolveMerchantCostReference(product);
+    const starterCost = resolveNewSellerCostReference(product);
     return product.availableOfferCount > 0 &&
       CORE_CATEGORY_IDS.includes(product.categoryId) &&
       cost.referencePrice !== null &&
       !cost.abnormalLowestPrice &&
+      starterCost.referencePrice !== null &&
       verifiedSourceCount(product) >= 2 &&
+      verifiedOfferCount(product) >= 2 &&
       cleanArticleText(product.verifiedSpecLabel, 120) &&
       product.productUrl &&
       product.profitCalculatorUrl;
@@ -306,7 +324,8 @@ function copyDraft(product) {
   if (!product) return "";
   return [
     `商品名称　${cleanArticleText(product.name, 100)}`,
-    "商品规格　请填写已经在两个货源页面核对一致的名称、期限和账号形态",
+    `已核验分组　${cleanArticleText(product.verifiedSpecLabel, 120)}`,
+    "商品规格　请继续填写你在两个货源页面核对一致的名称、期限和账号形态",
     "交付方式　请填写你已经核验并能完成的交付方式和时间",
     "售后范围　请填写你真实能承担的退款、补发和协助范围",
     "购买提醒　付款前再次确认库存，货源失效或规格变化时暂停接单",
@@ -322,7 +341,7 @@ function oneLookMarkdown(product) {
       "- **一句解释** 可复核进货价就是你能回到原始货源页面再次确认的当前价格。",
     ].join("\n");
   }
-  const cost = resolveMerchantCostReference(product);
+  const cost = resolveNewSellerCostReference(product);
   const calculatorUrl = profitCalculatorUrl(product, cost.referencePrice);
   const names = sourceNames(product);
   const sourceText = names.length
@@ -333,7 +352,7 @@ function oneLookMarkdown(product) {
     "",
     "- **今天能不能做** 可以做一次低成本试卖，不囤货，也不保证成交。",
     `- **当前进货参考** ${formatMoney(cost.referencePrice)}。这是${cost.label}，付款前还要打开原始页面确认。`,
-    `- **为什么只选它** ${sourceText}当前共有 ${product.availableOfferCount} 条可购买报价；报价多只说明容易比较货源，不代表销量高。`,
+    `- **为什么只选它** ${sourceText}本次同规格组核到 ${verifiedOfferCount(product)} 条可购买报价；整个商品页共有 ${product.availableOfferCount} 条不同规格报价。报价多只说明容易比较货源，不代表销量高。`,
     `- **开始按钮** [开始今天的任务](${product.productUrl})，核完货源后再[带入进货参考算利润](${calculatorUrl})。`,
     "- **最重要的停止条件** 两个货源站的商品名称、期限、账号形态、交付方式或售后范围对不上时停止。",
     "- **一句解释** 进货参考是当前可以回原始页面确认的价格，不是最终采购成本，也不代表你应该卖多少。",
@@ -350,7 +369,7 @@ function newSellerStepsMarkdown(product) {
       "3. 收盘时记录今天的询问、退款和缺货结果。",
     ].join("\n");
   }
-  const cost = resolveMerchantCostReference(product);
+  const cost = resolveNewSellerCostReference(product);
   const calculatorUrl = profitCalculatorUrl(product, cost.referencePrice);
   return [
     "每做完一步再做下一步，任何停止条件出现都不要继续。",
@@ -476,7 +495,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
   const pausedProducts = selectPausedProducts(snapshot, 3 - anomalousProducts.length);
   const selectedSignals = selectDailySupplySignals(snapshot, 3);
   if (!products.length) throw new Error("no usable merchant products for the daily");
-  const leadCost = lead ? resolveMerchantCostReference(lead) : null;
+  const leadCost = lead ? resolveNewSellerCostReference(lead) : null;
   const oldMerchantActions = selectOldMerchantActions(
     coreProducts,
     selectedSignals,
@@ -534,6 +553,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
       : "付款前库存和价格仍会变化，实际售价没有覆盖退款与售后时会亏损。";
   const allowedSupplyUrls = [...new Set([
     snapshot.source,
+    ...(lead ? [profitCalculatorUrl(lead, leadCost.referencePrice)] : []),
     ...products.flatMap((product) => [
       product.productUrl,
       product.profitCalculatorUrl,

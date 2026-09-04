@@ -49,6 +49,8 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
         verifiedSourceCount: 2,
         verifiedSourceNames: ["货源甲", "货源乙"],
         verifiedSpecLabel: "试用 · 1个月",
+        verifiedOfferCount: 2,
+        verifiedReferencePrice: 9.9,
         sourceVerificationAt: "2026-08-31T06:40:00Z",
         productUrl: "https://supply.aivora.cn/card-products/chatgpt-plus",
         profitCalculatorUrl: "https://supply.aivora.cn/profit-calculator?product=chatgpt-plus&cost=3.30",
@@ -75,15 +77,11 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
     ],
   };
   snapshot.products = [snapshot.signals[0].product];
-  const { markdown } = buildSupplyDrivenAccountOpportunityMarkdown({
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
     dateStr: "2026-08-31",
     snapshot,
   });
-  const allowedSupplyUrls = [
-    snapshot.source,
-    snapshot.signals[0].product.productUrl,
-    snapshot.signals[0].product.profitCalculatorUrl,
-  ];
+  const { markdown, allowedSupplyUrls } = result;
 
   const valid = validateSupplyDrivenAccountOpportunityPublication({
     markdown,

@@ -125,6 +125,8 @@ function parseProduct(value) {
     verifiedSourceCount: nonNegativeNumber(value.verifiedSourceCount, { integer: true }),
     verifiedSourceNames: safeSourceNames(value.verifiedSourceNames),
     verifiedSpecLabel: boundedText(value.verifiedSpecLabel, 120),
+    verifiedOfferCount: nonNegativeNumber(value.verifiedOfferCount, { integer: true }),
+    verifiedReferencePrice: nonNegativeNumber(value.verifiedReferencePrice, { nullable: true }),
     sourceVerificationAt: nullableIsoDate(value.sourceVerificationAt),
     productUrl,
     profitCalculatorUrl,
@@ -137,6 +139,18 @@ function sourceVerificationUrl(product) {
   url.searchParams.set("limit", String(MAX_SOURCE_VERIFICATION_OFFERS));
   url.searchParams.set("offset", "0");
   return url.toString();
+}
+
+function sourceSiteKey(url) {
+  const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  const labels = hostname.split(".").filter(Boolean);
+  if (labels.length <= 2 || /^\d+(?:\.\d+){3}$/.test(hostname)) return hostname;
+  const threeLabelSuffixes = new Set([
+    "com.cn", "net.cn", "org.cn", "gov.cn",
+    "co.uk", "org.uk", "com.au", "com.hk", "com.tw",
+  ]);
+  const lastTwo = labels.slice(-2).join(".");
+  return labels.slice(threeLabelSuffixes.has(lastTwo) ? -3 : -2).join(".");
 }
 
 function offerSpecification(product, offer) {
@@ -153,23 +167,24 @@ function offerSpecification(product, offer) {
   if (expectsTrial && !isTrial) return null;
   if (expectsAccount && !isAccount) return null;
   const shape = expectsRecharge || isRecharge
-    ? "代充"
+    ? /卡密|卡充|卡冲|卡付|cdk/.test(title) ? "卡密充值" : "代充"
     : expectsTrial || isTrial
       ? "试用"
       : expectsAccount || isAccount
-        ? "账号"
+        ? /共享|合租/.test(title) ? "共享账号" : /独享|个人/.test(title) ? "独享账号" : "账号"
         : "标准商品";
   const month = title.match(/(?:^|\D)(\d{1,2})\s*(?:个?月|months?)(?:\D|$)/i);
   const year = /(?:一年|1\s*年|year|12\s*个?月)/i.test(title);
-  const duration = year ? "12个月" : month ? `${Number(month[1])}个月` : "";
+  const oneMonth = /一个月|单月|月卡|月费|monthly/i.test(title);
+  const duration = year ? "12个月" : month ? `${Number(month[1])}个月` : oneMonth ? "1个月" : "";
   const region = /菲区|菲律宾|philippine/.test(title) ? "菲律宾"
     : /美区|美国|usa|united states/.test(title) ? "美国"
       : /日区|日本|japan/.test(title) ? "日本"
         : /港区|香港|hong kong/.test(title) ? "香港"
           : /土区|土耳其|turkey/.test(title) ? "土耳其"
             : "";
-  if (shape === "标准商品" && !duration && !region) return null;
-  if (shape === "代充" && !duration && !region) return null;
+  if (!duration) return null;
+  if (["代充", "卡密充值"].includes(shape) && !region) return null;
   return {
     key: [shape, duration || "期限未写", region || "地区未写"].join("|"),
     label: [shape, duration, region].filter(Boolean).join(" · "),
@@ -198,17 +213,25 @@ async function verifyProductSources(product, { fetchImpl, now }) {
       if (!channel || channel === "未知渠道" || !url) continue;
       const spec = offerSpecification(product, item);
       if (!spec) continue;
-      if (!groups.has(spec.key)) groups.set(spec.key, { label: spec.label, sources: new Map() });
-      const sources = groups.get(spec.key).sources;
-      const sourceKey = channel.toLocaleLowerCase("zh-CN");
-      if (!sources.has(sourceKey)) sources.set(sourceKey, channel);
+      if (!groups.has(spec.key)) {
+        groups.set(spec.key, { label: spec.label, sources: new Map(), prices: [], offerCount: 0 });
+      }
+      const group = groups.get(spec.key);
+      const sourceKey = sourceSiteKey(url);
+      if (!group.sources.has(sourceKey)) group.sources.set(sourceKey, channel);
+      group.prices.push(nonNegativeNumber(item.price));
+      group.offerCount += 1;
     }
-    const best = [...groups.values()].sort((a, b) => b.sources.size - a.sources.size)[0];
+    const best = [...groups.values()].sort((a, b) =>
+      b.sources.size - a.sources.size || b.offerCount - a.offerCount
+    )[0];
     const sources = best?.sources || new Map();
     return {
       verifiedSourceCount: sources.size,
       verifiedSourceNames: [...sources.values()].slice(0, 6),
       verifiedSpecLabel: best?.label || "",
+      verifiedOfferCount: best?.offerCount || 0,
+      verifiedReferencePrice: best?.prices?.length ? Math.min(...best.prices) : null,
       sourceVerificationAt: now.toISOString(),
     };
   } catch {
@@ -241,6 +264,8 @@ export async function enrichSnapshotWithVerifiedSources(
       verifiedSourceCount: 0,
       verifiedSourceNames: [],
       verifiedSpecLabel: "",
+      verifiedOfferCount: 0,
+      verifiedReferencePrice: null,
       sourceVerificationAt: null,
     }),
   });
