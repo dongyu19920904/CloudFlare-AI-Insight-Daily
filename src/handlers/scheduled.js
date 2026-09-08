@@ -65,6 +65,7 @@ import {
 } from '../supplyOpportunitySnapshot.js';
 import {
     buildSupplyDrivenAccountOpportunityMarkdown,
+    extractSupplyDrivenAccountOpportunityMemory,
 } from '../supplyDrivenAccountOpportunity.js';
 import { buildAccountOpportunityContextOptions } from '../accountOpportunityContext.js';
 import {
@@ -203,6 +204,24 @@ function getPreviousDates(dateStr, count = 1) {
     }
 
     return dates;
+}
+
+async function loadRecentSupplyDailyMemory(env, dateStr, lookbackDays = 7) {
+    const accountGitHubEnv = resolveAccountOpportunityGitHubEnv(env);
+    const dates = getPreviousDates(dateStr, Math.max(1, Math.min(7, lookbackDays)));
+    const results = await Promise.all(dates.map(async (previousDate) => {
+        try {
+            const path = buildAccountOpportunityPaths(previousDate).pagePath;
+            const markdown = await getGitHubFileContent(accountGitHubEnv, path);
+            return extractSupplyDrivenAccountOpportunityMemory(markdown, previousDate);
+        } catch (error) {
+            console.warn(
+                `[Scheduled][AccountOpportunity] Recent supply daily ${previousDate} could not be loaded: ${error.message}`
+            );
+            return null;
+        }
+    }));
+    return results.filter(Boolean);
 }
 
 function normalizeReplayUrl(url) {
@@ -2054,6 +2073,7 @@ async function generateAccountOpportunityMarkdown(
             dateStr,
             snapshot: options.supplySnapshot,
             industryCandidates: overseasPreviewCandidates,
+            recentDailyMemory: options.recentSupplyDailyMemory,
         });
         const allowedSupplyUrls = [
             ...supplyResult.allowedSupplyUrls,
@@ -2071,6 +2091,10 @@ async function generateAccountOpportunityMarkdown(
             expectedLeadProductSlug: supplyResult.leadProduct?.slug || null,
             expectedVerifiedSourceCount: supplyResult.leadProduct?.verifiedSourceCount || 0,
             expectComparableHistory: supplyResult.hasComparableHistory,
+            expectedFreshComparableSignalCount: supplyResult.freshComparableSignalCount,
+            expectedDailyFocusKey: supplyResult.dailyFocusKey,
+            pageTitle: supplyResult.pageTitle,
+            recentDailyMemory: options.recentSupplyDailyMemory,
             expectedPausedProductSlugs: supplyResult.pausedProducts.map(
                 (product) => product.slug
             ),
@@ -2103,6 +2127,9 @@ async function generateAccountOpportunityMarkdown(
             supplyResult.anomalousProducts.map((product) => product.slug);
         debugInfo.accountOpportunityMerchantActionCount =
             supplyResult.oldMerchantActions.length;
+        debugInfo.accountOpportunityDailyFocusKey = supplyResult.dailyFocusKey;
+        debugInfo.accountOpportunityNoveltyKind = supplyResult.starterDecision.kind;
+        debugInfo.accountOpportunityPageTitle = supplyResult.pageTitle;
         debugInfo.accountOpportunityGenerated = true;
 
         return {
@@ -2113,6 +2140,8 @@ async function generateAccountOpportunityMarkdown(
             qualitySkipped: false,
             observationMode: false,
             validationContext: null,
+            accountOpportunityPageTitle: supplyResult.pageTitle,
+            accountOpportunityPageDescription: supplyResult.pageDescription,
         };
     }
 
@@ -2459,10 +2488,18 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
     );
 }
 
-async function commitAccountOpportunityOutputs(env, dateStr, accountOpportunityPaths, accountOpportunityMarkdownContent) {
+async function commitAccountOpportunityOutputs(
+    env,
+    dateStr,
+    accountOpportunityPaths,
+    accountOpportunityMarkdownContent,
+    pageOptions = {}
+) {
     const accountGitHubEnv = resolveAccountOpportunityGitHubEnv(env);
-    const accountOpportunityPageTitle = `${DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE} ${formatDateToChinese(dateStr)}`;
-    const accountOpportunityDescription = DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION;
+    const accountOpportunityPageTitle = pageOptions.title ||
+        `${DEFAULT_ACCOUNT_OPPORTUNITY_SECTION_TITLE} ${formatDateToChinese(dateStr)}`;
+    const accountOpportunityDescription = pageOptions.description ||
+        DEFAULT_ACCOUNT_OPPORTUNITY_PAGE_DESCRIPTION;
     const accountOpportunityPageContent = buildDailyContentWithFrontMatter(dateStr, accountOpportunityMarkdownContent, {
         title: accountOpportunityPageTitle,
         description: accountOpportunityDescription,
@@ -2919,7 +2956,16 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
     console.log(`[Scheduled][AccountOpportunity] Starting automation for ${dateStr}${specifiedDate ? ' (specified date)' : ''}${dryRun ? ' (dry-run)' : ''}`);
 
     await reportScheduledProgress(options, 'account-opportunity', 'loading-sources', 10);
-    const supplySnapshotResult = await loadSupplyOpportunitySnapshot(env);
+    const recentSupplyDailyMemory = Array.isArray(options.recentSupplyDailyMemory)
+        ? options.recentSupplyDailyMemory
+        : await loadRecentSupplyDailyMemory(env, dateStr, 7);
+    debugInfo.accountOpportunityRecentSupplyDailyCount = recentSupplyDailyMemory.length;
+    debugInfo.accountOpportunityRecentSupplyLeadProducts = [
+        ...new Set(recentSupplyDailyMemory.map((item) => item.leadProductSlug).filter(Boolean)),
+    ];
+    const supplySnapshotResult = await loadSupplyOpportunitySnapshot(env, {
+        recentLeadProductSlugs: debugInfo.accountOpportunityRecentSupplyLeadProducts,
+    });
     recordSupplySnapshotDebug(debugInfo, supplySnapshotResult);
     const supplyDriven = Boolean(supplySnapshotResult.snapshot);
     const scheduledContext = await loadScheduledContext(
@@ -2942,6 +2988,8 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         validation: generatedValidation,
         candidateAssessment,
         qualitySkipped,
+        accountOpportunityPageTitle,
+        accountOpportunityPageDescription,
     } = await generateAccountOpportunityMarkdown(
         env,
         dateStr,
@@ -2951,6 +2999,7 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
             previousMainTopicSignals: previousOpportunityReplaySignals,
             recentReplayMemory: recentOpportunityReplayMemory,
             supplySnapshot: supplySnapshotResult.snapshot,
+            recentSupplyDailyMemory,
             dryRun,
         }
     );
@@ -2994,7 +3043,11 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
         env,
         dateStr,
         accountOpportunityPaths,
-        accountOpportunityMarkdownContent
+        accountOpportunityMarkdownContent,
+        {
+            title: accountOpportunityPageTitle,
+            description: accountOpportunityPageDescription,
+        }
     );
     await storeOpportunityReplayMemoryToKv(
         env,

@@ -1629,11 +1629,51 @@ function isAllowedPublicSupplyUrl(value) {
       (
         parsed.pathname === "/opportunities" ||
         parsed.pathname.startsWith("/card-products/") ||
-        parsed.pathname === "/profit-calculator"
+        parsed.pathname === "/profit-calculator" ||
+        parsed.pathname === "/guide/first-sale"
       );
   } catch {
     return false;
   }
+}
+
+function extractSupplyReplayMetadata(markdown) {
+  const match = String(markdown || "").match(
+    /<!--\s*opportunity-replay\s*:\s*(\{[^\n]*\})\s*-->/i
+  );
+  if (!match) return {};
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return {};
+  }
+}
+
+function normalizeSupplyPageTitle(value) {
+  return String(value || "")
+    .replace(/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|\d{4}\/\d{1,2}\/\d{1,2}/g, "")
+    .replace(/爱窝啦|AI\s*账号(?:商家经营|商机)?日报/gi, "")
+    .replace(/[\s｜|·，。！？!?、\-_/]+/g, "")
+    .toLowerCase();
+}
+
+function normalizedSupplyDailyLines(markdown) {
+  const visible = stripOpportunityReplayMetadata(String(markdown || ""))
+    .replace(/^---[\s\S]*?---\s*/m, "")
+    .replace(/https?:\/\/[^)\s]+/g, "链接")
+    .replace(/\d+(?:\.\d+)?/g, "数值");
+  return [...new Set(visible.split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean))];
+}
+
+function setJaccard(leftValues, rightValues) {
+  const left = new Set(leftValues || []);
+  const right = new Set(rightValues || []);
+  if (!left.size && !right.size) return 1;
+  let intersection = 0;
+  for (const value of left) if (right.has(value)) intersection += 1;
+  return intersection / Math.max(1, new Set([...left, ...right]).size);
 }
 
 export function validateSupplyDrivenAccountOpportunityPublication({
@@ -1644,6 +1684,10 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   expectedLeadProductSlug = undefined,
   expectedVerifiedSourceCount = undefined,
   expectComparableHistory = null,
+  expectedFreshComparableSignalCount = null,
+  expectedDailyFocusKey = "",
+  pageTitle = "",
+  recentDailyMemory = [],
   expectedPausedProductSlugs = [],
   expectedAnomalousProductSlugs = [],
   aivoraLinkPolicy = { allowedUrls: [] },
@@ -1664,12 +1708,45 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     ],
     forbiddenPatterns: [
       ...MODEL_MANIPULATION_PATTERNS,
-      /稳赚|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
+      /稳赚|必赚|一定赚钱|保证赚钱|轻松月入|日入\s*\d|月入\s*\d|爆单/i,
       /建议(?:售价|定价)|(?:挂价|卖价|售价)[:：]?\s*[¥￥$]?\s*\d/i,
       /(?:销量|需求|询问量)(?:必然|一定|马上)(?:上涨|增加|爆发)/i,
       /永不封号|无限续杯|官方授权|保证稳定/i,
     ],
   });
+
+  const replay = extractSupplyReplayMetadata(markdown);
+  const recentMemory = Array.isArray(recentDailyMemory)
+    ? recentDailyMemory.filter(Boolean).slice(0, 7)
+    : [];
+  const enforceNovelty = Boolean(pageTitle || expectedDailyFocusKey || recentMemory.length);
+  if (enforceNovelty) {
+    if (!pageTitle || !String(pageTitle).includes("AI 账号商机日报")) {
+      issues.push("实时货源账号商机缺少说明当天重点的动态标题");
+    }
+    const normalizedTitle = normalizeSupplyPageTitle(pageTitle);
+    if (normalizedTitle && recentMemory.some((item) =>
+      normalizeSupplyPageTitle(item?.title || item?.editionTitle) === normalizedTitle
+    )) {
+      issues.push("日报标题与近七期重点重复");
+    }
+    if (!expectedDailyFocusKey || replay.dailyFocusKey !== expectedDailyFocusKey) {
+      issues.push("日报缺少可验证的每日焦点标识");
+    }
+    if (expectedDailyFocusKey && recentMemory.some((item) =>
+      item?.dailyFocusKey === expectedDailyFocusKey
+    )) {
+      issues.push("日报每日焦点与近七期重复");
+    }
+    const currentLines = normalizedSupplyDailyLines(markdown);
+    const repeatedDaily = recentMemory.find((item) =>
+      Array.isArray(item?.normalizedLines) &&
+      setJaccard(currentLines, item.normalizedLines) >= 0.8
+    );
+    if (repeatedDaily) {
+      issues.push(`日报正文与 ${repeatedDaily.date || "近七期"} 过度相似`);
+    }
+  }
 
   if (/^#\s+\S/m.test(visibleMarkdown)) {
     issues.push("实时货源账号商机正文不得输出一级标题");
@@ -1711,6 +1788,9 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     /https:\/\/supply\.aivora\.cn\/card-products\/([a-z0-9-]+)/gi
   )].map((match) => match[1]);
   const uniqueOverviewSlugs = [...new Set(overviewSlugs)];
+  if (!overviewSection.includes("**今天新在哪里**")) {
+    issues.push("一眼看懂缺少今天新在哪里");
+  }
   if (uniqueOverviewSlugs.length > 1) {
     issues.push("一眼看懂最多只能推荐 1 个商品");
   }
@@ -1727,8 +1807,13 @@ export function validateSupplyDrivenAccountOpportunityPublication({
     if (!/https:\/\/supply\.aivora\.cn\/profit-calculator\?/i.test(overviewSection)) {
       issues.push("一眼看懂必须提供利润计算入口");
     }
-  } else if (expectedLeadProductSlug === null && !/今日不建议上新/.test(overviewSection)) {
-    issues.push("没有合格新手商品时必须明确写今日不建议上新");
+  } else if (expectedLeadProductSlug === null) {
+    if (!/今日不建议上新/.test(overviewSection)) {
+      issues.push("没有合格新手商品时必须明确写今日不建议上新");
+    }
+    if (enforceNovelty && !/今天没有新的可验证试卖机会/.test(overviewSection)) {
+      issues.push("没有新证据时必须明确说明没有新的可验证试卖机会");
+    }
   }
 
   const beginnerSection = extractSection(
@@ -1769,8 +1854,18 @@ export function validateSupplyDrivenAccountOpportunityPublication({
   if (expectComparableHistory === false && !/今天没有可比较的连续历史快照/.test(merchantSection)) {
     issues.push("缺少连续历史快照时必须明确说明不能显示涨跌");
   }
-  if (expectComparableHistory === true && !/最近 24 小时有 \d+ 个可比较的连续快照变化/.test(merchantSection)) {
-    issues.push("存在连续历史快照时必须说明可比较变化数量");
+  if (expectComparableHistory === true) {
+    if (expectedFreshComparableSignalCount === null) {
+      if (!/最近 24 小时有 \d+ 个可比较的连续快照变化/.test(merchantSection)) {
+        issues.push("存在连续历史快照时必须说明可比较变化数量");
+      }
+    } else if (Number(expectedFreshComparableSignalCount) > 0) {
+      if (!merchantSection.includes(`今天有 ${Number(expectedFreshComparableSignalCount)} 个近七期没有使用过的连续快照变化`)) {
+        issues.push("存在新连续快照变化时必须说明近七期未使用的变化数量");
+      }
+    } else if (!/变化已经在近七期日报使用过/.test(merchantSection)) {
+      issues.push("没有新连续快照变化时必须明确不重复旧信号");
+    }
   }
 
   const closingSteps = getSectionBody(

@@ -5,6 +5,7 @@ import {
   enrichSnapshotWithVerifiedSources,
   loadSupplyOpportunitySnapshot,
   parseSupplyOpportunitySnapshot,
+  selectSourceVerificationProducts,
 } from "../src/supplyOpportunitySnapshot.js";
 
 function payload(overrides = {}) {
@@ -135,6 +136,44 @@ test("parses the V2 merchant product board while keeping V1 compatibility", () =
     }),
     /no usable merchant products/,
   );
+});
+
+test("diversifies source verification across core platforms and skips recent leads", () => {
+  const make = (slug, categoryId, sortOrder) => merchantProduct({
+    slug,
+    name: slug,
+    categoryId,
+    categoryName: categoryId,
+    sortOrder,
+    productUrl: `https://supply.aivora.cn/card-products/${slug}`,
+    profitCalculatorUrl: `https://supply.aivora.cn/profit-calculator?product=${slug}&cost=111.00`,
+  });
+  const products = [
+    make("chatgpt-yesterday", "chatgpt", 1),
+    make("chatgpt-new", "chatgpt", 2),
+    make("claude-pro", "claude", 3),
+    make("gemini-pro", "gemini", 4),
+    make("grok-super", "grok", 5),
+    make("cursor-pro", "ai-coding", 6),
+    make("suno-pro", "ai-creative", 7),
+  ];
+  const selected = selectSourceVerificationProducts({
+    products,
+    signals: [{ kind: "price_drop", product: products[3] }],
+  }, {
+    maxProducts: 6,
+    recentLeadProductSlugs: ["chatgpt-yesterday"],
+  });
+
+  assert.deepEqual(selected.map((item) => item.slug), [
+    "gemini-pro",
+    "chatgpt-new",
+    "claude-pro",
+    "grok-super",
+    "cursor-pro",
+    "suno-pro",
+  ]);
+  assert.ok(!selected.some((item) => item.slug === "chatgpt-yesterday"));
 });
 
 test("drops merchant products with untrusted product links", () => {

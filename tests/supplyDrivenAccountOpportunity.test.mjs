@@ -3,13 +3,33 @@ import assert from "node:assert/strict";
 
 import {
   buildSupplyDrivenAccountOpportunityMarkdown,
+  extractSupplyDrivenAccountOpportunityMemory,
+  normalizeSupplyDailyLines,
   resolveMerchantCostReference,
   selectAnomalousPriceProducts,
   selectDailySupplySignals,
   selectMerchantCoreProducts,
+  selectNewSellerDecision,
   selectNewSellerProduct,
   selectPausedProducts,
 } from "../src/supplyDrivenAccountOpportunity.js";
+
+function memoryForProduct(currentProduct, overrides = {}) {
+  return {
+    date: "2026-09-07",
+    title: "处理旧商品｜9月7日 AI 账号商机日报",
+    dailyFocusKey: `starter:baseline:${currentProduct.slug}`,
+    leadProductSlug: currentProduct.slug,
+    referenceCost: currentProduct.verifiedReferencePrice,
+    verifiedSourceCount: currentProduct.verifiedSourceCount,
+    verifiedSpecLabel: currentProduct.verifiedSpecLabel,
+    featuredProductSlugs: [currentProduct.slug],
+    actionKeys: [],
+    signalKeys: [],
+    normalizedLines: [],
+    ...overrides,
+  };
+}
 
 function signal({ kind, name, slug, tone = "opportunity", price = 10, count = 5 }) {
   const identity = `${name} ${slug}`.toLowerCase();
@@ -364,4 +384,89 @@ test("keeps a direct primary-source ChatGPT Plus account change as context", () 
 
   assert.match(result.markdown, /openai\.com\/chatgpt-plus-account-policy/);
   assert.match(result.markdown, /\*\*相关官方变化\*\*/);
+});
+
+test("uses recent daily memory to rotate away from yesterday's unchanged lead", () => {
+  const yesterdayLead = snapshot.products[0];
+  const recentDailyMemory = [memoryForProduct(yesterdayLead)];
+  const decision = selectNewSellerDecision(snapshot, { recentDailyMemory });
+
+  assert.ok(decision.product);
+  assert.notEqual(decision.product.slug, yesterdayLead.slug);
+  assert.equal(decision.kind, "first_verified");
+
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-08",
+    snapshot,
+    recentDailyMemory,
+  });
+  assert.notEqual(result.leadProduct.slug, yesterdayLead.slug);
+  assert.match(result.pageTitle, /今天换测/);
+  assert.match(result.markdown, /今天新在哪里/);
+});
+
+test("publishes an observation mission when the only eligible product has no new evidence", () => {
+  const onlyProduct = snapshot.products[0];
+  const unchangedSnapshot = {
+    ...snapshot,
+    products: [onlyProduct],
+    signals: [],
+  };
+  const recentDailyMemory = [memoryForProduct(onlyProduct)];
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-08",
+    snapshot: unchangedSnapshot,
+    recentDailyMemory,
+  });
+
+  assert.equal(result.leadProduct, null);
+  assert.equal(result.starterDecision.kind, "no_fresh_opportunity");
+  assert.match(result.markdown, /今天没有新的可验证试卖机会/);
+  assert.match(result.markdown, /今日不建议上新/);
+  assert.match(result.pageTitle, /AI 账号商机日报/);
+  assert.doesNotMatch(result.markdown, /可以做一次低成本试卖/);
+});
+
+test("allows the same product again only after a material same-spec cost change", () => {
+  const currentProduct = snapshot.products[0];
+  const recentDailyMemory = [memoryForProduct(currentProduct, { referenceCost: 120 })];
+  const focusedSnapshot = {
+    ...snapshot,
+    products: [currentProduct],
+    signals: [],
+  };
+  const decision = selectNewSellerDecision(focusedSnapshot, { recentDailyMemory });
+
+  assert.equal(decision.product.slug, currentProduct.slug);
+  assert.equal(decision.kind, "material_price_drop");
+  assert.match(decision.text, /下降 7\.5%/);
+});
+
+test("does not promote a persistent pause risk twice but keeps it in the pause list", () => {
+  const recentDailyMemory = [{
+    ...memoryForProduct(snapshot.products[0]),
+    actionKeys: ["paused:claude-paused"],
+  }];
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-08",
+    snapshot,
+    recentDailyMemory,
+  });
+
+  assert.ok(result.oldMerchantActions.every((item) => item.product.slug !== "claude-paused"));
+  assert.match(result.markdown, /## 今天暂停什么[\s\S]*claude-paused/);
+});
+
+test("extracts bounded replay memory for the next seven-day novelty check", () => {
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({ dateStr: "2026-09-08", snapshot });
+  const source = `---\ntitle: "${result.pageTitle}"\ndate: 2026-09-08\n---\n\n${result.markdown}`;
+  const memory = extractSupplyDrivenAccountOpportunityMemory(source);
+
+  assert.equal(memory.date, "2026-09-08");
+  assert.equal(memory.title, result.pageTitle);
+  assert.equal(memory.dailyFocusKey, result.dailyFocusKey);
+  assert.equal(memory.leadProductSlug, result.leadProduct.slug);
+  assert.equal(memory.referenceCost, result.starterDecision.product.verifiedReferencePrice);
+  assert.ok(memory.normalizedLines.length > 20);
+  assert.deepEqual(memory.normalizedLines, normalizeSupplyDailyLines(source));
 });

@@ -241,18 +241,56 @@ async function verifyProductSources(product, { fetchImpl, now }) {
   }
 }
 
+function sourceVerificationEligible(product) {
+  return CORE_CATEGORY_IDS.has(product?.categoryId) &&
+    product.availableOfferCount >= 2 &&
+    (nonNegativeNumber(product.lowestPrice) > 0 || nonNegativeNumber(product.warrantyPrice) > 0);
+}
+
+export function selectSourceVerificationProducts(snapshot, options = {}) {
+  const maxProducts = Math.max(0, Number(options.maxProducts ?? MAX_SOURCE_VERIFICATION_PRODUCTS) || 0);
+  const recentLeadSlugs = new Set((options.recentLeadProductSlugs || []).filter(Boolean));
+  const candidates = (snapshot?.products || []).filter(sourceVerificationEligible);
+  const bySlug = new Map(candidates.map((product) => [product.slug, product]));
+  const selected = [];
+  const seen = new Set();
+  const add = (product) => {
+    if (!product?.slug || seen.has(product.slug) || selected.length >= maxProducts) return;
+    seen.add(product.slug);
+    selected.push(product);
+  };
+
+  for (const signal of snapshot?.signals || []) {
+    if (!["restock", "price_drop"].includes(signal?.kind)) continue;
+    if (recentLeadSlugs.has(signal?.product?.slug)) continue;
+    add(bySlug.get(signal?.product?.slug));
+  }
+  for (const categoryId of CORE_CATEGORY_IDS) {
+    add(candidates.find((product) =>
+      product.categoryId === categoryId && !recentLeadSlugs.has(product.slug)
+    ));
+  }
+  for (const product of candidates) {
+    if (!recentLeadSlugs.has(product.slug)) add(product);
+  }
+  for (const product of candidates) add(product);
+  return selected;
+}
+
 export async function enrichSnapshotWithVerifiedSources(
   snapshot,
-  { fetchImpl = fetch, now = new Date(), maxProducts = MAX_SOURCE_VERIFICATION_PRODUCTS } = {},
+  {
+    fetchImpl = fetch,
+    now = new Date(),
+    maxProducts = MAX_SOURCE_VERIFICATION_PRODUCTS,
+    recentLeadProductSlugs = [],
+  } = {},
 ) {
   if (!snapshot || snapshot.schemaVersion !== 2) return snapshot;
-  const candidates = (snapshot.products || [])
-    .filter((product) =>
-      CORE_CATEGORY_IDS.has(product.categoryId) &&
-      product.availableOfferCount >= 2 &&
-      (nonNegativeNumber(product.lowestPrice) > 0 || nonNegativeNumber(product.warrantyPrice) > 0)
-    )
-    .slice(0, Math.max(0, maxProducts));
+  const candidates = selectSourceVerificationProducts(snapshot, {
+    maxProducts,
+    recentLeadProductSlugs,
+  });
   const checks = await Promise.all(candidates.map(async (product) => [
     product.slug,
     await verifyProductSources(product, { fetchImpl, now }),
@@ -397,7 +435,7 @@ function resolveSnapshotUrl(env = {}) {
 
 export async function loadSupplyOpportunitySnapshot(
   env = {},
-  { fetchImpl = fetch, now = new Date() } = {},
+  { fetchImpl = fetch, now = new Date(), recentLeadProductSlugs = [] } = {},
 ) {
   let sourceUrl = DEFAULT_SNAPSHOT_URL;
   const controller = new AbortController();
@@ -421,7 +459,11 @@ export async function loadSupplyOpportunitySnapshot(
       throw new Error("snapshot response is too large");
     }
     const parsedSnapshot = parseSupplyOpportunitySnapshot(JSON.parse(text), { now });
-    const snapshot = await enrichSnapshotWithVerifiedSources(parsedSnapshot, { fetchImpl, now });
+    const snapshot = await enrichSnapshotWithVerifiedSources(parsedSnapshot, {
+      fetchImpl,
+      now,
+      recentLeadProductSlugs,
+    });
     return { snapshot, sourceUrl, error: null };
   } catch (error) {
     const message = error?.name === "AbortError"

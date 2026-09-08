@@ -7,7 +7,11 @@ import {
   validateOpportunityPublication,
   validateSupplyDrivenAccountOpportunityPublication,
 } from "../src/publishValidation.js";
-import { buildSupplyDrivenAccountOpportunityMarkdown } from "../src/supplyDrivenAccountOpportunity.js";
+import {
+  buildSupplyDrivenAccountOpportunityMarkdown,
+  extractSupplyDrivenAccountOpportunityMemory,
+  normalizeSupplyDailyLines,
+} from "../src/supplyDrivenAccountOpportunity.js";
 
 test("supply-driven account daily accepts only snapshot-backed facts and links", () => {
   const snapshot = {
@@ -91,10 +95,56 @@ test("supply-driven account daily accepts only snapshot-backed facts and links",
     expectedLeadProductSlug: "chatgpt-plus",
     expectedVerifiedSourceCount: 2,
     expectComparableHistory: true,
+    expectedFreshComparableSignalCount: result.freshComparableSignalCount,
+    expectedDailyFocusKey: result.dailyFocusKey,
+    pageTitle: result.pageTitle,
   });
   assert.deepEqual(valid.issues, []);
   assert.equal(valid.opportunityCount, 1);
   assert.doesNotMatch(markdown, /接码/);
+
+  const repeated = validateSupplyDrivenAccountOpportunityPublication({
+    markdown,
+    allowedSupplyUrls,
+    expectedStats: snapshot.stats,
+    expectedProductSlugs: ["chatgpt-plus"],
+    expectedLeadProductSlug: "chatgpt-plus",
+    expectedVerifiedSourceCount: 2,
+    expectComparableHistory: true,
+    expectedFreshComparableSignalCount: 1,
+    expectedDailyFocusKey: result.dailyFocusKey,
+    pageTitle: result.pageTitle,
+    recentDailyMemory: [{
+      date: "2026-08-30",
+      title: "另一项任务｜8月30日 AI 账号商机日报",
+      dailyFocusKey: "operations:other:product",
+      normalizedLines: normalizeSupplyDailyLines(markdown),
+    }],
+  });
+  assert.match(repeated.issues.join(" | "), /正文.*过度相似/);
+
+  const priorMemory = extractSupplyDrivenAccountOpportunityMemory(
+    `---\ntitle: ${result.pageTitle}\ndate: 2026-08-31\n---\n\n${markdown}`,
+  );
+  const nextResult = buildSupplyDrivenAccountOpportunityMarkdown({
+    dateStr: "2026-09-01",
+    snapshot,
+    recentDailyMemory: [priorMemory],
+  });
+  const nextValid = validateSupplyDrivenAccountOpportunityPublication({
+    markdown: nextResult.markdown,
+    allowedSupplyUrls: nextResult.allowedSupplyUrls,
+    expectedStats: snapshot.stats,
+    expectedProductSlugs: nextResult.oldMerchantActions.map((item) => item.product.slug),
+    expectedLeadProductSlug: nextResult.leadProduct?.slug || null,
+    expectedVerifiedSourceCount: nextResult.leadProduct?.verifiedSourceCount || 0,
+    expectComparableHistory: nextResult.hasComparableHistory,
+    expectedFreshComparableSignalCount: nextResult.freshComparableSignalCount,
+    expectedDailyFocusKey: nextResult.dailyFocusKey,
+    pageTitle: nextResult.pageTitle,
+    recentDailyMemory: [priorMemory],
+  });
+  assert.deepEqual(nextValid.issues, []);
 
   const invented = validateSupplyDrivenAccountOpportunityPublication({
     markdown: markdown.replace("**公开报价** 当前 3349 条", "**公开报价** 当前 9999 条"),
