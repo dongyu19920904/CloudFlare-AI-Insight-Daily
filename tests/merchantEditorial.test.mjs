@@ -37,6 +37,12 @@ test('same evidence with different fetch dates is not a new opportunity', async 
   assert.equal(bundle.newEvidenceIds.length, 0);
   assert.equal(validateMerchantEditorial(draft(), bundle).ok, false);
 });
+
+test('separate API billing does not prove a developer is ineligible for a subscription', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  const bad = draft(); bad.customerHypothesis = '待验证假设：需要 API 接口调用的开发者不适用 Pro 套餐。';
+  assert.ok(validateMerchantEditorial(bad, bundle).issues.includes('editorial_billing_is_not_user_exclusion'));
+});
 test('unrelated official news is excluded; no stock does not manufacture a trial recommendation', async () => {
   const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot: { ...snapshot, products: snapshot.products.map((p) => ({ ...p, availableOfferCount: 0 })) }, official: [...official, { ...official[0], platform: 'gaming' }] });
   assert.equal(bundle.evidence.length, 2);

@@ -5,6 +5,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSupplyDrivenAccountOpportunityMarkdown } from "../src/supplyDrivenAccountOpportunity.js";
+import { renderMerchantBrief } from "../src/merchantEditorial.js";
+
+test('archive verification recognizes editorial V1 and rejects an uncontrolled destination', () => {
+  const { markdown } = renderMerchantBrief({ date: '2026-09-10', products: [], sourceObservedAt: '2026-09-10T00:00:00Z', sourceGeneratedAt: '2026-09-10T01:00:00Z' });
+  const run = (body) => execFileSync('node', ['.github/scripts/validate-publication-content.mjs'], {
+    cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, MODE: 'account-opportunity', TARGET_DATE: '2026-09-10', PAGE_RESPONSE_PATH: writeGitHubContentResponse(body) },
+  });
+  assert.match(run(markdown), /ok=true/);
+  assert.throws(() => run(markdown.replace('https://supply.aivora.cn/card-products', 'https://untrusted.example/offer')));
+});
 
 function writeGitHubContentResponse(markdown) {
   const dir = mkdtempSync(join(tmpdir(), "publication-content-"));

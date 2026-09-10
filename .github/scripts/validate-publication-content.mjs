@@ -6,7 +6,9 @@ import {
   validateDailyPublication,
   validateOpportunityPublication,
   validateSupplyDrivenAccountOpportunityPublication,
+  validateMerchantEditorialPublication,
 } from "../../src/publishValidation.js";
+import { MERCHANT_OFFICIAL_SOURCES } from "../../src/merchantEvidenceBundle.js";
 
 function markdownValue(value) {
   return String(value ?? "")
@@ -91,6 +93,22 @@ function validateByMode(mode, markdown) {
   }
 
   if (mode === "account-opportunity") {
+    if (/"editorialVersion"\s*:\s*"merchant-evidence-editor-v1"/.test(body)) {
+      // Generation validates the full evidence bundle. Archive verification only
+      // rechecks structure and bounded public destinations, without fetching or AI.
+      const officialUrls = new Set(MERCHANT_OFFICIAL_SOURCES.map((source) => source.url));
+      const urls = [...body.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1]);
+      const evidence = urls.filter((value) => {
+        if (officialUrls.has(value)) return true;
+        try {
+          const url = new URL(value);
+          return url.origin === 'https://supply.aivora.cn' && !url.username && !url.password
+            && (/^\/card-products(?:\/[a-z0-9-]+)?$/.test(url.pathname)
+              || ['/changes', '/profit-calculator', '/api/opportunities/snapshot'].includes(url.pathname));
+        } catch { return false; }
+      }).map((url) => ({ url }));
+      return validateMerchantEditorialPublication({ markdown: body, bundle: { evidence, products: [] } });
+    }
     if (/^##\s+(?:实时货源盘面|今日经营看板|今日能不能做|今天一句话)(?:\s|$)/m.test(body)) {
       return validateSupplyDrivenAccountOpportunityPublication({
         markdown: body,
