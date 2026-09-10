@@ -12,6 +12,13 @@ export function editorialRepairDetails(draft, bundle, issues) {
   return {
     issues,
     instruction: '重写整个 JSON，不能保留错误。先压缩为三条事实、三步任务、一份短答疑。正文禁止 E1、demandEvidence、copyAsset 等内部字段名。',
+    preciseFixes: [
+      '正文不能出现 E1/E2 等编号，它们会触发未支持数字。写“官方说明”，来源由渲染器添加。',
+      '没有询单记录就不能写客户常混淆、导致纠纷。只能写待验证的咨询问题。',
+      '每步产出必须是文件或记录，不能把减少退款、避免纠纷当成已实现结果。新手可能没有店铺和客户，任务必须能独自完成。',
+      '不能把“Plus费用不含API用量”写成“买Plus不能用API”。不要添加原文未说的模型选择器位置或功能。',
+      'followUp 只写记录实际问题，不能凭空制定追问比例一半等效果阈值。',
+    ],
     summary: { actualCharacters: plain(draft?.summary).length, target: '最多80个字符，只写结论和产出，不罗列来源和数字' },
     copyAsset: { target: '最多260字；最后一行逐字写：付款前再次确认库存。只使用 facts 已解释的信息，删去推测和新数字' },
     facts: (draft?.facts || []).map((fact, index) => {
@@ -32,6 +39,7 @@ export function validateMerchantEditorial(draft, bundle) {
   }
   if (plain(draft.headline).length > 60 || plain(draft.summary).length > 180) issues.push('editorial_first_screen_too_long');
   if (!plain(draft.copyAsset).includes('付款前再次确认库存')) issues.push('editorial_copy_stock_reminder_missing');
+  if (plain(draft.copyAsset).length > 450) issues.push('editorial_copy_too_long');
   if (!Array.isArray(draft.unknowns) || !draft.unknowns.every((item) => typeof item === 'string')) issues.push('editorial_unknowns_invalid');
   const facts = Array.isArray(draft.facts) ? draft.facts : [];
   if (facts.length < 3 || facts.length > 6) issues.push('editorial_fact_count');
@@ -62,6 +70,8 @@ export function validateMerchantEditorial(draft, bundle) {
   if (/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(all)) issues.push('editorial_trial_requires_verified_fulfilment');
   // The renderer owns links, counts, prices and evidence references, not model prose.
   const narrative = [draft.headline, draft.summary, draft.customerHypothesis, draft.deliverable, draft.copyAsset, draft.stopCondition, draft.followUp, ...(draft.merchantActions || []), ...steps.map((item) => item.action)].join(' ');
+  if (/\bE\d+\b|demandEvidence|copyAsset/.test(narrative)) issues.push('editorial_internal_identifiers');
+  if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
   if (/https?:\/\/|<\/?[a-z]|javascript:|\[[^\]]*\]\(/i.test(narrative)) issues.push('editorial_uncontrolled_link');
   const supportedNumbers = new Set(facts.flatMap((fact) => plain(fact.text).match(/\d+(?:\.\d+)?/g) || []));
   for (const number of narrative.match(/\d+(?:\.\d+)?/g) || []) if (!supportedNumbers.has(number)) issues.push('editorial_narrative_number_not_supported');
