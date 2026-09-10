@@ -1295,6 +1295,9 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null, mo
     try {
         const response = await fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText, false);
         const data = await response.json();
+        if (env.MERCHANT_EDITORIAL_REQUEST === 'true' && typeof env.MERCHANT_EDITORIAL_USAGE === 'function') {
+            env.MERCHANT_EDITORIAL_USAGE({ inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, stopReason: data.stop_reason ?? null });
+        }
 
         // Filter out thinking blocks and only return text content
         if (data.content && Array.isArray(data.content)) {

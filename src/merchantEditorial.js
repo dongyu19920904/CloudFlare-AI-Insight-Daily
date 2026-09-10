@@ -22,9 +22,40 @@ export function parseEditorialJson(output) {
     if (quoted) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; continue; }
     if (char === '"') quoted = true;
     else if (char === '{') depth++;
-    else if (char === '}' && --depth === 0) return safeJson(text.slice(start, i + 1));
+    else if (char === '}' && --depth === 0) {
+      const candidate = text.slice(start, i + 1);
+      return safeJson(candidate) || parseWithEmbeddedQuotes(candidate);
+    }
   }
   return null;
+}
+
+function parseWithEmbeddedQuotes(text) {
+  // Only escape prose quotes inside complete JSON strings. Never add a field,
+  // close a truncated object or change a word/number. Schema/evidence checks
+  // still run after this compatibility normalization.
+  let output = ''; let inString = false; let escaped = false; let key = false;
+  let previous = ''; const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (escaped) { output += char; escaped = false; continue; }
+      if (char === '\\') { output += char; escaped = true; continue; }
+      if (char === '"') {
+        const next = text.slice(i + 1).trimStart()[0];
+        const closes = key ? next === ':' : !next || /[,}\]]/.test(next);
+        if (closes) { inString = false; previous = '"'; output += char; }
+        else output += '\\"';
+      } else output += char === '\n' ? '\\n' : char === '\r' ? '\\r' : char === '\t' ? '\\t' : char;
+      continue;
+    }
+    if (char === '"') { inString = true; key = previous === '{' || previous === ',' && stack.at(-1) === '{'; }
+    else if (char === '{' || char === '[') stack.push(char);
+    else if (char === '}' || char === ']') stack.pop();
+    output += char;
+    if (!/\s/.test(char)) previous = char;
+  }
+  return safeJson(output);
 }
 export function editorialFactKey(fact, bundle) {
   const source = bundle.evidence.find((item) => item.id === fact.evidenceId);
@@ -46,7 +77,7 @@ export function editorialFactKey(fact, bundle) {
 export function hasUnverifiedTrialRecommendation(draft) {
   const values = JSON.stringify(draft).split(/[。；，,\n]|但是|然而|不过/);
   return values.some((clause) => /直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(clause)
-    && !/(?:禁止|不得|不要|不建议|不应)[^。；，,]*?(?:直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品)/.test(clause));
+    && !/(?:禁止|不得|不要|不建议|不应|暂停|停止)[^。；，,]*?(?:直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品)/.test(clause));
 }
 
 export function editorialQuoteOptions(bundle) {
@@ -71,7 +102,7 @@ export function resolveEditorialDraft(draft, bundle, quotes) {
     .replace(/\bE\d+\b/g, (id) => bundle.evidence.find((item) => item.id === id)?.title || id)
     .replace(/demandEvidence\s*(?:为空|是空的)?/g, '真实需求记录尚缺')
     .replace(/originalPagesVerified/g, '已核对原页的数量').replace(/originalPageStatus/g, '原页核对状态')
-    .replace(/not_checked/g, '尚未核对').replace(/\bunknown\b/g, '尚未确认').replace(/copyAsset/g, '下方经营材料');
+    .replace(/not_checked/g, '尚未核对').replace(/\bunknown\b/g, '尚未确认').replace(/copyAsset/g, '下方经营材料').replace(/可采购报价/g, '目录标注在售报价');
   const resolved = { ...draft };
   for (const field of ['headline', 'summary', 'customerHypothesis', 'deliverable', 'stopCondition', 'copyAsset', 'followUp']) resolved[field] = publicText(draft[field]);
   for (const field of ['merchantActions', 'unknowns']) if (Array.isArray(draft[field])) resolved[field] = draft[field].map(publicText);
@@ -148,7 +179,8 @@ export function validateMerchantEditorial(draft, bundle) {
   // The renderer owns links, counts, prices and evidence references, not model prose.
   const narrative = [draft.headline, draft.summary, draft.customerHypothesis, draft.deliverable, draft.copyAsset, draft.stopCondition, draft.followUp, ...(draft.merchantActions || []), ...steps.map((item) => item.action)].join(' ');
   if (/\bE\d+\b|demandEvidence|copyAsset|\bunknown\b|not_checked|originalPages?\w*/.test(`${narrative} ${(draft.unknowns || []).join(' ')}`)) issues.push('editorial_internal_identifiers');
-  if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
+  if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|买家(?:常见|最常)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
+  if (/(?:恢复|重新上架|涨价|降价|缺货|断货)/.test(plain(draft.headline)) && !/一条|部分|某个|抽样|观察/.test(plain(draft.headline))) issues.push('editorial_change_scope_too_broad');
   if (/https?:\/\/|<\/?[a-z]|javascript:|\[[^\]]*\]\(/i.test(narrative)) issues.push('editorial_uncontrolled_link');
   const supportedNumbers = new Set(facts.flatMap((fact) => plain(fact.text).match(/\d+(?:\.\d+)?/g) || []));
   for (const number of narrative.match(/\d+(?:\.\d+)?/g) || []) if (!supportedNumbers.has(number)) issues.push('editorial_narrative_number_not_supported');
@@ -235,12 +267,16 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
       }
       debugInfo.accountOpportunityEditorialModel = modelEnv.DEFAULT_ANTHROPIC_MODEL || modelEnv.ANTHROPIC_MODEL;
       modelEnv.MERCHANT_EDITORIAL_REQUEST = 'true';
+      modelEnv.MERCHANT_EDITORIAL_USAGE = (usage) => {
+        debugInfo.accountOpportunityEditorialUsage = [...(debugInfo.accountOpportunityEditorialUsage || []), usage];
+      };
       modelEnv.GEMINI_FALLBACK_ENABLED = 'false';
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           debugInfo.accountOpportunityModelCalls++;
           const quoteOptions = editorialQuoteOptions(bundle);
-          const output = await callModel(modelEnv, JSON.stringify({ bundle, quoteOptions, validationErrors: issues, repair: attempt ? editorialRepairDetails(draft, bundle, issues) : null, previousDraft: draft }), merchantEditorialPrompt);
+          const modelBundle = { ...bundle, evidence: bundle.evidence.map(({ text, ...record }) => record) };
+          const output = await callModel(modelEnv, JSON.stringify({ bundle: modelBundle, quoteOptions, validationErrors: issues, repair: attempt ? editorialRepairDetails(draft, bundle, issues) : null, previousDraft: draft }), merchantEditorialPrompt);
           draft = resolveEditorialDraft(parseEditorialJson(output), bundle, quoteOptions);
           const validation = validateMerchantEditorial(draft, bundle);
           if (dryRun) {

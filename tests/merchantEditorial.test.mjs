@@ -98,6 +98,7 @@ test('provider preamble is tolerated but truncated JSON is never repaired by inv
   assert.deepEqual(parseEditorialJson(`说明\n${JSON.stringify(draft())}\n结束`), draft());
   assert.equal(parseEditorialJson('{"headline":"half'), null);
   assert.equal(parseEditorialJson('x'.repeat(30001)), null);
+  assert.deepEqual(parseEditorialJson('{"text":"商家写"月卡"但没写交付","steps":["问"套餐"是什么"]}'), { text: '商家写"月卡"但没写交付', steps: ['问"套餐"是什么'] });
 });
 
 test('unobserved effects, internal IDs and verbose copy cannot become merchant claims', async () => {
