@@ -6,6 +6,25 @@ const FORBIDDEN = /稳赚|必赚|一定赚钱|保证赚钱|爆单|永久稳定|�
 const plain = (value, length = 3000) => typeof value === 'string' ? value.trim().slice(0, length) : '';
 const esc = (value) => plain(value).replace(/[<>\[\]`*_]/g, '').replace(/\r?\n/g, ' ');
 const safeJson = (value) => { try { return JSON.parse(value); } catch { return null; } };
+export function parseEditorialJson(output) {
+  const text = String(output || '').trim();
+  if (text.length > 30000) return null;
+  const direct = safeJson(text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+  if (direct) return direct;
+  // Some compatible providers surround their JSON with a short preamble.
+  // Extract only a balanced complete object, never invent missing JSON fields.
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0; let quoted = false; let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; continue; }
+    if (char === '"') quoted = true;
+    else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) return safeJson(text.slice(start, i + 1));
+  }
+  return null;
+}
 const factKey = (fact, bundle) => `${bundle.evidence.find((item) => item.id === fact.evidenceId)?.url}|${plain(fact.quote).toLowerCase().replace(/\s+/g, ' ')}`;
 
 export function editorialRepairDetails(draft, bundle, issues) {
@@ -156,11 +175,12 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
         try {
           debugInfo.accountOpportunityModelCalls++;
           const output = await callModel(modelEnv, JSON.stringify({ bundle, validationErrors: issues, repair: attempt ? editorialRepairDetails(draft, bundle, issues) : null, previousDraft: draft }), merchantEditorialPrompt);
-          draft = safeJson(String(output).replace(/^```(?:json)?\s*|\s*```$/g, ''));
+          draft = parseEditorialJson(output);
           const validation = validateMerchantEditorial(draft, bundle);
           if (dryRun) {
             debugInfo.accountOpportunityEditorialDraft = draft;
             debugInfo.accountOpportunityEditorialEvidence = bundle;
+            if (!draft) debugInfo.accountOpportunityEditorialRawDiagnostic = { length: String(output).length, start: String(output).slice(0, 1000), end: String(output).slice(-2000) };
           }
           if (validation.ok) break;
           issues = validation.issues;
