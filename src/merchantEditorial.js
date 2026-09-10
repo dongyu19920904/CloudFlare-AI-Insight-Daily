@@ -26,11 +26,61 @@ export function parseEditorialJson(output) {
   }
   return null;
 }
-const factKey = (fact, bundle) => `${bundle.evidence.find((item) => item.id === fact.evidenceId)?.url}|${plain(fact.quote).toLowerCase().replace(/\s+/g, ' ')}`;
+export function editorialFactKey(fact, bundle) {
+  const source = bundle.evidence.find((item) => item.id === fact.evidenceId);
+  const text = source?.text || '';
+  const quote = plain(fact.quote);
+  const index = text.indexOf(quote);
+  if (index < 0 || !quote) return '';
+  // Anchor an official quotation to its source sentence: choosing another
+  // fragment from the same sentence is not a new business fact tomorrow.
+  const before = text.slice(0, index);
+  const boundary = Math.max(before.lastIndexOf('. '), before.lastIndexOf('。'), before.lastIndexOf('\n'));
+  const start = boundary < 0 ? 0 : boundary + (text[boundary] === '.' ? 2 : 1);
+  const tail = text.slice(index + quote.length);
+  const nextBoundary = tail.search(/[.!?。](?:\s|$)|\n/);
+  const end = /[.!?。]$/.test(quote) ? index + quote.length : nextBoundary < 0 ? text.length : index + quote.length + nextBoundary + 1;
+  const anchor = source.kind === 'official' ? text.slice(start, end) : quote;
+  return `${source.url}|${anchor.toLowerCase().replace(/\s+/g, ' ').trim()}`;
+}
 export function hasUnverifiedTrialRecommendation(draft) {
   const values = JSON.stringify(draft).split(/[。；，,\n]|但是|然而|不过/);
   return values.some((clause) => /直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(clause)
     && !/(?:禁止|不得|不要|不建议|不应)[^。；，,]*?(?:直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品)/.test(clause));
+}
+
+export function editorialQuoteOptions(bundle) {
+  return bundle.evidence.flatMap((source) => {
+    if (source.kind === 'supply-change') return [{ id: `${source.id}Q1`, evidenceId: source.id, quote: source.text.split(/\s+/).slice(0, 8).join(' ').slice(0, 120), context: `${source.text}；这是目录中的一次观察，不代表该商品所有渠道的状态，也不证明原页当前可购买。` }];
+    if (source.kind === 'aggregate') {
+      const payload = safeJson(source.text);
+      return (payload?.offers || []).slice(0, 3).map((offer, index) => ({ id: `${source.id}Q${index + 1}`, evidenceId: source.id, quote: String(offer.originalName).split(/\s+/).slice(0, 8).join(' ').slice(0, 120), context: `仅这一条商家标注：${offer.originalName}；价格 ${offer.price}；币种 ${offer.currency === 'unknown' ? '尚未确认，不能当人民币' : offer.currency}；原页${offer.originalPageStatus === 'merchant_statement_matched' ? '有匹配的商家结构化声明，不是履约保证' : '尚未完成核验'}；交付和售后尚未核验；标题中的规格不能当成已对齐的成本。` }));
+    }
+    if (source.kind !== 'official') return [];
+    const sentences = source.text.split(/(?<=[.!?])\s+/).filter((text) => /usage|bill|price|plan|limit|API|resell|subscription|cost|access/i.test(text));
+    return sentences.slice(0, 18).map((sentence, index) => {
+      const quote = sentence.split(/\s+/).slice(0, 8).join(' ');
+      return { id: `${source.id}Q${index + 1}`, evidenceId: source.id, quote, context: sentence.slice(0, 700) };
+    });
+  });
+}
+
+export function resolveEditorialDraft(draft, bundle, quotes) {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return draft;
+  const publicText = (text) => typeof text !== 'string' ? text : text
+    .replace(/\bE\d+\b/g, (id) => bundle.evidence.find((item) => item.id === id)?.title || id)
+    .replace(/demandEvidence\s*(?:为空|是空的)?/g, '真实需求记录尚缺')
+    .replace(/originalPagesVerified/g, '已核对原页的数量').replace(/originalPageStatus/g, '原页核对状态')
+    .replace(/not_checked/g, '尚未核对').replace(/\bunknown\b/g, '尚未确认').replace(/copyAsset/g, '下方经营材料');
+  const resolved = { ...draft };
+  for (const field of ['headline', 'summary', 'customerHypothesis', 'deliverable', 'stopCondition', 'copyAsset', 'followUp']) resolved[field] = publicText(draft[field]);
+  for (const field of ['merchantActions', 'unknowns']) if (Array.isArray(draft[field])) resolved[field] = draft[field].map(publicText);
+  if (Array.isArray(draft.steps)) resolved.steps = draft.steps.map((step) => ({ ...step, action: publicText(step?.action) }));
+  if (Array.isArray(draft.facts)) resolved.facts = draft.facts.map((fact) => {
+    const selected = quotes.find((item) => item.id === fact?.quoteId && item.evidenceId === fact?.evidenceId);
+    return { ...fact, text: publicText(fact?.text), quote: fact?.quoteId ? selected?.quote || '' : fact?.quote };
+  });
+  return resolved;
 }
 
 export function editorialRepairDetails(draft, bundle, issues) {
@@ -76,14 +126,15 @@ export function validateMerchantEditorial(draft, bundle) {
     const words = (fact.quote.match(/[\p{L}\p{N}]+/gu) || []).length;
     quotes.set(source.id, (quotes.get(source.id) || 0) + words);
     if (quotes.get(source.id) > 25 || fact.quote.length > 200) issues.push('editorial_quote_too_long');
+    const context = fact.quoteId ? editorialQuoteOptions(bundle).find((item) => item.id === fact.quoteId && item.evidenceId === source.id)?.context || '' : source.text;
     for (const number of plain(fact.text).match(/\d+(?:\.\d+)?/g) || []) {
-      if (!(source.text.match(/\d+(?:\.\d+)?/g) || []).includes(number)) issues.push('editorial_number_not_supported');
+      if (!(context.match(/\d+(?:\.\d+)?/g) || []).includes(number)) issues.push('editorial_number_not_supported');
     }
   }
   if (ids.size < 2) issues.push('editorial_needs_two_sources');
   if (!bundle.evidence.some((item) => ids.has(item.id) && item.kind === 'official')) issues.push('editorial_official_boundary_missing');
   if (![...ids].some((id) => bundle.newEvidenceIds.includes(id))) issues.push('editorial_no_new_evidence');
-  if (facts.length && facts.every((fact) => (bundle.usedFactKeys || []).includes(factKey(fact, bundle)))) issues.push('editorial_same_facts_reworded');
+  if (facts.length && facts.every((fact) => (bundle.usedFactKeys || []).includes(editorialFactKey(fact, bundle)))) issues.push('editorial_same_facts_reworded');
   if (!/待验证|假设/.test(plain(draft.customerHypothesis))) issues.push('editorial_demand_must_be_hypothesis');
   const steps = Array.isArray(draft.steps) ? draft.steps : [];
   if (!steps.length || steps.length > 6) issues.push('editorial_step_count');
@@ -183,8 +234,9 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           debugInfo.accountOpportunityModelCalls++;
-          const output = await callModel(modelEnv, JSON.stringify({ bundle, validationErrors: issues, repair: attempt ? editorialRepairDetails(draft, bundle, issues) : null, previousDraft: draft }), merchantEditorialPrompt);
-          draft = parseEditorialJson(output);
+          const quoteOptions = editorialQuoteOptions(bundle);
+          const output = await callModel(modelEnv, JSON.stringify({ bundle, quoteOptions, validationErrors: issues, repair: attempt ? editorialRepairDetails(draft, bundle, issues) : null, previousDraft: draft }), merchantEditorialPrompt);
+          draft = resolveEditorialDraft(parseEditorialJson(output), bundle, quoteOptions);
           const validation = validateMerchantEditorial(draft, bundle);
           if (dryRun) {
             debugInfo.accountOpportunityEditorialDraft = draft;
@@ -207,7 +259,7 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
     try { await kv?.put(cacheKey, JSON.stringify(draft), { expirationTtl: 86400 * 2 }); } catch {}
   }
   // Commit this memory only after GitHub publication succeeds.
-  return { ...result, bundle, memoryEntry: draft ? { date: dateStr, title: draft.headline, summary: draft.summary, topicKey: draft.topicKey, evidenceHashes: result.metadata.evidenceHashes, factKeys: draft.facts.map((fact) => factKey(fact, bundle)) } : null };
+  return { ...result, bundle, memoryEntry: draft ? { date: dateStr, title: draft.headline, summary: draft.summary, topicKey: draft.topicKey, evidenceHashes: result.metadata.evidenceHashes, factKeys: draft.facts.map((fact) => editorialFactKey(fact, bundle)) } : null };
 }
 
 export async function storeMerchantEditorialMemory(env, entry) {

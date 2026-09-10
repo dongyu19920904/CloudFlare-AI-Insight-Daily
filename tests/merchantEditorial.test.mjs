@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildMerchantEvidenceBundle, focusMerchantEvidence, fetchMerchantEvidence, originalOfferEvidence } from '../src/merchantEvidenceBundle.js';
-import { hasUnverifiedTrialRecommendation, parseEditorialJson, editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
+import { editorialFactKey, hasUnverifiedTrialRecommendation, parseEditorialJson, editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
 import { validateMerchantEditorialPublication } from '../src/publishValidation.js';
 import { runIsolatedAccountOpportunity } from '../src/accountOpportunityIsolation.js';
 
@@ -90,7 +90,7 @@ test('repair feedback names exact quote mismatch and length with allowlisted des
 
 test('changing page hash cannot turn the exact same published facts into a new issue', async () => {
   const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
-  bundle.usedFactKeys = draft().facts.map((fact) => `${bundle.evidence.find((s) => s.id === fact.evidenceId).url}|${fact.quote.toLowerCase()}`);
+  bundle.usedFactKeys = draft().facts.map((fact) => editorialFactKey(fact, bundle));
   assert.ok(validateMerchantEditorial(draft(), bundle).issues.includes('editorial_same_facts_reworded'));
 });
 
@@ -112,4 +112,16 @@ test('explicit stop conditions do not become affirmative trial recommendations',
   assert.equal(hasUnverifiedTrialRecommendation({ stopCondition: '禁止向买家承诺交付或建议直接试卖。' }), false);
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '建议直接试卖。' }), true);
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '禁止虚构，但建议直接试卖。' }), true);
+});
+
+test('different quotation fragments within the same source sentence keep the same fact identity', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  assert.equal(editorialFactKey({ evidenceId: 'E1', quote: 'API usage' }, bundle), editorialFactKey({ evidenceId: 'E1', quote: 'usage is separate.' }, bundle));
+  assert.notEqual(editorialFactKey({ evidenceId: 'E1', quote: 'API usage' }, bundle), editorialFactKey({ evidenceId: 'E1', quote: 'Message caps may vary.' }, bundle));
+});
+
+test('real comparable change evidence retains event time, not the fetch time', async () => {
+  const eventTime = '2026-09-10T03:30:00Z';
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot: { ...snapshot, signals: [{ id: 'rise:plus', kind: 'price_rise', product: snapshot.products[0], title: '同规格报价上升', evidence: '同一来源报价从80升至90', observedAt: eventTime }] }, official });
+  assert.equal(bundle.evidence.find((item) => item.kind === 'supply-change').occurredAt, eventTime);
 });
