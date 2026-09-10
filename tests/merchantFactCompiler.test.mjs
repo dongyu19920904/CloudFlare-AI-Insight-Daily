@@ -110,7 +110,7 @@ test('invalid model output only falls back to a verified topic, never to its pro
   s.products.find((item) => item.slug === 'claude-pro-month').sourceOffers = aggregate.offers;
   let calls = 0; const debugInfo = {};
   const result = await generateMerchantEditorial({ env, dateStr: b.date, snapshot: s, officialEvidence: official(b), dryRun: true, debugInfo, callModel: async (config) => {
-    calls++; assert.equal(config.ANTHROPIC_MAX_TOKENS, '128');
+    calls++; assert.equal(config.ANTHROPIC_MAX_TOKENS, '256');
     return '{"topicId":"claude-pro-billing","copyAsset":"20x是十倍，今天一定赚钱"}';
   } });
   assert.equal(calls, 1); assert.equal(debugInfo.accountOpportunitySelectorFallback, true);
@@ -122,5 +122,12 @@ test('failed memory reads stop new-topic publication and never block the main da
   const b = fresh(); let calls = 0; const debugInfo = {};
   const result = await generateMerchantEditorial({ env: { ...env, DATA_KV: { get: async () => { throw new Error('offline'); } } }, dateStr: b.date, snapshot: snapshot(b), officialEvidence: official(b), debugInfo, callModel: async () => calls++ });
   assert.equal(calls, 0); assert.equal(result.memoryEntry, null);
+  assert.deepEqual(debugInfo.accountOpportunityEditorialIssues, ['compiled_memory_unavailable']);
+});
+
+test('corrupt persisted memory is not treated as an empty new publication history', async () => {
+  const b = fresh(); const debugInfo = {};
+  await generateMerchantEditorial({ env: { ...env, DATA_KV: { get: async () => '{bad json' } }, dateStr: b.date, snapshot: snapshot(b), officialEvidence: official(b), dryRun: true, debugInfo, callModel: async () => { throw new Error('must not call'); } });
+  assert.equal(debugInfo.accountOpportunityModelCalls, 0);
   assert.deepEqual(debugInfo.accountOpportunityEditorialIssues, ['compiled_memory_unavailable']);
 });
