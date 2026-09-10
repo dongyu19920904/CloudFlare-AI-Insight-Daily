@@ -1,6 +1,6 @@
 import { callChatAPI } from './chatapi.js';
 import { merchantEditorialPrompt } from './prompt/merchantEditorialPrompt.js';
-import { buildMerchantEvidenceBundle, focusMerchantEvidence, EDITORIAL_MEMORY_KEY, EDITORIAL_VERSION, loadMerchantOfficialEvidence } from './merchantEvidenceBundle.js';
+import { buildMerchantEvidenceBundle, focusMerchantEvidence, EDITORIAL_MEMORY_KEY, EDITORIAL_VERSION, loadMerchantOfficialEvidence, MERCHANT_OFFICIAL_SOURCES } from './merchantEvidenceBundle.js';
 import { FACT_COMPILER_VERSION, buildCompiledTopics, compileTopicDraft, selectCompiledTopic, validateCompiledDraft } from './merchantFactCompiler.js';
 
 const FORBIDDEN = /稳赚|必赚|一定赚钱|保证赚钱|爆单|永久稳定|零风险|永不封号|官方授权|全网销量|市场火爆|供不应求|今天首次通过|忽略.{0,8}指令/i;
@@ -265,7 +265,9 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
     else memory = parsed;
   } catch { memoryUnavailable = true; }
   if (!Array.isArray(memory)) memory = [];
-  const official = officialEvidence || (snapshot.products?.length ? await loadMerchantOfficialEvidence({ fetchImpl }) : []);
+  const multiPlatform = dryRun || env.ACCOUNT_MERCHANT_MULTIPLATFORM_ENABLED === 'true';
+  const official = officialEvidence || (snapshot.products?.length ? await loadMerchantOfficialEvidence({ fetchImpl, sources: multiPlatform ? MERCHANT_OFFICIAL_SOURCES : MERCHANT_OFFICIAL_SOURCES.slice(0, 6) }) : []);
+  debugInfo.accountOpportunityOfficialSources = official.map(({ url, fetchStatus, failureReason }) => ({ url, fetchStatus, ...(failureReason ? { failureReason } : {}) }));
   const rawBundle = await buildMerchantEvidenceBundle({ dateStr, snapshot, official, memory });
   if (env.ACCOUNT_MERCHANT_FACT_COMPILER_ENABLED === 'true' && memoryUnavailable) {
     debugInfo.accountOpportunityEditorialAccepted = false;
@@ -333,7 +335,7 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
 }
 
 async function generateCompiledEditorial({ env, bundle, debugInfo, dryRun, callModel }) {
-  const topics = buildCompiledTopics(bundle);
+  const topics = buildCompiledTopics(bundle).filter((topic) => dryRun || env.ACCOUNT_MERCHANT_MULTIPLATFORM_ENABLED === 'true' || topic.id.startsWith('claude-'));
   debugInfo.accountOpportunityEditorialVersion = EDITORIAL_VERSION;
   debugInfo.accountOpportunityFactCompilerVersion = FACT_COMPILER_VERSION;
   debugInfo.accountOpportunityModelCalls = 0;
