@@ -1296,7 +1296,7 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null, mo
         const response = await fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText, false);
         const data = await response.json();
         if (env.MERCHANT_EDITORIAL_REQUEST === 'true' && typeof env.MERCHANT_EDITORIAL_USAGE === 'function') {
-            env.MERCHANT_EDITORIAL_USAGE({ inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, stopReason: data.stop_reason ?? null });
+            env.MERCHANT_EDITORIAL_USAGE({ inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, stopReason: data.stop_reason ?? null, reportedModel: /^[a-zA-Z0-9._-]{1,80}$/.test(data.model || '') ? data.model : null });
         }
 
         // Filter out thinking blocks and only return text content

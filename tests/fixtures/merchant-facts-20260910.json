@@ -1,0 +1,100 @@
+{
+  "provenance": {
+    "run": "34447353816",
+    "description": "Frozen public evidence from authenticated dry-run. No credentials or personal trading data."
+  },
+  "bundle": {
+    "version": "merchant-evidence-editor-v1",
+    "date": "2026-09-10",
+    "evidenceKey": "61c9ed44d930c904eaf67d12c16ec225c51bf285b7273fd1fd4b0d7a2aec4bab",
+    "evidence": [
+      {
+        "platform": "claude",
+        "url": "https://support.claude.com/en/articles/8325606-what-is-the-pro-plan",
+        "title": "Claude Pro 套餐说明",
+        "kind": "official",
+        "text": "This article is about paid Pro plans for individual consumers. If you're part of an organization looking to use Claude with your team, refer to Team and Enterprise Plans . The Pro plan is a paid plan for our Claude chat experience. It is currently available in certain supported locations . Key benefits The benefits of the Pro plan are: At least five times the usage per session compared to our free service. Priority access to Claude during high-traffic periods. Early access to new features that help you get the most out of Claude. Claude Code access Cowork access Learn how to sign up for the Pro plan . Note: The Pro plan does not include API usage through the Claude Console. If you're interested in both enhanced Claude features and the Claude API, you'll need to set up Console access to pay for API usage separately. How much does the Pro plan cost? The Pro plan is available for $20 per month (US), with pricing in your local currency where supported. Monthly pricing varies by region, and some regions include applicable taxes in the displayed price while others add tax at checkout. You can choose to save with an annual subscription plan. Annual subscriptions are billed once yearly at a discounted rate. Visit claude.ai/upgrade or check your mobile app store for current pricing in your region. Price and plans are subject to change at Anthropic's discretion. How can I get a free or discounted Pro plan? We do not offer standard discounted pricing any of our paid plans, including Pro plans. With that said, anyone in a supported location can access the free version of Claude by navigating to claude.ai and signing up using an email address. We occasionally run limited-time promotions, but we don't have any standing discounts available upon request. These promotional offers are typically announced through our official channels when available. If you're interested in potential future promotions, we recommend following our official social media accounts or signing up for our newsletter to be notified of any special offers. Our Support team cannot issue one-off discounts or coupons. Does the Pro plan have any usage limits? Yes. During peak hours, the Pro plan offers at least five times the usage per session compared to our free service. The number of messages you can send will vary based on message length, including the length of files you attach, the length of your current conversation, and the model or feature you use. Your session-based usage limit will reset every five hours. Pro plans also have a weekly usage limit that applies across all models. Weekly limits reset at a fixed time each week that is assigned to your account. Your reset day and time stay the same regardless of when you start using Claude or when your subscription begins, and you receive your full weekly allowance each cycle. You can see your next reset time in Settings &gt; Usage . In addition, to manage capacity and ensure fair access to all users, we may limit your usage in other ways, such as weekly and monthly caps or model and feature usage, at our discretion. For more information about usage and length limits, refer to Understanding usage and length limits . For guidance on using your Pro capacity efficiently, we also have Usage limit best practices . How do I increase my Pro plan usage limits? Our Max plans offer more usage for individuals than Pro plans. For additional information, see What is the Max plan? Pro subscribers can also enable usage credits to continue working with Claude beyond the plan’s included usage limits. For more information and instructions for enabling this feature, see Manage usage credits for paid Claude plans .",
+        "observedAt": "2026-09-10T06:54:41.93Z",
+        "occurredAt": null,
+        "contentHash": "8300dfaaa7b7a52793974577a7f3d1b980dd87a54cd4d72df5bcb89dbb2588af",
+        "fetchStatus": "ok",
+        "id": "E1"
+      },
+      {
+        "platform": "claude",
+        "url": "https://support.claude.com/en/articles/11049741-what-is-the-max-plan",
+        "title": "Claude Max 套餐说明",
+        "kind": "official",
+        "text": "This article is about paid Max plans for individual consumers. If you're part of an organization looking to use Claude with your team, refer to Team and Enterprise plans . The Max plan is designed for users who collaborate with Claude frequently and need more usage to work on a variety of tasks. In addition to providing higher usage limits than the Pro plan, Max plan subscribers will also receive priority access to our newest features and models. Key benefits More usage capacity : Get 5x or 20x more usage than the Pro plan, depending on your selected tier. Fewer interruptions : Stay in flow when it matters most with higher usage limits that allow for deeper, more extensive work with Claude. Scale as needed : Choose the usage tier that matches your workflow, with the flexibility to adjust as your needs change. Priority access : Be among the first to experience new models, features, and products. Access to Claude Code: Use Claude Code for your terminal-based coding workflows with one unified subscription. Access to Cowork: Hand off complex, multi-step tasks to Claude in Claude Desktop. See this article for more information: Get started with Claude Cowork . How much does the Max plan cost? Pricing tiers The Max plan is available in two tiers to match your usage needs: Max 5x : $100 per month Max 20x : $200 per month Note: These prices are for web subscriptions only. Mobile pricing may vary depending on your app platform. Price and plans are subject to change at Anthropic's discretion. Billing information The Max plan is currently available as a monthly subscription only. When upgrading from a lower to a higher tier, your account will be charged on a prorated basis for the remainder of your billing cycle. When moving from an annual Pro plan to a Max plan, if the remaining balance on your annual Pro plan is greater than your Max plan price, you will receive a credit to your account for the remaining balance. This credit will be applied to future subscription costs. To receive your credit, the billing address used to purchase your Max plan must be the same as your previous subscription’s billing address. If your billing address has changed, you will need to cancel your Pro subscription and wait for the subscription end date before signing up for a new Max subscription with a new billing address. If you subscribed through Google Play, you're charged the full price of your new plan when you upgrade. The unused value of your previous plan is converted into extra days on your new plan, so your renewal date will land a few days later than a full month. How can I get a free or discounted Max plan? We do not offer standard discounted pricing any of our paid plans, including Max 5x and 20x plans. With that said, anyone in a supported location can access the free version of Claude by navigating to claude.ai and signing up using an email address. We occasionally run limited-time promotions, but we don't have any standing discounts available upon request. These promotional offers are typically announced through our official channels when available. If you're interested in potential future promotions, we recommend following our official social media accounts or signing up for our newsletter to be notified of any special offers. Our Support team cannot issue one-off discounts or coupons. Does the Max plan have any usage limits? Yes. The Max plan offers substantially higher usage compared to our Pro plan and is available in two tiers: Max 5x provides five times more usage per session than the Pro plan. This tier is ideal for frequent users who work with Claude on a variety of tasks. Max 20x provides 20 times more usage per session than the Pro plan. This tier is ideal for daily users who collaborate often with Claude for most tasks. Your session-based usage limit will reset every five hours. Max plans also have a weekly usage limit that applies across all models. The weekly limit resets at a fixed time each week that is assigned to your account. Your reset day and time stay the same regardless of when you start using Claude or when your subscription begins, and you receive your full weekly allowance each cycle. You can see your next reset time in Settings &gt; Usage . In addition, to manage capacity and ensure fair access to all users, we may limit your usage in other ways, such as weekly and monthly caps or model and feature usage, at our discretion. For more information about usage and length limits, refer to Understanding usage and length limits . For guidance on using your Max capacity efficiently, we also have Usage limit best practices .",
+        "observedAt": "2026-09-10T06:54:41.93Z",
+        "occurredAt": null,
+        "contentHash": "022fa360bee045d0258b822ad75660a7ed49656f6e0794cdfdf30ed9e84548d1",
+        "fetchStatus": "ok",
+        "id": "E3"
+      },
+      {
+        "id": "E8",
+        "kind": "aggregate",
+        "platform": "claude",
+        "title": "Claude Pro 报价观察",
+        "url": "https://supply.aivora.cn/card-products/claude-pro-month",
+        "observedAt": "2026-09-10T06:54:36.088Z",
+        "occurredAt": null,
+        "text": "{\"name\":\"Claude Pro\",\"offers\":[{\"url\":\"https://16688.com.cn/goods/G60755164\",\"originalName\":\"【质保一个月】Claude网页镜像\",\"price\":82.24,\"currency\":\"CNY\",\"channel\":\"派大星（1500人群售后无忧）对接马 HARVEY\",\"sourceObservedAt\":\"2026-09-09T10:40:23.545Z\",\"spec\":{\"key\":\"标准商品|1个月|地区未写\",\"label\":\"标准商品 · 1个月\",\"tier\":null,\"delivery\":\"unknown\",\"warranty\":\"unknown\"},\"provenance\":\"priceai\",\"originalPageStatus\":\"unknown\",\"originalPageCheckedAt\":\"2026-09-10T06:54:34.129Z\"},{\"url\":\"https://aisou.pro/item/45\",\"originalName\":\"Claude Pro直充月卡 (美区IOS渠道)\",\"price\":128,\"currency\":\"CNY\",\"channel\":\"Aisou智充\",\"sourceObservedAt\":\"2026-09-10T02:35:05.913Z\",\"spec\":{\"key\":\"标准商品|1个月|美国\",\"label\":\"标准商品 · 1个月 · 美国\",\"tier\":\"pro\",\"delivery\":\"unknown\",\"warranty\":\"unknown\"},\"provenance\":\"priceai\",\"originalPageStatus\":\"unknown\",\"originalPageCheckedAt\":\"2026-09-10T06:54:34.129Z\"},{\"url\":\"https://16688.com.cn/goods/G69013943\",\"originalName\":\"Claude Pro 月卡【质保订阅】【IOS渠道】\",\"price\":131.58,\"currency\":\"CNY\",\"channel\":\"蜡笔小新\",\"sourceObservedAt\":\"2026-09-10T03:51:12.271Z\",\"spec\":{\"key\":\"标准商品|1个月|地区未写\",\"label\":\"标准商品 · 1个月\",\"tier\":\"pro\",\"delivery\":\"unknown\",\"warranty\":\"unknown\"},\"provenance\":\"priceai\",\"originalPageStatus\":\"not_checked\"},{\"url\":\"https://16688.com.cn/goods/G67700056\",\"originalName\":\"【美区IOS】CLAUDE Pro 官方充值（月卡）\",\"price\":131.58,\"currency\":\"CNY\",\"channel\":\"AI奥特曼|代充源头招代理\",\"sourceObservedAt\":\"2026-09-10T03:01:58.115Z\",\"spec\":{\"key\":\"代充|1个月|美国\",\"label\":\"代充 · 1个月 · 美国\",\"tier\":\"pro\",\"delivery\":\"unknown\",\"warranty\":\"unknown\"},\"provenance\":\"priceai\",\"originalPageStatus\":\"not_checked\"},{\"url\":\"https://16688.com.cn/goods/G26143891\",\"originalName\":\"【IOS渠道】Claude Pro 官充 月卡【质保订阅30天】\",\"price\":132.61,\"currency\":\"CNY\",\"channel\":\"派大星（1500人群售后无忧）对接马 HARVEY\",\"sourceObservedAt\":\"2026-09-10T03:35:53.203Z\",\"spec\":{\"key\":\"标准商品|1个月|地区未写\",\"label\":\"标准商品 · 1个月\",\"tier\":\"pro\",\"delivery\":\"unknown\",\"warranty\":\"unknown\"},\"provenance\":\"priceai\",\"originalPageStatus\":\"not_checked\"},{\"url\":\"https://16688.com.cn/goods/G22449602\",\"originalName\":\"【IOS渠道】Claude Pro 官充 月卡【质保订阅30天】\",\"price\":134.16,\"currency\":\"CNY\",\"channel\":\"北橘号铺-对接:DC260818VOY2Y7AD\",\"sourceObservedAt\":\"2026-09-10T03:31:13.744Z\",\"spec\":{\"key\":\"标准商品|1个月|地区未写\",\"label\":\"标准商品 · 1个月\",\"tier\":\"pro\",\"delivery\":\"unknown\",\"warranty\":\"unknown\"},\"provenance\":\"priceai\",\"originalPageStatus\":\"not_checked\"}],\"coverage\":{\"read\":139,\"total\":139,\"complete\":true,\"freshUsable\":6},\"originalPagesVerified\":0}",
+        "contentHash": "9b349f44795195b881bdd5f6e4650fdb6322499793a06acc266b1603e3df9601"
+      }
+    ],
+    "newEvidenceIds": [
+      "E1",
+      "E3",
+      "E4",
+      "E8",
+      "E11"
+    ],
+    "unpublishedEvidenceIds": [],
+    "historyAvailable": true,
+    "sourceGeneratedAt": "2026-09-10T06:54:36.088Z",
+    "sourceObservedAt": "2026-09-10T05:31:40.747Z",
+    "demandEvidence": [],
+    "customerRecords": null,
+    "products": [
+      {
+        "slug": "claude-max-20x",
+        "name": "Claude Max 20x",
+        "platform": "claude",
+        "url": "https://supply.aivora.cn/card-products/claude-max-20x",
+        "calculatorUrl": "https://supply.aivora.cn/profit-calculator?product=Claude%20Max%2020x"
+      },
+      {
+        "slug": "claude-max-5x",
+        "name": "Claude Max 5x",
+        "platform": "claude",
+        "url": "https://supply.aivora.cn/card-products/claude-max-5x",
+        "calculatorUrl": "https://supply.aivora.cn/profit-calculator?product=Claude%20Max%205x"
+      },
+      {
+        "slug": "claude-pro-month",
+        "name": "Claude Pro",
+        "platform": "claude",
+        "url": "https://supply.aivora.cn/card-products/claude-pro-month",
+        "calculatorUrl": "https://supply.aivora.cn/profit-calculator?product=Claude%20Pro"
+      },
+      {
+        "slug": "claude-team-premium",
+        "name": "Claude Team Premium",
+        "platform": "claude",
+        "url": "https://supply.aivora.cn/card-products/claude-team-premium",
+        "calculatorUrl": "https://supply.aivora.cn/profit-calculator?product=Claude%20Team%20Premium"
+      },
+      {
+        "slug": "claude-team-standard",
+        "name": "Claude Team Standard",
+        "platform": "claude",
+        "url": "https://supply.aivora.cn/card-products/claude-team-standard",
+        "calculatorUrl": "https://supply.aivora.cn/profit-calculator?product=Claude%20Team%20Standard"
+      }
+    ],
+    "usedFactKeys": [],
+    "recentTopics": []
+  }
+}
