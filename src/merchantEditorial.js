@@ -79,7 +79,8 @@ export function hasUnverifiedTrialRecommendation(draft) {
   return values.some((clause) => [...clause.matchAll(/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品|可(?:以)?(?:继续|推进)?上架/g)].some((match) => {
     const prefix = clause.slice(0, match.index);
     if (match[0] === '建议试卖' && /不$/.test(prefix)) return false;
-    return !/(?:禁止|不得|不要|不建议|不应|暂停|停止)[^。；，,]{0,80}$/.test(prefix);
+    return !/(?:禁止|不得|不要|不能|不建议|不应|暂停|停止)[^。；，,]{0,80}$/.test(prefix)
+      && !/不以[^。；，,]{0,50}为由$/.test(prefix);
   }));
 }
 
