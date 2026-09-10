@@ -23,6 +23,30 @@ function getCandidateUrl(item) {
   return String(item || "").match(/^(?:Url|URL):\s*(https?:\/\/\S+)/im)?.[1]?.trim() || "";
 }
 
+export function isDailyFunSolicitation(value) {
+  const text = String(value || "")
+    .replace(/!\[[^\]]*\]\([^\n]*?\)/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_`]/g, "");
+  const benefit = /额度|积分|邀请码|邀请名额|优惠券|代金券|\bcredits?\b/i.test(text);
+  const offer = /邀请|领取|兑换|发放|送出|赠送|领完|\binvit(?:e|ation)\b|\bclaim\b/i.test(text);
+  const contact = /(?:留(?:下)?|提供|提交|发我|私信|评论|发送|回复)[^。！？\n]{0,20}(?:邮箱|邮件|email|邀请码)|(?:邮箱|email)[^。！？\n]{0,12}(?:私信|发我)|先到先得|送完即止/i.test(text);
+  return benefit && offer && contact;
+}
+
+export function removeSolicitationDailyFun(markdown) {
+  let removedCount = 0;
+  const output = String(markdown || "").replace(
+    /^##\s*\*{0,2}[^\r\n]*AI\s*趣闻[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/gim,
+    (section) => {
+      if (!isDailyFunSolicitation(section)) return section;
+      removedCount += 1;
+      return "";
+    },
+  );
+  return { markdown: output, removedCount };
+}
+
 export function selectStandaloneDailyFunCandidates(
   publishedDailyMarkdown = "",
   dailyFunContentItems = [],
@@ -41,6 +65,7 @@ export function selectStandaloneDailyFunCandidates(
     const candidateUrl = normalizeCandidateUrl(getCandidateUrl(normalized));
     if (
       !normalized ||
+      isDailyFunSolicitation(normalized) ||
       seen.has(normalized) ||
       (candidateUrl && publishedSourceUrls.has(candidateUrl))
     ) continue;
@@ -54,18 +79,20 @@ export function selectStandaloneDailyFunCandidates(
 }
 
 export function buildStandaloneDailyFunPromptInput(dateStr, candidateItems = []) {
-  const candidates = (candidateItems || []).map(normalizeCandidateText).filter(Boolean);
+  const candidates = (candidateItems || []).map(normalizeCandidateText)
+    .filter((item) => item && !isDailyFunSolicitation(item));
   if (candidates.length === 0) return "";
 
   return [
     `你只负责为 ${dateStr} 的 AI日报生成一个栏目：\`## **😄 AI趣闻**\`。`,
     "这是一次独立生成，不要输出日报其它栏目，不要输出解释。",
-    "必须从下面候选里选 1 条。标题要二次创作并使用纯文本，不能照搬来源标题，也不能加入链接；原始来源链接必须放在正文的真实细节附近。",
+    "从下面候选里最多选 1 条有真实反常结果的素材。标题要二次创作并使用纯文本，不能照搬来源标题，也不能加入链接；原始来源链接必须放在正文的真实细节附近。",
     "链接文字必须是句子里自然成立的事实短语，说明这个原帖具体展示了什么；不要只写‘实测推文’‘原帖’‘来源’或‘详情’。",
     "正文写 100-180 个中文字符，按 Hook -> What -> Punchline 写：先给具体场景，再交代真实细节，最后一句轻轻一抖。",
     "正文用 `**...**` 标出 2-4 个产品名、真实动作、关键数字或反常结果；每处 2-12 个字符，不能整句加粗。",
     "语境要像 2026 年中文互联网，面向 90 后、00 后 AI 爱好者和程序员；可以借鉴马三立相声的铺垫、错位和冷面包袱结构，但不要模仿口音、台词或固定段子。",
     "不要编造来源没有的事实，不要写成行业分析，不要写“这说明了”“值得关注”“未来可期”。",
+    "先确认素材里确实有预期与结果的反差，再写铺垫。额度邀请、留邮箱领名额、优惠招领或只有功能介绍的帖子不是趣闻；有截图也不算笑点。收尾点出素材已有的错位，不补写评论区热度、领完速度或旁观者反应。",
     "如果所有候选都写不出完整、有来源链接的趣闻，就输出空字符串，不要解释。",
     "",
     "输出格式必须是：",
@@ -94,7 +121,7 @@ export function normalizeStandaloneDailyFunSection(markdown) {
     section = `## **😄 AI趣闻**\n\n${content}`;
   }
 
-  if (!section) return "";
+  if (!section || isDailyFunSolicitation(section)) return "";
 
   const sourceLinks = [...section.matchAll(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g)]
     .filter((match) => match.index == null || section[match.index - 1] !== "!");

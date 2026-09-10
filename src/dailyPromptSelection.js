@@ -1,5 +1,6 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
+import { isDailyFunSolicitation } from "./dailyFunSection.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -240,6 +241,8 @@ function scoreDailyFunCandidate(candidate) {
   }
   if (candidate?.isWelfare) score -= 20;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
+  if (/(?:AI|Agent|模型|Codex|Claude|Cursor|ChatGPT)[^。！？\n]{0,30}(?:写|生成|回复|拒绝|调用|修改|删除)/i.test(text) &&
+      /却|反而|结果|没想到|竟然/.test(text)) score += 20;
 
   return score;
 }
@@ -266,7 +269,8 @@ function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
       candidate,
       funScore: scoreDailyFunCandidate(candidate),
     }))
-    .filter(({ candidate, funScore }) => candidate.sourceType !== "paper" && funScore >= 55)
+    .filter(({ candidate, funScore }) => candidate.sourceType !== "paper" && funScore >= 55 &&
+      !isDailyFunSolicitation([candidate.title, candidate.description, candidate.plainText].join("\n")))
     .sort((left, right) => right.funScore - left.funScore)
     .slice(0, limit)
     .map(({ candidate }) => candidate);
