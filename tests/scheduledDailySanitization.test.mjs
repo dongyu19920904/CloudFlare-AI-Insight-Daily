@@ -38,12 +38,12 @@ test("removeDailyGenerationMetaNotes strips candidate-count commentary", () => {
   assert.match(normalized, /^### 1\. Claude 增加新能力$/m);
 });
 
-test("normalizeDailyTopEvidenceLinkLabels turns source tags into contextual fact links", () => {
+test("normalizeDailyTopEvidenceLinkLabels moves a source link to an existing fact clause", () => {
   const markdown = `## **🔥 今日焦点 TOP 2**
 
 ### 1. DeepSeek 宣布近期上调 API 价格
 
-**价格准备调整。** 据 AIBase 整理，[AIBase 对这项消息的报道](https://example.com/price)，具体方案待公布。
+**价格准备调整。** 据 AIBase 整理，[AIBase 对这项消息的报道](https://example.com/price)显示，具体调整方案仍待公布。
 
 ### 2. Agent 技能库单日新增 593 Stars
 
@@ -51,12 +51,12 @@ test("normalizeDailyTopEvidenceLinkLabels turns source tags into contextual fact
 
   const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
 
-  assert.match(normalized, /\[DeepSeek 宣布近期上调 API 价格\]\(https:\/\/example\.com\/price\)/);
-  assert.doesNotMatch(normalized, /AIBase 对这项消息的报道/);
+  assert.match(normalized, /AIBase 对这项消息的报道显示，\[具体调整方案仍待公布\]\(https:\/\/example\.com\/price\)/);
+  assert.doesNotMatch(normalized, /\[DeepSeek 宣布近期上调 API 价格\]/);
   assert.match(normalized, /\[agent-skills 单日新增 593 Stars\]/);
 });
 
-test("normalizeDailyTopEvidenceLinkLabels catches short source-tag variants", () => {
+test("normalizeDailyTopEvidenceLinkLabels leaves ambiguous source-only sentences intact", () => {
   const markdown = `## **🔥 今日焦点 TOP 4**
 
 ### 1. 豆包上线全双工模型
@@ -73,14 +73,10 @@ test("normalizeDailyTopEvidenceLinkLabels catches short source-tag variants", ()
 
   const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
 
-  for (const label of ["实测录屏", "观察帖", "实测推文", "基准对比分析"]) {
-    assert.doesNotMatch(normalized, new RegExp(`\\[${label}\\]`));
-  }
-  assert.match(normalized, /\[豆包上线全双工模型\]\(https:\/\/example\.com\/1\)/);
-  assert.match(normalized, /\[跑分差距来自论文原表\]\(https:\/\/example\.com\/4\)/);
+  assert.equal(normalized, markdown);
 });
 
-test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels", () => {
+test("normalizeDailyTopEvidenceLinkLabels preserves attribution instead of inserting headlines", () => {
   const markdown = `## **🔥 今日焦点 TOP 4**
 
 ### 1. Cursor 推出代码托管平台 Origin
@@ -98,12 +94,10 @@ test("normalizeDailyTopEvidenceLinkLabels catches named attribution-only labels"
   const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
 
   for (const label of ["宝玉整理的技术细节", "宝玉的实测记录", "Gorden Sun 的截图推文"]) {
-    assert.doesNotMatch(normalized, new RegExp(`\\[${label}\\]`));
+    assert.match(normalized, new RegExp(`\\[${label}\\]`));
   }
-  assert.match(normalized, /\[Cursor 推出代码托管平台 Origin\]\(https:\/\/example\.com\/1\)/);
-  assert.match(normalized, /\[豆包支持手机遥控电脑 Agent\]\(https:\/\/example\.com\/2\)/);
-  assert.match(normalized, /\[快手校招新增 AI 能力栏\]\(https:\/\/example\.com\/3\)/);
-  assert.match(normalized, /\[Gemini 免费提供完整 SAT 模拟考试\]\(https:\/\/example\.com\/4\)/);
+  assert.match(normalized, /Google Gemini 官方推文显示，\[用户可以直接开始考试\]\(https:\/\/example\.com\/4\)/);
+  assert.doesNotMatch(normalized, /\[Gemini 免费提供完整 SAT 模拟考试\]/);
 });
 
 test("normalizeDailyTopEvidenceLinkLabels removes bold and shortens overlong fact links", () => {
@@ -114,7 +108,7 @@ test("normalizeDailyTopEvidenceLinkLabels removes bold and shortens overlong fac
 
   const normalized = normalizeDailyTopEvidenceLinkLabels(markdown);
 
-  assert.match(normalized, /\[工业富联利润率只有 4\.26%\]\(https:\/\/example\.com\/report\)/);
+  assert.match(normalized, /\[工业富联 2026 年上半年营收 5578 亿元\]\(https:\/\/example\.com\/report\)，净利率仅 4\.26%/);
   assert.doesNotMatch(normalized, /\[[^\]]*\*\*[^\]]*\]\(/);
 });
 

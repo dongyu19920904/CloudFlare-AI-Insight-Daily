@@ -37,14 +37,15 @@ test("natural prose retains density, short evidence links and optional actions",
   for (const text of [prompt, repair]) {
     assert.match(text, /120-170/);
     assert.match(text, /4-5 个/);
-    assert.match(text, /不固定第二句报来源、第三句列参数、第四句给行动/);
-    assert.match(text, /不通过删除事实来/);
+    assert.match(text, /每句只推进一个信息点/);
+    assert.match(text, /不(?:要)?通过删除事实来/);
     assert.match(text, /具体可行的动作/);
     assert.match(text, /8-24/);
     assert.doesNotMatch(text, /第二句写来源能够证明的事实，第三句补一个关键细节/);
   }
   assert.match(prompt, /8-18 个显示字符、一般不超过 24 个/);
   assert.match(prompt, /不强制每条以行动建议结尾/);
+  assert.match(prompt, /删除链接标记后句子也必须自然成立/);
   assert.match(prompt, /较短的专业栏目保留 2-3 处/);
   assert.match(prompt, /不得虚构现场、心理、销量、口碑或因果/);
   assert.match(prompt, /缺少趣闻不得影响其他栏目发布/);

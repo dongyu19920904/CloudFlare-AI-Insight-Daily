@@ -95,7 +95,7 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /使用 4-5 个完整短句/);
   assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
   assert.match(prompt, /调用成本降了/);
-  assert.match(prompt, /\[三档模型都下调了调用费率\]\(URL\)/);
+  assert.match(prompt, /\[下调了标准调用费率\]\(URL\)/);
   assert.doesNotMatch(prompt, /### 1\. \[模型降价让开发者调用成本再松一截\]/);
 });
 

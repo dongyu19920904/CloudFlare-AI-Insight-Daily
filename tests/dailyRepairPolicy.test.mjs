@@ -6,6 +6,27 @@ import {
   shouldAdoptDailyRepair,
 } from "../src/dailyRepairPolicy.js";
 
+test("daily repair scores long-sentence severity instead of one generic warning", () => {
+  const earlier = ["Daily writing has dense long sentences: 9/77 over 55 chars, p90 59, max 83"];
+  const worse = ["Daily writing has dense long sentences: 12/70 over 55 chars, p90 65, max 115"];
+  assert.equal(scoreDailyQualityWarnings(earlier), 10);
+  assert.equal(scoreDailyQualityWarnings(worse), 14);
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true, repairedPassed: true,
+    initialQualityWarnings: [...earlier, "Daily TOP items have too few short highlights: 2"],
+    repairedQualityWarnings: worse,
+    initialTopItemCount: 10, repairedTopItemCount: 10, targetTopItemCount: 10,
+  }), false);
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true, repairedPassed: true,
+    initialQualityWarnings: worse, repairedQualityWarnings: earlier,
+  }), true);
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: false, repairedPassed: true,
+    initialQualityWarnings: earlier, repairedQualityWarnings: worse,
+  }), true);
+});
+
 test("daily repair never replaces a draft with an invalid repair", () => {
   assert.equal(shouldAdoptDailyRepair({
     initialPassed: false,

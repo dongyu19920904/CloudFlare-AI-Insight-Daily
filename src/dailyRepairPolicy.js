@@ -1,6 +1,12 @@
 export function scoreDailyQualityWarnings(warnings = []) {
   return warnings.reduce((score, warning) => {
     const text = String(warning || "");
+    const readabilityMatch = text.match(/dense long sentences:\s*(\d+)\/\d+ over 55 chars, p90 \d+, max (\d+)/i);
+    if (readabilityMatch) {
+      const overlong = Number.parseInt(readabilityMatch[1], 10);
+      const longest = Number.parseInt(readabilityMatch[2], 10);
+      return score + overlong + Math.ceil(Math.max(0, longest - 75) / 20);
+    }
     const targetMatch = text.match(/expected\s+(\d+),\s*got\s+(\d+)/i);
     if (targetMatch) {
       const expected = Number.parseInt(targetMatch[1], 10);

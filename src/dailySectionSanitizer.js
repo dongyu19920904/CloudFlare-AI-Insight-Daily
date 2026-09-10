@@ -142,21 +142,52 @@ export function normalizeDailyTopEvidenceLinkLabels(markdown) {
   for (const item of extractNumberedDailyItems(output)) {
     const sourceLink = item.sourceLink;
     if (!sourceLink) continue;
+    if (/[`<\\]/.test(item.body) || /^(?: {4}|\t)/m.test(item.body) || /[()\\]/.test(sourceLink.url)) continue;
 
     const originalLink = `[${sourceLink.title}](${sourceLink.url})`;
-    const factLabel = String(item.title || "").replace(/\s+/g, " ").trim();
-    if (!factLabel || !item.block.includes(originalLink)) continue;
+    let linkOffset = item.body.indexOf(originalLink);
+    while (linkOffset > 0 && item.body[linkOffset - 1] === "!") {
+      linkOffset = item.body.indexOf(originalLink, linkOffset + originalLink.length);
+    }
+    if (linkOffset < 0) continue;
     const cleanLabel = String(sourceLink.title || "").replace(/\*\*/g, "").trim();
-    const shouldUseFactLabel = (
-      isDailySourceTagLinkLabel(cleanLabel) ||
-      countDailyHighlightCharacters(cleanLabel) > 24
-    );
-    if (!shouldUseFactLabel && cleanLabel === sourceLink.title) continue;
+    if (/[\[\]*`<>\\\r\n]/.test(cleanLabel)) continue;
+    let originalSpan = originalLink;
+    let replacement = `[${cleanLabel}](${sourceLink.url})`;
 
-    const normalizedBlock = item.block.replace(
-      originalLink,
-      `[${shouldUseFactLabel ? factLabel : cleanLabel}](${sourceLink.url})`
-    );
+    // Move only link boundaries around existing complete clauses, never inject a heading.
+    if (isDailySourceTagLinkLabel(cleanLabel)) {
+      const following = item.body.slice(linkOffset + originalLink.length);
+      const adjacent = following.match(/^((?:显示|称|指出|介绍|报道|说明|表示)[，：: \t]*|[，：:][ \t]*)([^，。！？；\r\n\[\]*`<>\\]+)(?=[，。！？；\r\n]|$)/);
+      if (adjacent) {
+        const clause = adjacent[2].trim();
+        if ([...clause].length >= 8 && [...clause].length <= 24) {
+          originalSpan += adjacent[0];
+          replacement = cleanLabel + adjacent[1] + adjacent[2].replace(
+            clause, `[${clause}](${sourceLink.url})`
+          );
+        }
+      }
+    } else if ([...cleanLabel].length > 24) {
+      const clauses = [...cleanLabel.matchAll(/[^，。！？；\r\n]+/g)];
+      const candidate = clauses.find((match) => {
+        const clause = match[0].trim();
+        return [...clause].length >= 8 && [...clause].length <= 24 && !isDailySourceTagLinkLabel(clause);
+      });
+      if (candidate) {
+        const clause = candidate[0].trim();
+        const offset = candidate.index + candidate[0].indexOf(clause);
+        replacement = cleanLabel.slice(0, offset)
+          + `[${clause}](${sourceLink.url})`
+          + cleanLabel.slice(offset + clause.length);
+      }
+    }
+
+    if (replacement === originalSpan) continue;
+    const bodyOffset = item.block.length - item.body.length;
+    const offset = bodyOffset + linkOffset;
+    const normalizedBlock = item.block.slice(0, offset) + replacement
+      + item.block.slice(offset + originalSpan.length);
     output = output.replace(item.block, normalizedBlock);
   }
 
