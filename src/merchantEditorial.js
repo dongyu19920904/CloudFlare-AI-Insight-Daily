@@ -258,7 +258,12 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
   const kv = env.DATA_KV;
   let memory = [];
   let memoryUnavailable = !kv && !dryRun;
-  try { memory = safeJson(await kv?.get(EDITORIAL_MEMORY_KEY)) || []; } catch { memoryUnavailable = true; }
+  try {
+    const stored = await kv?.get(EDITORIAL_MEMORY_KEY);
+    const parsed = stored ? safeJson(stored) : [];
+    if (!Array.isArray(parsed)) memoryUnavailable = true;
+    else memory = parsed;
+  } catch { memoryUnavailable = true; }
   if (!Array.isArray(memory)) memory = [];
   const official = officialEvidence || (snapshot.products?.length ? await loadMerchantOfficialEvidence({ fetchImpl }) : []);
   const rawBundle = await buildMerchantEvidenceBundle({ dateStr, snapshot, official, memory });
@@ -340,7 +345,7 @@ async function generateCompiledEditorial({ env, bundle, debugInfo, dryRun, callM
   if (selected) debugInfo.accountOpportunityEditorialCacheHit = true;
   if (!selected && topics.length > 1) {
     const input = JSON.stringify({ topics: topics.map((topic) => ({ topicId: topic.id, title: topic.headline, facts: topic.facts.map((fact) => ({ factId: fact.id, text: fact.text })), newFactIds: topic.newFactIds })) });
-    const modelEnv = { ...env, ANTHROPIC_MAX_TOKENS: '128', OPENAI_MAX_COMPLETION_TOKENS: '128', ANTHROPIC_RETRY_MAX: '0', GEMINI_RETRY_MAX: '0', ANTHROPIC_BACKUP_API_KEY: '', GEMINI_FALLBACK_ENABLED: 'false', MERCHANT_EDITORIAL_REQUEST: 'true',
+    const modelEnv = { ...env, ANTHROPIC_MAX_TOKENS: '256', OPENAI_MAX_COMPLETION_TOKENS: '256', ANTHROPIC_RETRY_MAX: '0', GEMINI_RETRY_MAX: '0', ANTHROPIC_BACKUP_API_KEY: '', GEMINI_FALLBACK_ENABLED: 'false', MERCHANT_EDITORIAL_REQUEST: 'true',
       DEFAULT_ANTHROPIC_MODEL: env.ACCOUNT_MERCHANT_EDITORIAL_MODEL || env.DEFAULT_ANTHROPIC_MODEL,
       DEFAULT_ANTHROPIC_BACKUP_MODEL: env.ACCOUNT_MERCHANT_EDITORIAL_MODEL || env.DEFAULT_ANTHROPIC_MODEL,
       OPENAI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('OPEN') ? env.OPENAI_API_KEY : '', GEMINI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('GEMINI') ? env.GEMINI_API_KEY : '',
