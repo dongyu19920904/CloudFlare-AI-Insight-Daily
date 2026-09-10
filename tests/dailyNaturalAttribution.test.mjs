@@ -23,6 +23,9 @@ test("generation and repair allow event-first prose but retain conditional attri
     assert.match(text, /仅有二手转述时写清“转述的测试”或“案例称”/);
     assert.match(text, /不得假装读过未提供的一手材料/);
     assert.match(text, /普遍能力/);
+    assert.match(text, /不能先断言、到末句才说未经核实/);
+    assert.match(text, /案例称扩店未增员/);
+    assert.match(text, /这次测试保住了排版/);
     assert.doesNotMatch(text, /宝玉在推文中介绍|据 36氪报道|来源名称必须留在链接外/);
   }
   assert.match(prompt, /不把转发者误写成创作者/);
