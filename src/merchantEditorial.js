@@ -167,7 +167,11 @@ export function validateMerchantEditorial(draft, bundle) {
   }
   if (ids.size < 2) issues.push('editorial_needs_two_sources');
   if (!bundle.evidence.some((item) => ids.has(item.id) && item.kind === 'official')) issues.push('editorial_official_boundary_missing');
-  if (![...ids].some((id) => bundle.newEvidenceIds.includes(id))) issues.push('editorial_no_new_evidence');
+  const newKnowledge = bundle.usedFactKeys?.length && facts.length >= 3
+    && !bundle.recentTopics?.some((item) => item.topicKey === draft.topicKey)
+    && facts.every((fact) => bundle.evidence.find((item) => item.id === fact.evidenceId)?.kind === 'official' && !bundle.usedFactKeys.includes(editorialFactKey(fact, bundle)));
+  if (![...ids].some((id) => bundle.newEvidenceIds.includes(id)) && !newKnowledge) issues.push('editorial_no_new_evidence');
+  if (!bundle.newEvidenceIds.length && /今天.{0,6}(?:涨|降|恢复|发布)|刚刚|最新发布/.test(plain(draft.summary) + plain(draft.headline))) issues.push('editorial_reference_is_not_new_event');
   if (facts.length && facts.every((fact) => (bundle.usedFactKeys || []).includes(editorialFactKey(fact, bundle)))) issues.push('editorial_same_facts_reworded');
   if (!/待验证|假设/.test(plain(draft.customerHypothesis))) issues.push('editorial_demand_must_be_hypothesis');
   const steps = Array.isArray(draft.steps) ? draft.steps : [];
@@ -210,6 +214,7 @@ export function renderMerchantEditorial(draft, bundle) {
     `数据读取 ${chinaTime(bundle.sourceGeneratedAt)}；最近货源记录 ${chinaTime(bundle.sourceObservedAt)}。本期不构成可直接交付的商品推荐。`,
     '## 选择你的阅读方式', '一眼看懂先看结论；新手照做拿到今天的产出；老手看盘按自己的订单情况处理。',
     '## 一眼看懂', `### ${esc(draft.headline)}`, facts,
+    !bundle.newEvidenceIds.length ? '本期是新整理的套餐专题，所选事实此前未在近期日报中讲过，不代表今天发生了新事件。' : '',
     '### 适合谁、交付什么', esc(draft.customerHypothesis), esc(draft.deliverable),
     '## 新手今天照着做', '默认你还没有订单。今日不建议上新，先把今天的资料或验证任务做完。',
     draft.steps.map((step, index) => `${index + 1}. ${esc(step.action)} [打开这一步](${step.url})`).join('\n'),
@@ -260,7 +265,7 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
   if (draft && validateMerchantEditorial(draft, bundle).ok) debugInfo.accountOpportunityEditorialCacheHit = true;
   else {
     draft = null;
-    if (bundle.evidence.length >= 2 && bundle.newEvidenceIds.length) {
+    if (bundle.evidence.length >= 2 && (bundle.newEvidenceIds.length || bundle.unpublishedEvidenceIds?.length)) {
       let issues = [];
       // Observed 4096-token responses ended mid-JSON. This bounded allowance is
       // local to the editorial call; it does not alter other daily tasks.

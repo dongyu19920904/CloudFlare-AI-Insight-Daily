@@ -102,14 +102,16 @@ export async function buildMerchantEvidenceBundle({ dateStr, snapshot, official 
   const recent = memory.filter((item) => item.date < dateStr && Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= 30 * 86400000);
   const used = new Set(recent.flatMap((item) => item.evidenceHashes || []));
   const newEvidenceIds = evidence.filter((item) => !used.has(item.contentHash)).map((item) => item.id);
+  const usedFactKeys = recent.flatMap((item) => item.factKeys || []);
+  const unpublishedEvidenceIds = usedFactKeys.length ? evidence.filter((item) => item.kind === 'official' && item.text.split(/(?<=[.!?])\s+/).some((sentence) => sentence.length > 30 && !usedFactKeys.includes(`${item.url}|${sentence.toLowerCase().replace(/\s+/g, ' ').trim()}`))).map((item) => item.id) : [];
   const evidenceKey = await evidenceHash([EDITORIAL_VERSION, evidence.map((item) => [item.url, item.contentHash])]);
-  return { version: EDITORIAL_VERSION, date: dateStr, evidenceKey, evidence, newEvidenceIds,
+  return { version: EDITORIAL_VERSION, date: dateStr, evidenceKey, evidence, newEvidenceIds, unpublishedEvidenceIds,
     historyAvailable: Boolean(snapshot.signals?.some((item) => ['price_drop', 'price_rise', 'stockout', 'restock'].includes(item.kind))),
     sourceGeneratedAt: snapshot.generatedAt, sourceObservedAt: snapshot.latestObservedAt,
     demandEvidence: [], customerRecords: null,
     products: products.slice(0, 40).map((p) => ({ slug: p.slug, name: p.name, platform: p.categoryId, url: p.productUrl, calculatorUrl: `https://supply.aivora.cn/profit-calculator?product=${encodeURIComponent(p.name)}` })),
-    usedFactKeys: recent.flatMap((item) => item.factKeys || []),
-    recentTopics: recent.map((item) => ({ date: item.date, title: item.title, summary: item.summary })).slice(-30) };
+    usedFactKeys,
+    recentTopics: recent.map((item) => ({ date: item.date, title: item.title, summary: item.summary, topicKey: item.topicKey })).slice(-30) };
 }
 
 // A focused issue needs related evidence, not unrelated pages padded to meet a count.
@@ -117,7 +119,7 @@ export function focusMerchantEvidence(bundle) {
   const platforms = ['chatgpt', 'claude', 'gemini', 'grok', 'ai-coding', 'ai-creative'];
   const eligible = platforms.filter((key) => {
     const items = bundle.evidence.filter((item) => item.platform === key);
-    return items.length >= 2 && items.some((item) => item.kind === 'official') && items.some((item) => bundle.newEvidenceIds.includes(item.id));
+    return items.length >= 2 && items.some((item) => item.kind === 'official') && items.some((item) => bundle.newEvidenceIds.includes(item.id) || bundle.unpublishedEvidenceIds?.includes(item.id));
   });
   const platform = eligible.find((key) => bundle.evidence.filter((item) => item.platform === key && item.kind === 'official').length >= 2) || eligible[0];
   if (!platform) return { ...bundle, evidence: [], newEvidenceIds: [] };

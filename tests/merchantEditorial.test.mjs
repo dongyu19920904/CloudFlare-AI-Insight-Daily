@@ -147,3 +147,13 @@ test('missing supply never invokes a model or fabricates observations', async ()
   assert.equal(calls, 0);
   assert.match(result.markdown, /时间未确认/);
 });
+
+test('unpublished official facts may form a clearly labelled reference topic, never a recycled event', async () => {
+  const memory = [{ date: '2026-09-09', evidenceHashes: ['a', 'b'], factKeys: ['https://help.openai.com/en/articles/6950777|an earlier different sentence.'], topicKey: 'chatgpt:other:earlier' }];
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official, memory });
+  assert.equal(bundle.newEvidenceIds.length, 0);
+  assert.equal(validateMerchantEditorial(draft(), bundle).ok, true);
+  assert.match(renderMerchantEditorial(draft(), bundle).markdown, /不代表今天发生了新事件/);
+  assert.equal(validateMerchantEditorial({ ...draft(), topicKey: memory[0].topicKey }, bundle).ok, false);
+  assert.equal(validateMerchantEditorial({ ...draft(), headline: '今天刚刚发布' }, bundle).ok, false);
+});
