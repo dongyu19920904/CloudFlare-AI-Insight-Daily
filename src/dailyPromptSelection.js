@@ -487,7 +487,7 @@ function buildDailyPromptCandidate(item) {
       itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
       break;
     case "socialMedia":
-      itemText = `socialMedia Post by ${item.authors}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
+      itemText = `socialMedia Post by ${item.authors}\nTitle: ${item.title || ""}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
       break;
     default:
       itemText = `Type: ${item.type}\nTitle: ${item.title || "N/A"}\nDescription: ${truncatePromptText(item.description || "N/A")}\nURL: ${item.url || "N/A"}`;
@@ -759,6 +759,12 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   return {
     selectedContentItems: orderedSelectedCandidates.map((candidate) => candidate.itemText),
+    dailySourceCandidates: [...orderedSelectedCandidates, ...dailyFunCandidates].map((candidate) => ({
+      title: candidate.title,
+      url: candidate.url,
+      description: candidate.description,
+      plainText: candidate.plainText,
+    })),
     allowedTopGithubProjectUrls,
     dailyFunContentItems: dailyFunCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,

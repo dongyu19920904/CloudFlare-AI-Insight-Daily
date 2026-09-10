@@ -302,6 +302,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const socialTopLimit = Math.max(0, socialCount - allocation.reserved.socialMedia.length);
   const sectionBudget = [
     "【栏目候选预算】",
+    "【来源绑定】每个候选的标题、事实、Url 和 Media References 是一个整体。即使来自同一作者或同一平台，也绝不能把甲事件的正文配上乙事件的 URL 或图片。逐条核对产品、版本和事件再输出；链接只能证明其所在候选的事实。无法确认时换用已提供的合格备用素材，不猜测链接，不把转述升级为官方结论。",
     `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
     `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,

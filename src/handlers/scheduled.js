@@ -107,6 +107,7 @@ import {
     sanitizeDuplicateDailySections,
 } from '../dailySectionSanitizer.js';
 import { ensureDailyMediaCoverage, repairDailyMediaReferences } from '../dailyMediaCoverage.js';
+import { quarantineDailySourceConflicts } from '../dailySourceBinding.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -1409,6 +1410,16 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         throw new Error('No content items found for daily generation.');
     }
 
+    const checkSourceBindings = (markdown, stage) => {
+        const result = quarantineDailySourceConflicts(markdown, options.dailySourceCandidates);
+        debugInfo.dailySourceBindingChecks ||= {};
+        debugInfo.dailySourceBindingChecks[stage] = result.quarantined;
+        if (result.removedCount) {
+            console.warn(`[Scheduled][Daily] ${stage}: quarantined ${result.removedCount} source-conflicting items before media and summary.`);
+        }
+        return result.markdown;
+    };
+
     const dailyBodyGenerationEnv = getDailyBodyGenerationEnv(env);
     debugInfo.dailyBodyAnthropicMaxTokens = Number.parseInt(
         String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
@@ -1429,6 +1440,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     outputOfCall2 = removeMarkdownCodeBlock(outputOfCall2);
     outputOfCall2 = convertPlaceholdersToMarkdownImages(outputOfCall2);
     outputOfCall2 = normalizeMarkdownImageSyntax(outputOfCall2);
+    outputOfCall2 = checkSourceBindings(outputOfCall2, 'initial');
     debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
     const cleanedOutput = repairDailyMediaReferences(outputOfCall2, mediaCandidates);
     outputOfCall2 = cleanedOutput.markdown;
@@ -1496,6 +1508,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedOutputOfCall2 = removeMarkdownCodeBlock(repairedOutputOfCall2);
         repairedOutputOfCall2 = convertPlaceholdersToMarkdownImages(repairedOutputOfCall2);
         repairedOutputOfCall2 = normalizeMarkdownImageSyntax(repairedOutputOfCall2);
+        repairedOutputOfCall2 = checkSourceBindings(repairedOutputOfCall2, 'repair');
         const cleanedRepairedOutput = repairDailyMediaReferences(repairedOutputOfCall2, mediaCandidates);
         repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
         debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.correctedCount + cleanedRepairedOutput.removedCount;
@@ -1579,6 +1592,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 );
                 standaloneDailyFunSection = removeMarkdownCodeBlock(standaloneDailyFunSection);
                 standaloneDailyFunSection = normalizeStandaloneDailyFunSection(standaloneDailyFunSection);
+                standaloneDailyFunSection = normalizeStandaloneDailyFunSection(
+                    checkSourceBindings(standaloneDailyFunSection, 'standalone-fun')
+                );
 
                 debugInfo.dailyFunSeparateGenerationValid = Boolean(standaloneDailyFunSection);
 
@@ -2747,6 +2763,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedCounts,
         selectionDiagnostics,
         allowedTopGithubProjectUrls,
+        dailySourceCandidates,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: options.preferCachedData !== false,
         applyGithubTopProjectDedupe: true,
@@ -2811,6 +2828,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
             minimumTopicSections,
             dailyFunContentItems,
             allowedTopGithubProjectUrls,
+            dailySourceCandidates,
         }
     );
 
