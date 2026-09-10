@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildMerchantEvidenceBundle, focusMerchantEvidence, fetchMerchantEvidence, originalOfferEvidence } from '../src/merchantEvidenceBundle.js';
-import { editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
+import { hasUnverifiedTrialRecommendation, parseEditorialJson, editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
 import { validateMerchantEditorialPublication } from '../src/publishValidation.js';
 import { runIsolatedAccountOpportunity } from '../src/accountOpportunityIsolation.js';
 
@@ -92,4 +92,24 @@ test('changing page hash cannot turn the exact same published facts into a new i
   const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
   bundle.usedFactKeys = draft().facts.map((fact) => `${bundle.evidence.find((s) => s.id === fact.evidenceId).url}|${fact.quote.toLowerCase()}`);
   assert.ok(validateMerchantEditorial(draft(), bundle).issues.includes('editorial_same_facts_reworded'));
+});
+
+test('provider preamble is tolerated but truncated JSON is never repaired by inventing fields', () => {
+  assert.deepEqual(parseEditorialJson(`说明\n${JSON.stringify(draft())}\n结束`), draft());
+  assert.equal(parseEditorialJson('{"headline":"half'), null);
+  assert.equal(parseEditorialJson('x'.repeat(30001)), null);
+});
+
+test('unobserved effects, internal IDs and verbose copy cannot become merchant claims', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  for (const summary of ['客户常混淆这两个套餐', '得到：减少退款', '参考 E1 即可']) {
+    assert.equal(validateMerchantEditorial({ ...draft(), summary }, bundle).ok, false);
+  }
+  assert.equal(validateMerchantEditorial({ ...draft(), copyAsset: `付款前再次确认库存${'字'.repeat(451)}` }, bundle).ok, false);
+});
+
+test('explicit stop conditions do not become affirmative trial recommendations', () => {
+  assert.equal(hasUnverifiedTrialRecommendation({ stopCondition: '禁止向买家承诺交付或建议直接试卖。' }), false);
+  assert.equal(hasUnverifiedTrialRecommendation({ summary: '建议直接试卖。' }), true);
+  assert.equal(hasUnverifiedTrialRecommendation({ summary: '禁止虚构，但建议直接试卖。' }), true);
 });

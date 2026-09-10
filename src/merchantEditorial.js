@@ -26,6 +26,11 @@ export function parseEditorialJson(output) {
   return null;
 }
 const factKey = (fact, bundle) => `${bundle.evidence.find((item) => item.id === fact.evidenceId)?.url}|${plain(fact.quote).toLowerCase().replace(/\s+/g, ' ')}`;
+export function hasUnverifiedTrialRecommendation(draft) {
+  const values = JSON.stringify(draft).split(/[。；，,\n]|但是|然而|不过/);
+  return values.some((clause) => /直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(clause)
+    && !/(?:禁止|不得|不要|不建议|不应)[^。；，,]*?(?:直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品)/.test(clause));
+}
 
 export function editorialRepairDetails(draft, bundle, issues) {
   return {
@@ -87,10 +92,10 @@ export function validateMerchantEditorial(draft, bundle) {
     if (/你的(?:待交付|已有订单|老客户)|逐单复核待交付/.test(plain(step?.action))) issues.push('editorial_beginner_requires_orders');
   }
   if (!Array.isArray(draft.merchantActions) || draft.merchantActions.length > 3 || !draft.merchantActions.every((item) => typeof item === 'string' && /如果|已有|若/.test(item))) issues.push('editorial_merchant_actions_invalid');
-  if (/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(all)) issues.push('editorial_trial_requires_verified_fulfilment');
+  if (hasUnverifiedTrialRecommendation(draft)) issues.push('editorial_trial_requires_verified_fulfilment');
   // The renderer owns links, counts, prices and evidence references, not model prose.
   const narrative = [draft.headline, draft.summary, draft.customerHypothesis, draft.deliverable, draft.copyAsset, draft.stopCondition, draft.followUp, ...(draft.merchantActions || []), ...steps.map((item) => item.action)].join(' ');
-  if (/\bE\d+\b|demandEvidence|copyAsset/.test(narrative)) issues.push('editorial_internal_identifiers');
+  if (/\bE\d+\b|demandEvidence|copyAsset|\bunknown\b|not_checked|originalPages?\w*/.test(`${narrative} ${(draft.unknowns || []).join(' ')}`)) issues.push('editorial_internal_identifiers');
   if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
   if (/https?:\/\/|<\/?[a-z]|javascript:|\[[^\]]*\]\(/i.test(narrative)) issues.push('editorial_uncontrolled_link');
   const supportedNumbers = new Set(facts.flatMap((fact) => plain(fact.text).match(/\d+(?:\.\d+)?/g) || []));
