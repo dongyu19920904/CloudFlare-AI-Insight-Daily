@@ -115,6 +115,7 @@ test('explicit stop conditions do not become affirmative trial recommendations',
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '暂停建议直接试卖' }), false);
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '建议直接试卖。' }), true);
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '禁止虚构，但建议直接试卖。' }), true);
+  assert.equal(hasUnverifiedTrialRecommendation({ followUp: '两项通过可继续上架流程' }), true);
 });
 
 test('different quotation fragments within the same source sentence keep the same fact identity', async () => {

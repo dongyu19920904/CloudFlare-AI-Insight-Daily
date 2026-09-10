@@ -76,7 +76,7 @@ export function editorialFactKey(fact, bundle) {
 }
 export function hasUnverifiedTrialRecommendation(draft) {
   const values = JSON.stringify(draft).split(/[。；，,\n]|但是|然而|不过/);
-  return values.some((clause) => [...clause.matchAll(/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/g)].some((match) => {
+  return values.some((clause) => [...clause.matchAll(/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品|可(?:以)?(?:继续|推进)?上架/g)].some((match) => {
     const prefix = clause.slice(0, match.index);
     if (match[0] === '建议试卖' && /不$/.test(prefix)) return false;
     return !/(?:禁止|不得|不要|不建议|不应|暂停|停止)[^。；，,]{0,80}$/.test(prefix);
@@ -189,6 +189,7 @@ export function validateMerchantEditorial(draft, bundle) {
   if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|买家(?:常见|最常)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
   if (/(?:恢复|重新上架|涨价|降价|缺货|断货)/.test(plain(draft.headline)) && !/一条|部分|某个|抽样|观察/.test(plain(draft.headline))) issues.push('editorial_change_scope_too_broad');
   if (/不影响.{0,12}资格|保证.{0,8}开通/.test(narrative)) issues.push('editorial_billing_is_not_eligibility');
+  if (/套餐费用仅覆盖|只(?:能|提供).{0,12}(?:网页|对话)/.test(narrative)) issues.push('editorial_billing_is_not_feature_scope');
   if (/https?:\/\/|<\/?[a-z]|javascript:|\[[^\]]*\]\(/i.test(narrative)) issues.push('editorial_uncontrolled_link');
   const supportedNumbers = new Set(facts.flatMap((fact) => plain(fact.text).match(/\d+(?:\.\d+)?/g) || []));
   for (const number of narrative.match(/\d+(?:\.\d+)?/g) || []) if (!supportedNumbers.has(number)) issues.push('editorial_narrative_number_not_supported');
@@ -208,7 +209,8 @@ export function renderMerchantEditorial(draft, bundle) {
   };
   const sourceIds = new Set(draft.facts.map((fact) => fact.evidenceId));
   const sources = bundle.evidence.filter((item) => sourceIds.has(item.id));
-  const relatedProduct = bundle.products.find((product) => product.platform === sources[0]?.platform);
+  const relatedProduct = bundle.products.find((product) => sources.some((source) => source.kind === 'aggregate' && source.url === product.url))
+    || bundle.products.find((product) => draft.steps.some((step) => step.url === product.url));
   const markdown = [
     '## 今天一句话', draft.summary, '[开始今天的任务](#merchant-task)',
     `数据读取 ${chinaTime(bundle.sourceGeneratedAt)}；最近货源记录 ${chinaTime(bundle.sourceObservedAt)}。本期不构成可直接交付的商品推荐。`,
