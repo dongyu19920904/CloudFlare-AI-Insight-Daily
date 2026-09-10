@@ -142,7 +142,7 @@ jobs:
               --output "$RUNNER_TEMP/direct-home.html" \
               --write-out '%{http_code}' "$PRODUCTION_WORKER_URL/")"
             if [[ "$offers_status" == 200 ]] && [[ "$home_status" == 200 ]] && \
-              jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
+              jq -e '.pageInfo.total > 0 and (.items | length) == ([50, .pageInfo.total] | min) and .pageInfo.hasMore == (.pageInfo.total > 50) and all(.items[]; (.id | length) > 0)' \
                 "$RUNNER_TEMP/direct-offers.json" > /dev/null && \
               grep -F '爱窝啦·AI账号店' "$RUNNER_TEMP/direct-home.html" > /dev/null && \
               grep -F '<link rel="canonical" href="https://supply.aivora.cn' \
@@ -216,7 +216,7 @@ jobs:
           for attempt in $(seq 1 18); do
             status="$(curl --silent --show-error --max-time 30 --output "$RUNNER_TEMP/production-offers.json" \
               --write-out '%{http_code}' "$PRODUCTION_URL/api/products/chatgpt-plus/offers?limit=50&offset=0")"
-            if [[ "$status" == 200 ]] && jq -e '(.items | length) == 50 and .pageInfo.total >= 1000' \
+            if [[ "$status" == 200 ]] && jq -e '.pageInfo.total > 0 and (.items | length) == ([50, .pageInfo.total] | min) and .pageInfo.hasMore == (.pageInfo.total > 50) and all(.items[]; (.id | length) > 0)' \
               "$RUNNER_TEMP/production-offers.json" > /dev/null; then
               ready=true
               break

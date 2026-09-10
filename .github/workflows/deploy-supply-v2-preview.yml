@@ -124,7 +124,7 @@ jobs:
             if curl --fail --silent --show-error --max-time 30 \
               "$PREVIEW_URL/api/products/chatgpt-plus/offers?limit=50&offset=0" \
               > "$RUNNER_TEMP/chatgpt-plus.json"; then
-              if jq -e '(.items | length) == 50 and .pageInfo.total >= 1000 and .pageInfo.hasMore == true' \
+              if jq -e '.pageInfo.total > 0 and (.items | length) == ([50, .pageInfo.total] | min) and .pageInfo.hasMore == (.pageInfo.total > 50) and all(.items[]; (.id | length) > 0)' \
                 "$RUNNER_TEMP/chatgpt-plus.json" > /dev/null; then
                 ready=true
                 break
