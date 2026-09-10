@@ -1,12 +1,26 @@
 import { callChatAPI } from './chatapi.js';
 import { merchantEditorialPrompt } from './prompt/merchantEditorialPrompt.js';
-import { buildMerchantEvidenceBundle, EDITORIAL_MEMORY_KEY, EDITORIAL_VERSION, loadMerchantOfficialEvidence } from './merchantEvidenceBundle.js';
+import { buildMerchantEvidenceBundle, focusMerchantEvidence, EDITORIAL_MEMORY_KEY, EDITORIAL_VERSION, loadMerchantOfficialEvidence } from './merchantEvidenceBundle.js';
 
 const FORBIDDEN = /稳赚|必赚|一定赚钱|保证赚钱|爆单|永久稳定|零风险|永不封号|官方授权|全网销量|市场火爆|供不应求|今天首次通过|忽略.{0,8}指令/i;
 const plain = (value, length = 3000) => typeof value === 'string' ? value.trim().slice(0, length) : '';
 const esc = (value) => plain(value).replace(/[<>\[\]`*_]/g, '').replace(/\r?\n/g, ' ');
 const safeJson = (value) => { try { return JSON.parse(value); } catch { return null; } };
 const factKey = (fact, bundle) => `${bundle.evidence.find((item) => item.id === fact.evidenceId)?.url}|${plain(fact.quote).toLowerCase().replace(/\s+/g, ' ')}`;
+
+export function editorialRepairDetails(draft, bundle, issues) {
+  return {
+    issues,
+    instruction: '重写整个 JSON，不能保留错误。先压缩为三条事实、三步任务、一份短答疑。正文禁止 E1、demandEvidence、copyAsset 等内部字段名。',
+    summary: { actualCharacters: plain(draft?.summary).length, target: '最多80个字符，只写结论和产出，不罗列来源和数字' },
+    copyAsset: { target: '最多260字；最后一行逐字写：付款前再次确认库存。只使用 facts 已解释的信息，删去推测和新数字' },
+    facts: (draft?.facts || []).map((fact, index) => {
+      const source = bundle.evidence.find((item) => item.id === fact?.evidenceId);
+      return { index, exactQuoteMatched: Boolean(source?.text.includes(fact.quote)), quoteWords: (String(fact?.quote || '').match(/[\p{L}\p{N}]+/gu) || []).length, rule: '每条摘录选原文连续不超过8个英文单词，每个来源全部摘录累计不超过25词。facts.text 中数字只来自该条原文，不能引用 products 中的报价条数' };
+    }),
+    allowedLinks: ['#merchant-record', ...bundle.evidence.map((item) => item.url), ...bundle.products.flatMap((item) => [item.url, item.calculatorUrl])],
+  };
+}
 
 export function validateMerchantEditorial(draft, bundle) {
   const issues = [];
@@ -112,7 +126,7 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
   try { memory = safeJson(await kv?.get(EDITORIAL_MEMORY_KEY)) || []; } catch { /* Memory unavailable must not break the main daily. */ }
   if (!Array.isArray(memory)) memory = [];
   const official = officialEvidence || await loadMerchantOfficialEvidence({ fetchImpl });
-  const bundle = await buildMerchantEvidenceBundle({ dateStr, snapshot, official, memory });
+  const bundle = focusMerchantEvidence(await buildMerchantEvidenceBundle({ dateStr, snapshot, official, memory }));
   debugInfo.accountOpportunityEditorialVersion = EDITORIAL_VERSION;
   debugInfo.accountOpportunityEvidenceCount = bundle.evidence.length;
   debugInfo.accountOpportunityNewEvidenceCount = bundle.newEvidenceIds.length;
@@ -131,7 +145,7 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           debugInfo.accountOpportunityModelCalls++;
-          const output = await callModel(modelEnv, JSON.stringify({ bundle, validationErrors: issues, previousDraft: draft }), merchantEditorialPrompt);
+          const output = await callModel(modelEnv, JSON.stringify({ bundle, validationErrors: issues, repair: attempt ? editorialRepairDetails(draft, bundle, issues) : null, previousDraft: draft }), merchantEditorialPrompt);
           draft = safeJson(String(output).replace(/^```(?:json)?\s*|\s*```$/g, ''));
           const validation = validateMerchantEditorial(draft, bundle);
           if (dryRun) {

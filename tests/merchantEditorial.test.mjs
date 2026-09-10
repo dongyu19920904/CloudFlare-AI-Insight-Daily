@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildMerchantEvidenceBundle, fetchMerchantEvidence, originalOfferEvidence } from '../src/merchantEvidenceBundle.js';
-import { generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
+import { buildMerchantEvidenceBundle, focusMerchantEvidence, fetchMerchantEvidence, originalOfferEvidence } from '../src/merchantEvidenceBundle.js';
+import { editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
 import { validateMerchantEditorialPublication } from '../src/publishValidation.js';
 import { runIsolatedAccountOpportunity } from '../src/accountOpportunityIsolation.js';
 
@@ -71,4 +71,25 @@ test('a successful page without matching stock, name, currency and price is not 
 test('editorial failure cannot fail the AI daily isolation boundary', async () => {
   const result = await runIsolatedAccountOpportunity(async () => { throw new Error('editorial failure'); }, '2026-09-10', 'test');
   assert.equal(result.accountOpportunityIsolatedFailure, true);
+});
+
+test('unrelated platforms cannot be padded together to satisfy two-source evidence', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  assert.equal(focusMerchantEvidence({ ...bundle, evidence: [bundle.evidence[0], { ...bundle.evidence[1], platform: 'claude' }] }).evidence.length, 0);
+  assert.equal(focusMerchantEvidence(bundle).evidence.length, 2);
+});
+
+test('repair feedback names exact quote mismatch and length with allowlisted destinations', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  const bad = draft(); bad.facts[0].quote = 'invented'; bad.summary = '长'.repeat(190);
+  const feedback = editorialRepairDetails(bad, bundle, ['editorial_first_screen_too_long']);
+  assert.equal(feedback.summary.actualCharacters, 190);
+  assert.equal(feedback.facts[0].exactQuoteMatched, false);
+  assert.ok(feedback.allowedLinks.includes('#merchant-record'));
+});
+
+test('changing page hash cannot turn the exact same published facts into a new issue', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  bundle.usedFactKeys = draft().facts.map((fact) => `${bundle.evidence.find((s) => s.id === fact.evidenceId).url}|${fact.quote.toLowerCase()}`);
+  assert.ok(validateMerchantEditorial(draft(), bundle).issues.includes('editorial_same_facts_reworded'));
 });
