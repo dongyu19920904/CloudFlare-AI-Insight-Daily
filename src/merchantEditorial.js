@@ -75,6 +75,7 @@ export function validateMerchantEditorial(draft, bundle) {
     }
   }
   if (ids.size < 2) issues.push('editorial_needs_two_sources');
+  if (!bundle.evidence.some((item) => ids.has(item.id) && item.kind === 'official')) issues.push('editorial_official_boundary_missing');
   if (![...ids].some((id) => bundle.newEvidenceIds.includes(id))) issues.push('editorial_no_new_evidence');
   if (facts.length && facts.every((fact) => (bundle.usedFactKeys || []).includes(factKey(fact, bundle)))) issues.push('editorial_same_facts_reworded');
   if (!/待验证|假设/.test(plain(draft.customerHypothesis))) issues.push('editorial_demand_must_be_hypothesis');
@@ -168,7 +169,9 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
     draft = null;
     if (bundle.evidence.length >= 2 && bundle.newEvidenceIds.length) {
       let issues = [];
-      const modelEnv = { ...env, ANTHROPIC_MAX_TOKENS: '4096', OPENAI_MAX_COMPLETION_TOKENS: '4096', ANTHROPIC_RETRY_MAX: '0', GEMINI_RETRY_MAX: '0', ANTHROPIC_BACKUP_API_KEY: '', OPENAI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('OPEN') ? env.OPENAI_API_KEY : '', GEMINI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('GEMINI') ? env.GEMINI_API_KEY : '', DEFAULT_ANTHROPIC_BACKUP_MODEL: env.DEFAULT_ANTHROPIC_MODEL || env.ANTHROPIC_MODEL };
+      // Observed 4096-token responses ended mid-JSON. This bounded allowance is
+      // local to the editorial call; it does not alter other daily tasks.
+      const modelEnv = { ...env, ANTHROPIC_MAX_TOKENS: '6144', OPENAI_MAX_COMPLETION_TOKENS: '6144', ANTHROPIC_RETRY_MAX: '0', GEMINI_RETRY_MAX: '0', ANTHROPIC_BACKUP_API_KEY: '', OPENAI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('OPEN') ? env.OPENAI_API_KEY : '', GEMINI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('GEMINI') ? env.GEMINI_API_KEY : '', DEFAULT_ANTHROPIC_BACKUP_MODEL: env.DEFAULT_ANTHROPIC_MODEL || env.ANTHROPIC_MODEL };
       modelEnv.MERCHANT_EDITORIAL_REQUEST = 'true';
       modelEnv.GEMINI_FALLBACK_ENABLED = 'false';
       for (let attempt = 0; attempt < 2; attempt++) {

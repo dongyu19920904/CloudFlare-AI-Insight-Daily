@@ -110,10 +110,11 @@ export async function buildMerchantEvidenceBundle({ dateStr, snapshot, official 
 // A focused issue needs related evidence, not unrelated pages padded to meet a count.
 export function focusMerchantEvidence(bundle) {
   const platforms = ['chatgpt', 'claude', 'gemini', 'grok', 'ai-coding', 'ai-creative'];
-  const platform = platforms.find((key) => {
+  const eligible = platforms.filter((key) => {
     const items = bundle.evidence.filter((item) => item.platform === key);
-    return items.length >= 2 && items.some((item) => bundle.newEvidenceIds.includes(item.id));
+    return items.length >= 2 && items.some((item) => item.kind === 'official') && items.some((item) => bundle.newEvidenceIds.includes(item.id));
   });
+  const platform = eligible.find((key) => bundle.evidence.filter((item) => item.platform === key && item.kind === 'official').length >= 2) || eligible[0];
   if (!platform) return { ...bundle, evidence: [], newEvidenceIds: [] };
   const evidence = bundle.evidence.filter((item) => item.platform === platform);
   return { ...bundle, evidence, newEvidenceIds: bundle.newEvidenceIds.filter((id) => evidence.some((item) => item.id === id)), products: bundle.products.filter((item) => item.platform === platform) };
