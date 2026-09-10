@@ -151,9 +151,10 @@ jobs:
           fi
 
           echo "Triggering AI account opportunity generation for ${TARGET_DATE}"
-          curl -sS -G "${WORKER_BASE_URL}/testTriggerScheduledAccountOpportunity" \
+          curl --fail-with-body --max-time 300 -sS -G "${WORKER_BASE_URL}/testTriggerScheduledAccountOpportunity" \
             --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
             --data-urlencode "date=${TARGET_DATE}" \
+            --data-urlencode "stream=1" \
             > trigger-response.json
 
           python - <<'PY'
@@ -161,7 +162,8 @@ jobs:
           import os
 
           with open("trigger-response.json", "r", encoding="utf-8") as handle:
-              payload = json.load(handle)
+              events = [json.loads(line) for line in handle if line.strip()]
+          payload = next((event for event in reversed(events) if event.get("state") in {"success", "error"}), events[-1] if events else {})
 
           print(json.dumps(payload, ensure_ascii=False, indent=2))
 

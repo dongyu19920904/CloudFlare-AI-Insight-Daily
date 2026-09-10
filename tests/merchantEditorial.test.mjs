@@ -111,6 +111,8 @@ test('unobserved effects, internal IDs and verbose copy cannot become merchant c
 
 test('explicit stop conditions do not become affirmative trial recommendations', () => {
   assert.equal(hasUnverifiedTrialRecommendation({ stopCondition: '禁止向买家承诺交付或建议直接试卖。' }), false);
+  assert.equal(hasUnverifiedTrialRecommendation({ headline: '交付未核对前不建议试卖' }), false);
+  assert.equal(hasUnverifiedTrialRecommendation({ summary: '暂停建议直接试卖' }), false);
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '建议直接试卖。' }), true);
   assert.equal(hasUnverifiedTrialRecommendation({ summary: '禁止虚构，但建议直接试卖。' }), true);
 });

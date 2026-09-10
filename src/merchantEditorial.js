@@ -76,8 +76,11 @@ export function editorialFactKey(fact, bundle) {
 }
 export function hasUnverifiedTrialRecommendation(draft) {
   const values = JSON.stringify(draft).split(/[。；，,\n]|但是|然而|不过/);
-  return values.some((clause) => /直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(clause)
-    && !/(?:禁止|不得|不要|不建议|不应|暂停|停止)[^。；，,]*?(?:直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品)/.test(clause));
+  return values.some((clause) => [...clause.matchAll(/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/g)].some((match) => {
+    const prefix = clause.slice(0, match.index);
+    if (match[0] === '建议试卖' && /不$/.test(prefix)) return false;
+    return !/(?:禁止|不得|不要|不建议|不应|暂停|停止)[^。；，,]{0,80}$/.test(prefix);
+  }));
 }
 
 export function editorialQuoteOptions(bundle) {
@@ -181,6 +184,7 @@ export function validateMerchantEditorial(draft, bundle) {
   if (/\bE\d+\b|demandEvidence|copyAsset|\bunknown\b|not_checked|originalPages?\w*/.test(`${narrative} ${(draft.unknowns || []).join(' ')}`)) issues.push('editorial_internal_identifiers');
   if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|买家(?:常见|最常)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
   if (/(?:恢复|重新上架|涨价|降价|缺货|断货)/.test(plain(draft.headline)) && !/一条|部分|某个|抽样|观察/.test(plain(draft.headline))) issues.push('editorial_change_scope_too_broad');
+  if (/不影响.{0,12}资格|保证.{0,8}开通/.test(narrative)) issues.push('editorial_billing_is_not_eligibility');
   if (/https?:\/\/|<\/?[a-z]|javascript:|\[[^\]]*\]\(/i.test(narrative)) issues.push('editorial_uncontrolled_link');
   const supportedNumbers = new Set(facts.flatMap((fact) => plain(fact.text).match(/\d+(?:\.\d+)?/g) || []));
   for (const number of narrative.match(/\d+(?:\.\d+)?/g) || []) if (!supportedNumbers.has(number)) issues.push('editorial_narrative_number_not_supported');
