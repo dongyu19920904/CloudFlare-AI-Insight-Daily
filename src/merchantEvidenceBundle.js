@@ -6,8 +6,11 @@ export const MERCHANT_OFFICIAL_SOURCES = [
   { platform: 'ai-coding', url: 'https://cursor.com/pricing', title: 'Cursor 套餐与购买边界' },
   { platform: 'claude', url: 'https://support.claude.com/en/articles/11049741-what-is-the-max-plan', title: 'Claude Max 套餐说明' },
   { platform: 'claude', url: 'https://support.claude.com/en/articles/12138966-release-notes', title: 'Claude 官方更新记录' },
+  { platform: 'gemini', url: 'https://support.google.com/googleone/answer/14534406?hl=en', title: 'Google AI Pro 权益说明' },
+  { platform: 'gemini', url: 'https://support.google.com/googleone/answer/9004015?hl=en', title: 'Google One 家庭共享条件' },
 ];
-const PUBLIC_HOSTS = new Set(['help.openai.com', 'support.claude.com', 'cursor.com', 'supply.aivora.cn', 'www.aivora.cn', 'wzyp.cn']);
+const PUBLIC_HOSTS = new Set(['help.openai.com', 'support.claude.com', 'support.google.com', 'cursor.com', 'supply.aivora.cn', 'www.aivora.cn', 'wzyp.cn']);
+const LARGE_HELP_PAGES = new Set(MERCHANT_OFFICIAL_SOURCES.filter((source) => source.platform === 'gemini').map((source) => source.url));
 export const EDITORIAL_VERSION = 'merchant-evidence-editor-v1';
 export const EDITORIAL_MEMORY_KEY = 'merchant-editorial-memory-v1';
 
@@ -74,12 +77,18 @@ export function originalOfferEvidence(html, offer) {
 }
 
 export async function loadMerchantOfficialEvidence({ fetchImpl = fetch, now = new Date(), sources = MERCHANT_OFFICIAL_SOURCES } = {}) {
-  return Promise.all(sources.slice(0, 6).map(async (source) => {
+  return Promise.all(sources.slice(0, 8).map(async (source) => {
     try {
-      const text = articleText(await fetchMerchantEvidence(source.url, { fetchImpl }));
+      // Google embeds a large help shell. Raise only these exact pages' byte
+      // ceiling, never the default or arbitrary caller-provided source limits.
+      const largeHelpPage = LARGE_HELP_PAGES.has(source.url);
+      const text = articleText(await fetchMerchantEvidence(source.url, { fetchImpl, maxBytes: largeHelpPage ? 2_000_000 : 800_000, timeoutMs: largeHelpPage ? 15000 : 8000 }));
       if (text.length < 160 || /just a moment|verify you are human|access denied/i.test(text.slice(0, 300))) throw new Error('evidence_unreadable');
       return { ...source, kind: 'official', text, observedAt: now.toISOString(), occurredAt: null, contentHash: await evidenceHash([source.url, text]), fetchStatus: 'ok' };
-    } catch { return { ...source, fetchStatus: 'unknown', text: '', observedAt: now.toISOString() }; }
+    } catch (error) {
+      const reason = /^evidence_(?:http_\d{3}|origin_not_allowed|content_type|size|body_missing|unreadable)$/.test(error?.message) ? error.message : error?.name === 'AbortError' ? 'evidence_timeout' : 'evidence_fetch_failed';
+      return { ...source, fetchStatus: 'unknown', failureReason: reason, text: '', observedAt: now.toISOString() };
+    }
   }));
 }
 

@@ -1,0 +1,13 @@
+{
+  "provenance": "Official pages read with the public web reader on 2026-09-10. These excerpts are TEST FIXTURES ONLY; the Worker currently receives 403 and must not use them as a production fallback.",
+  "official": [
+    {
+      "platform": "chatgpt", "url": "https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus", "title": "ChatGPT Plus 套餐与限制", "kind": "official", "fetchStatus": "ok", "observedAt": "2026-09-10T08:40:00Z", "contentHash": "test-plus-evidence",
+      "text": "Price: $20/month (billed monthly). Currently, we do not support annual billing or the option to pay for multiple months in advance for ChatGPT Plus subscriptions."
+    },
+    {
+      "platform": "chatgpt", "url": "https://help.openai.com/en/articles/9039756", "title": "ChatGPT 与 API 的计费区别", "kind": "official", "fetchStatus": "ok", "observedAt": "2026-09-10T08:40:00Z", "contentHash": "test-billing-evidence",
+      "text": "API usage is billed separately from your ChatGPT subscription. ChatGPT subscriptions can be billed through the web, Apple App Store, or Google Play Store. Subscriptions on more than one platform may result in separate charges."
+    }
+  ]
+}
