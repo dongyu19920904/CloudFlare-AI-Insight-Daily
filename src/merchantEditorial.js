@@ -196,7 +196,7 @@ export function renderMerchantBrief(bundle, reason = 'evidence_insufficient') {
   const copy = '售前核对记录\n客户实际用途：待填写\n套餐与交付方式：待核对\n不确定的功能或售后：先确认再答复\n付款前再次确认库存';
   const markdown = ['## 今天一句话', '今天的记录不足以支持新的试卖建议。先完成一份商品核对记录；已有订单的商家先核实交付。', `[开始今天的任务](${url})`,
     '## 选择你的阅读方式', '新手完成资料核对；老手只处理自己已有的商品或订单。',
-    '## 一眼看懂', `今日不建议上新。最近货源记录为 ${bundle.sourceObservedAt}，本次读取为 ${bundle.sourceGeneratedAt}。没有新的可用证据时，不把旧题换个标题推荐。`,
+    '## 一眼看懂', `今日不建议上新。最近货源记录 ${chinaTime(bundle.sourceObservedAt)}，本次读取 ${chinaTime(bundle.sourceGeneratedAt)}。没有新的可用证据时，不把旧题换个标题推荐。`,
     '## 新手今天照着做', '没有订单也能完成下面的记录。', `1. [打开${esc(product?.name || '标准商品目录')}](${url})，选一条你能看懂的报价。\n2. 在原页核对套餐、期限和交付方式，记录没有写明的条件。\n3. 将确认结果填写到下方经营记录；缺项时不发布商品。`,
     '### 可复制经营材料', copy.split('\n').map((line) => `> ${line}`).join('\n'),
     '## 老商家今天看这三项', '今天没有可比较的历史快照，或本次没有足够新证据。', '- 如果已有待交付订单，付款前重新核对该订单的原始来源；不能交付时先停止收款。',
@@ -212,7 +212,7 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
   let memory = [];
   try { memory = safeJson(await kv?.get(EDITORIAL_MEMORY_KEY)) || []; } catch { /* Memory unavailable must not break the main daily. */ }
   if (!Array.isArray(memory)) memory = [];
-  const official = officialEvidence || await loadMerchantOfficialEvidence({ fetchImpl });
+  const official = officialEvidence || (snapshot.products?.length ? await loadMerchantOfficialEvidence({ fetchImpl }) : []);
   const bundle = focusMerchantEvidence(await buildMerchantEvidenceBundle({ dateStr, snapshot, official, memory }));
   debugInfo.accountOpportunityEditorialVersion = EDITORIAL_VERSION;
   debugInfo.accountOpportunityEvidenceCount = bundle.evidence.length;
@@ -229,6 +229,11 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
       // Observed 4096-token responses ended mid-JSON. This bounded allowance is
       // local to the editorial call; it does not alter other daily tasks.
       const modelEnv = { ...env, ANTHROPIC_MAX_TOKENS: '6144', OPENAI_MAX_COMPLETION_TOKENS: '6144', ANTHROPIC_RETRY_MAX: '0', GEMINI_RETRY_MAX: '0', ANTHROPIC_BACKUP_API_KEY: '', OPENAI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('OPEN') ? env.OPENAI_API_KEY : '', GEMINI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('GEMINI') ? env.GEMINI_API_KEY : '', DEFAULT_ANTHROPIC_BACKUP_MODEL: env.DEFAULT_ANTHROPIC_MODEL || env.ANTHROPIC_MODEL };
+      if (env.ACCOUNT_MERCHANT_EDITORIAL_MODEL) {
+        modelEnv.DEFAULT_ANTHROPIC_MODEL = env.ACCOUNT_MERCHANT_EDITORIAL_MODEL;
+        modelEnv.DEFAULT_ANTHROPIC_BACKUP_MODEL = env.ACCOUNT_MERCHANT_EDITORIAL_MODEL;
+      }
+      debugInfo.accountOpportunityEditorialModel = modelEnv.DEFAULT_ANTHROPIC_MODEL || modelEnv.ANTHROPIC_MODEL;
       modelEnv.MERCHANT_EDITORIAL_REQUEST = 'true';
       modelEnv.GEMINI_FALLBACK_ENABLED = 'false';
       for (let attempt = 0; attempt < 2; attempt++) {

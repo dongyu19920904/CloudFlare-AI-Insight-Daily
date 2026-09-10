@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildMerchantEvidenceBundle, focusMerchantEvidence, fetchMerchantEvidence, originalOfferEvidence } from '../src/merchantEvidenceBundle.js';
-import { editorialFactKey, hasUnverifiedTrialRecommendation, parseEditorialJson, editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
+import { editorialQuoteOptions, resolveEditorialDraft, editorialFactKey, hasUnverifiedTrialRecommendation, parseEditorialJson, editorialRepairDetails, generateMerchantEditorial, renderMerchantEditorial, validateMerchantEditorial } from '../src/merchantEditorial.js';
 import { validateMerchantEditorialPublication } from '../src/publishValidation.js';
 import { runIsolatedAccountOpportunity } from '../src/accountOpportunityIsolation.js';
 
@@ -124,4 +124,23 @@ test('real comparable change evidence retains event time, not the fetch time', a
   const eventTime = '2026-09-10T03:30:00Z';
   const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot: { ...snapshot, signals: [{ id: 'rise:plus', kind: 'price_rise', product: snapshot.products[0], title: '同规格报价上升', evidence: '同一来源报价从80升至90', observedAt: eventTime }] }, official });
   assert.equal(bundle.evidence.find((item) => item.kind === 'supply-change').occurredAt, eventTime);
+});
+
+test('compiler supplies only real quotes and turns internal references into source titles', async () => {
+  const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
+  const quotes = editorialQuoteOptions(bundle);
+  assert.ok(quotes.every((option) => bundle.evidence.find((s) => s.id === option.evidenceId).text.includes(option.quote)));
+  const generated = { ...draft(), summary: '参照 E1，状态 unknown', facts: [{ evidenceId: quotes[0].evidenceId, quoteId: quotes[0].id, text: '接口用量需要单独计费。' }] };
+  const resolved = resolveEditorialDraft(generated, bundle, quotes);
+  assert.equal(resolved.facts[0].quote, quotes[0].quote);
+  assert.equal(resolved.summary, '参照 套餐，状态 尚未确认');
+  generated.facts[0].quoteId = 'invented';
+  assert.equal(resolveEditorialDraft(generated, bundle, quotes).facts[0].quote, '');
+});
+
+test('missing supply never invokes a model or fabricates observations', async () => {
+  let calls = 0;
+  const result = await generateMerchantEditorial({ env: {}, dateStr: '2026-09-10', snapshot: { products: [], generatedAt: snapshot.generatedAt, latestObservedAt: null }, dryRun: true, callModel: async () => { calls++; return '{}'; } });
+  assert.equal(calls, 0);
+  assert.match(result.markdown, /时间未确认/);
 });

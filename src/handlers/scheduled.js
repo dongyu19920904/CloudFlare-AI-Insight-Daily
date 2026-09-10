@@ -2072,11 +2072,11 @@ async function generateAccountOpportunityMarkdown(
     debugInfo.accountOpportunityOutOfScopePreviewCount =
         previewAssessment.candidates.length - overseasPreviewCandidates.length;
 
-    if (options.supplySnapshot) {
+    if (options.supplySnapshot || env.ACCOUNT_MERCHANT_EDITORIAL_ENABLED === 'true') {
         if (env.ACCOUNT_MERCHANT_EDITORIAL_ENABLED === 'true') {
-            const editorial = await generateMerchantEditorial({ env, dateStr, snapshot: options.supplySnapshot, debugInfo, dryRun: options.dryRun });
+            const editorial = await generateMerchantEditorial({ env, dateStr, snapshot: options.supplySnapshot || { products: [], signals: [], generatedAt: new Date().toISOString(), latestObservedAt: null }, debugInfo, dryRun: options.dryRun });
             debugInfo.accountOpportunityPipelineVersion = 'supply-merchant-daily-v3';
-            debugInfo.accountOpportunitySupplyDriven = true;
+            debugInfo.accountOpportunitySupplyDriven = Boolean(options.supplySnapshot);
             debugInfo.accountOpportunityGenerated = true;
             debugInfo.accountOpportunityMerchantActionCount = 0;
             debugInfo.accountOpportunityStarterProduct = null;
