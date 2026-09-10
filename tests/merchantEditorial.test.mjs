@@ -42,6 +42,8 @@ test('separate API billing does not prove a developer is ineligible for a subscr
   const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot, official });
   const bad = draft(); bad.customerHypothesis = '待验证假设：需要 API 接口调用的开发者不适用 Pro 套餐。';
   assert.ok(validateMerchantEditorial(bad, bundle).issues.includes('editorial_billing_is_not_user_exclusion'));
+  const leaked = draft(); leaked.deliverable = '对照 E1Q8、E1Q9 原文完成草稿。';
+  assert.ok(validateMerchantEditorial(leaked, bundle).issues.includes('editorial_internal_identifiers'));
 });
 test('unrelated official news is excluded; no stock does not manufacture a trial recommendation', async () => {
   const bundle = await buildMerchantEvidenceBundle({ dateStr: '2026-09-10', snapshot: { ...snapshot, products: snapshot.products.map((p) => ({ ...p, availableOfferCount: 0 })) }, official: [...official, { ...official[0], platform: 'gaming' }] });

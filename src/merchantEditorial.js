@@ -186,7 +186,7 @@ export function validateMerchantEditorial(draft, bundle) {
   if (hasUnverifiedTrialRecommendation(draft)) issues.push('editorial_trial_requires_verified_fulfilment');
   // The renderer owns links, counts, prices and evidence references, not model prose.
   const narrative = [draft.headline, draft.summary, draft.customerHypothesis, draft.deliverable, draft.copyAsset, draft.stopCondition, draft.followUp, ...(draft.merchantActions || []), ...steps.map((item) => item.action)].join(' ');
-  if (/\bE\d+\b|demandEvidence|copyAsset|\bunknown\b|not_checked|originalPages?\w*/.test(`${narrative} ${(draft.unknowns || []).join(' ')}`)) issues.push('editorial_internal_identifiers');
+  if (/\bE\d+(?:Q\d+)?\b|demandEvidence|copyAsset|\bunknown\b|not_checked|originalPages?\w*/.test(`${narrative} ${(draft.unknowns || []).join(' ')}`)) issues.push('editorial_internal_identifiers');
   if (!bundle.demandEvidence?.length && /客户(?:常|普遍)|买家(?:常见|最常)|导致纠纷|得到[：:]\s*(?:减少|避免)|追问比例超过/.test(narrative)) issues.push('editorial_business_outcome_not_observed');
   if (/(?:恢复|重新上架|涨价|降价|缺货|断货)/.test(plain(draft.headline)) && !/一条|部分|某个|抽样|观察/.test(plain(draft.headline))) issues.push('editorial_change_scope_too_broad');
   if (/不影响.{0,12}资格|保证.{0,8}开通/.test(narrative)) issues.push('editorial_billing_is_not_eligibility');
