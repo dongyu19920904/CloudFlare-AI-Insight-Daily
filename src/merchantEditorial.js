@@ -134,6 +134,10 @@ export async function generateMerchantEditorial({ env, dateStr, snapshot, debugI
           const output = await callModel(modelEnv, JSON.stringify({ bundle, validationErrors: issues, previousDraft: draft }), merchantEditorialPrompt);
           draft = safeJson(String(output).replace(/^```(?:json)?\s*|\s*```$/g, ''));
           const validation = validateMerchantEditorial(draft, bundle);
+          if (dryRun) {
+            debugInfo.accountOpportunityEditorialDraft = draft;
+            debugInfo.accountOpportunityEditorialEvidence = bundle;
+          }
           if (validation.ok) break;
           issues = validation.issues;
         } catch { issues = ['editorial_model_unavailable']; draft = null; break; }
