@@ -1676,6 +1676,22 @@ function setJaccard(leftValues, rightValues) {
   return intersection / Math.max(1, new Set([...left, ...right]).size);
 }
 
+export function validateMerchantEditorialPublication({ markdown, bundle }) {
+  const visible = stripOpportunityReplayMetadata(markdown);
+  const issues = collectMarkdownIssues(visible, {
+    label: '商家证据编辑日报', minChars: 300,
+    requiredPhrases: ['## 今天一句话', '## 一眼看懂', '## 新手今天照着做', '## 老商家今天看这三项', '## 今天暂停什么', '## 数据和判断依据', '## 收盘填写结果'],
+    forbiddenPatterns: [...MODEL_MANIPULATION_PATTERNS, /稳赚|必赚|一定赚钱|保证赚钱|爆单|永久稳定|零风险|永不封号|官方授权/],
+  });
+  const allowed = new Set(['#merchant-task', '#merchant-record', 'https://supply.aivora.cn/card-products', 'https://supply.aivora.cn/api/opportunities/snapshot', ...bundle.evidence.map((item) => item.url), ...bundle.products.flatMap((item) => [item.url, item.calculatorUrl])]);
+  for (const match of visible.matchAll(/\]\(([^)]+)\)/g)) if (!allowed.has(match[1])) issues.push('editorial_unknown_link');
+  const steps = visible.split('## 新手今天照着做')[1]?.split('\n## ')[0] || '';
+  const count = [...steps.matchAll(/^\d+\. /gm)].length;
+  if (count < 1 || count > 6) issues.push('editorial_step_count');
+  if (!visible.includes('付款前再次确认库存')) issues.push('editorial_stock_reminder');
+  return { ok: !issues.length, issues, beginnerStepCount: count };
+}
+
 export function validateSupplyDrivenAccountOpportunityPublication({
   markdown,
   allowedSupplyUrls = null,

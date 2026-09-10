@@ -1,0 +1,163 @@
+import { callChatAPI } from './chatapi.js';
+import { merchantEditorialPrompt } from './prompt/merchantEditorialPrompt.js';
+import { buildMerchantEvidenceBundle, EDITORIAL_MEMORY_KEY, EDITORIAL_VERSION, loadMerchantOfficialEvidence } from './merchantEvidenceBundle.js';
+
+const FORBIDDEN = /稳赚|必赚|一定赚钱|保证赚钱|爆单|永久稳定|零风险|永不封号|官方授权|全网销量|市场火爆|供不应求|今天首次通过|忽略.{0,8}指令/i;
+const plain = (value, length = 3000) => typeof value === 'string' ? value.trim().slice(0, length) : '';
+const esc = (value) => plain(value).replace(/[<>\[\]`*_]/g, '').replace(/\r?\n/g, ' ');
+const safeJson = (value) => { try { return JSON.parse(value); } catch { return null; } };
+const factKey = (fact, bundle) => `${bundle.evidence.find((item) => item.id === fact.evidenceId)?.url}|${plain(fact.quote).toLowerCase().replace(/\s+/g, ' ')}`;
+
+export function validateMerchantEditorial(draft, bundle) {
+  const issues = [];
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return { ok: false, issues: ['editorial_json_invalid'] };
+  const all = JSON.stringify(draft);
+  if (all.length > 20000 || FORBIDDEN.test(all)) issues.push('editorial_unsafe_claim_or_size');
+  for (const field of ['headline', 'summary', 'topicKey', 'customerHypothesis', 'deliverable', 'stopCondition', 'copyAsset', 'followUp']) {
+    if (!plain(draft[field])) issues.push(`editorial_missing_${field}`);
+  }
+  if (plain(draft.headline).length > 60 || plain(draft.summary).length > 180) issues.push('editorial_first_screen_too_long');
+  if (!plain(draft.copyAsset).includes('付款前再次确认库存')) issues.push('editorial_copy_stock_reminder_missing');
+  if (!Array.isArray(draft.unknowns) || !draft.unknowns.every((item) => typeof item === 'string')) issues.push('editorial_unknowns_invalid');
+  const facts = Array.isArray(draft.facts) ? draft.facts : [];
+  if (facts.length < 3 || facts.length > 6) issues.push('editorial_fact_count');
+  const ids = new Set(); const quotes = new Map();
+  for (const fact of facts) {
+    const source = bundle.evidence.find((item) => item.id === fact?.evidenceId);
+    if (!source || !plain(fact.quote) || !source.text.includes(fact.quote) || !plain(fact.text)) { issues.push('editorial_fact_not_supported'); continue; }
+    ids.add(source.id);
+    const words = (fact.quote.match(/[\p{L}\p{N}]+/gu) || []).length;
+    quotes.set(source.id, (quotes.get(source.id) || 0) + words);
+    if (quotes.get(source.id) > 25 || fact.quote.length > 200) issues.push('editorial_quote_too_long');
+    for (const number of plain(fact.text).match(/\d+(?:\.\d+)?/g) || []) {
+      if (!(source.text.match(/\d+(?:\.\d+)?/g) || []).includes(number)) issues.push('editorial_number_not_supported');
+    }
+  }
+  if (ids.size < 2) issues.push('editorial_needs_two_sources');
+  if (![...ids].some((id) => bundle.newEvidenceIds.includes(id))) issues.push('editorial_no_new_evidence');
+  if (facts.length && facts.every((fact) => (bundle.usedFactKeys || []).includes(factKey(fact, bundle)))) issues.push('editorial_same_facts_reworded');
+  if (!/待验证|假设/.test(plain(draft.customerHypothesis))) issues.push('editorial_demand_must_be_hypothesis');
+  const steps = Array.isArray(draft.steps) ? draft.steps : [];
+  if (!steps.length || steps.length > 6) issues.push('editorial_step_count');
+  const allowedUrls = new Set(['#merchant-record', ...bundle.evidence.map((item) => item.url), ...bundle.products.flatMap((item) => [item.url, item.calculatorUrl])]);
+  for (const step of steps) {
+    if (!plain(step?.action) || !allowedUrls.has(step?.url)) issues.push('editorial_step_invalid');
+    if (/你的(?:待交付|已有订单|老客户)|逐单复核待交付/.test(plain(step?.action))) issues.push('editorial_beginner_requires_orders');
+  }
+  if (!Array.isArray(draft.merchantActions) || draft.merchantActions.length > 3 || !draft.merchantActions.every((item) => typeof item === 'string' && /如果|已有|若/.test(item))) issues.push('editorial_merchant_actions_invalid');
+  if (/直接(?:上架|试卖|收款)|建议试卖|唯一推荐商品/.test(all)) issues.push('editorial_trial_requires_verified_fulfilment');
+  // The renderer owns links, counts, prices and evidence references, not model prose.
+  const narrative = [draft.headline, draft.summary, draft.customerHypothesis, draft.deliverable, draft.copyAsset, draft.stopCondition, draft.followUp, ...(draft.merchantActions || []), ...steps.map((item) => item.action)].join(' ');
+  if (/https?:\/\/|<\/?[a-z]|javascript:|\[[^\]]*\]\(/i.test(narrative)) issues.push('editorial_uncontrolled_link');
+  const supportedNumbers = new Set(facts.flatMap((fact) => plain(fact.text).match(/\d+(?:\.\d+)?/g) || []));
+  for (const number of narrative.match(/\d+(?:\.\d+)?/g) || []) if (!supportedNumbers.has(number)) issues.push('editorial_narrative_number_not_supported');
+  return { ok: !issues.length, issues: [...new Set(issues)] };
+}
+
+export function renderMerchantEditorial(draft, bundle) {
+  const facts = draft.facts.map((fact) => {
+    const source = bundle.evidence.find((item) => item.id === fact.evidenceId);
+    return `${esc(fact.text)} [${esc(source.title)}](${source.url})`;
+  }).join('\n\n');
+  const metadata = {
+    businessModel: 'supply-merchant-daily-v3', editorialVersion: EDITORIAL_VERSION,
+    reportDate: bundle.date, editionTitle: draft.headline, dailyFocusKey: draft.topicKey, decision: 'observe',
+    noveltyKind: 'evidence_editorial', leadProductSlug: null, evidenceHashes: bundle.evidence.filter((item) => draft.facts.some((fact) => fact.evidenceId === item.id)).map((item) => item.contentHash),
+    summary: draft.summary, copyDraft: draft.copyAsset,
+  };
+  const sourceIds = new Set(draft.facts.map((fact) => fact.evidenceId));
+  const sources = bundle.evidence.filter((item) => sourceIds.has(item.id));
+  const relatedProduct = bundle.products.find((product) => product.platform === sources[0]?.platform);
+  const markdown = [
+    '## 今天一句话', draft.summary, '[开始今天的任务](#merchant-task)',
+    `数据读取时间 ${bundle.sourceGeneratedAt}。最近货源记录 ${bundle.sourceObservedAt}。网页读取时间不代表事件发生时间。`,
+    '## 选择你的阅读方式', '一眼看懂先看结论；新手照做拿到今天的产出；老手看盘按自己的订单情况处理。',
+    '## 一眼看懂', `### ${esc(draft.headline)}`, facts,
+    '### 适合谁、交付什么', esc(draft.customerHypothesis), esc(draft.deliverable),
+    '## 新手今天照着做', '默认你还没有订单。今日不建议上新，先把今天的资料或验证任务做完。',
+    draft.steps.map((step, index) => `${index + 1}. ${esc(step.action)} [打开这一步](${step.url})`).join('\n'),
+    '### 可复制经营材料', draft.copyAsset.split(/\r?\n/).map((line) => `> ${esc(line)}`).join('\n'),
+    '## 老商家今天看这三项', bundle.historyAvailable ? '下面只依据当前证据，账户和订单情况需你自己核对。' : '今天没有可比较的历史快照，不能据此判断市场涨跌。',
+    draft.merchantActions.map((action) => `- ${esc(action)}`).join('\n'),
+    '## 今天暂停什么', esc(draft.stopCondition),
+    '## 数据和判断依据', sources.map((source) => `- [${esc(source.title)}](${source.url})；读取 ${source.observedAt}；${source.kind === 'official' ? '官方说明' : '聚合报价，原页核验结果见报价证据'}；资料版本 ${source.contentHash.slice(0, 12)}。`).join('\n'),
+    draft.unknowns.map((unknown) => `- 待确认 ${esc(unknown)}`).join('\n'),
+    relatedProduct ? `### 货源与这笔账\n\n[查看 ${esc(relatedProduct.name)} 的原始报价](${relatedProduct.url})。先核对账号形态、期限和交付，不把不同规格的最低价混用。\n\n[填写自己的成本与售价](${relatedProduct.calculatorUrl})。本期没有取得可自动带入的同规格原页核验成本，空项保持未知。` : '',
+    '## 收盘填写结果', esc(draft.followUp), '在下方填写你实际完成的内容、询问和结果。数据只保存在当前浏览器，可以导出或删除；不填写就保持未知。',
+    `<!-- opportunity-replay: ${JSON.stringify(metadata).replace(/</g, '\\u003c')} -->`,
+  ].join('\n\n');
+  return { markdown, pageTitle: `${draft.headline}｜${bundle.date} AI 账号商机日报`, pageDescription: draft.summary, metadata };
+}
+
+export function renderMerchantBrief(bundle, reason = 'evidence_insufficient') {
+  const product = bundle.products[0];
+  const url = product?.url || 'https://supply.aivora.cn/card-products';
+  const copy = '售前核对记录\n客户实际用途：待填写\n套餐与交付方式：待核对\n不确定的功能或售后：先确认再答复\n付款前再次确认库存';
+  const markdown = ['## 今天一句话', '今天的记录不足以支持新的试卖建议。先完成一份商品核对记录；已有订单的商家先核实交付。', `[开始今天的任务](${url})`,
+    '## 选择你的阅读方式', '新手完成资料核对；老手只处理自己已有的商品或订单。',
+    '## 一眼看懂', `今日不建议上新。最近货源记录为 ${bundle.sourceObservedAt}，本次读取为 ${bundle.sourceGeneratedAt}。没有新的可用证据时，不把旧题换个标题推荐。`,
+    '## 新手今天照着做', '没有订单也能完成下面的记录。', `1. [打开${esc(product?.name || '标准商品目录')}](${url})，选一条你能看懂的报价。\n2. 在原页核对套餐、期限和交付方式，记录没有写明的条件。\n3. 将确认结果填写到下方经营记录；缺项时不发布商品。`,
+    '### 可复制经营材料', copy.split('\n').map((line) => `> ${line}`).join('\n'),
+    '## 老商家今天看这三项', '今天没有可比较的历史快照，或本次没有足够新证据。', '- 如果已有待交付订单，付款前重新核对该订单的原始来源；不能交付时先停止收款。',
+    '## 今天暂停什么', '规格不清、报价过期或无法确认售后时，不把记录当成可以交付的商品。',
+    '## 数据和判断依据', `[实时货源记录](https://supply.aivora.cn/api/opportunities/snapshot)。本期为数据简报，${reason === 'no_new_evidence' ? '未发现新的可用证据' : '编辑材料不足或未通过验证'}，未生成扩写内容。`,
+    '## 收盘填写结果', '填写本次核对的商品、缺失条件和下一步。没有询问或成交时如实记录，不用补数字。',
+    `<!-- opportunity-replay: ${JSON.stringify({ businessModel: 'supply-merchant-daily-v3', editorialVersion: EDITORIAL_VERSION, reportDate: bundle.date, decision: 'observe', copyDraft: copy, evidenceHashes: [], summary: '证据不足，保留核对记录', dailyFocusKey: 'evidence-brief' })} -->`].join('\n\n');
+  return { markdown, pageTitle: `${bundle.date} 商家资料核对简报`, pageDescription: '今日不建议上新，完成一份真实核对记录。' };
+}
+
+export async function generateMerchantEditorial({ env, dateStr, snapshot, debugInfo = {}, dryRun = false, fetchImpl = fetch, callModel = callChatAPI, officialEvidence }) {
+  const kv = env.DATA_KV;
+  let memory = [];
+  try { memory = safeJson(await kv?.get(EDITORIAL_MEMORY_KEY)) || []; } catch { /* Memory unavailable must not break the main daily. */ }
+  if (!Array.isArray(memory)) memory = [];
+  const official = officialEvidence || await loadMerchantOfficialEvidence({ fetchImpl });
+  const bundle = await buildMerchantEvidenceBundle({ dateStr, snapshot, official, memory });
+  debugInfo.accountOpportunityEditorialVersion = EDITORIAL_VERSION;
+  debugInfo.accountOpportunityEvidenceCount = bundle.evidence.length;
+  debugInfo.accountOpportunityNewEvidenceCount = bundle.newEvidenceIds.length;
+  debugInfo.accountOpportunityModelCalls = 0;
+  const cacheKey = `merchant-editorial:${EDITORIAL_VERSION}:${dateStr}:${bundle.evidenceKey}`;
+  let draft;
+  try { draft = safeJson(await kv?.get(cacheKey)); } catch {}
+  if (draft && validateMerchantEditorial(draft, bundle).ok) debugInfo.accountOpportunityEditorialCacheHit = true;
+  else {
+    draft = null;
+    if (bundle.evidence.length >= 2 && bundle.newEvidenceIds.length) {
+      let issues = [];
+      const modelEnv = { ...env, ANTHROPIC_MAX_TOKENS: '4096', OPENAI_MAX_COMPLETION_TOKENS: '4096', ANTHROPIC_RETRY_MAX: '0', GEMINI_RETRY_MAX: '0', ANTHROPIC_BACKUP_API_KEY: '', OPENAI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('OPEN') ? env.OPENAI_API_KEY : '', GEMINI_API_KEY: env.USE_MODEL_PLATFORM?.startsWith('GEMINI') ? env.GEMINI_API_KEY : '', DEFAULT_ANTHROPIC_BACKUP_MODEL: env.DEFAULT_ANTHROPIC_MODEL || env.ANTHROPIC_MODEL };
+      modelEnv.MERCHANT_EDITORIAL_REQUEST = 'true';
+      modelEnv.GEMINI_FALLBACK_ENABLED = 'false';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          debugInfo.accountOpportunityModelCalls++;
+          const output = await callModel(modelEnv, JSON.stringify({ bundle, validationErrors: issues, previousDraft: draft }), merchantEditorialPrompt);
+          draft = safeJson(String(output).replace(/^```(?:json)?\s*|\s*```$/g, ''));
+          const validation = validateMerchantEditorial(draft, bundle);
+          if (validation.ok) break;
+          issues = validation.issues;
+        } catch { issues = ['editorial_model_unavailable']; draft = null; break; }
+      }
+      if (!validateMerchantEditorial(draft, bundle).ok) {
+        debugInfo.accountOpportunityEditorialIssues = issues;
+        draft = null;
+      }
+    }
+  }
+  debugInfo.accountOpportunityEditorialAccepted = Boolean(draft);
+  const result = draft ? renderMerchantEditorial(draft, bundle) : renderMerchantBrief(bundle, bundle.newEvidenceIds.length ? 'evidence_insufficient' : 'no_new_evidence');
+  if (draft && !dryRun) {
+    try { await kv?.put(cacheKey, JSON.stringify(draft), { expirationTtl: 86400 * 2 }); } catch {}
+  }
+  // Commit this memory only after GitHub publication succeeds.
+  return { ...result, bundle, memoryEntry: draft ? { date: dateStr, title: draft.headline, summary: draft.summary, topicKey: draft.topicKey, evidenceHashes: result.metadata.evidenceHashes, factKeys: draft.facts.map((fact) => factKey(fact, bundle)) } : null };
+}
+
+export async function storeMerchantEditorialMemory(env, entry) {
+  if (!entry || !env.DATA_KV) return;
+  const existing = safeJson(await env.DATA_KV.get(EDITORIAL_MEMORY_KEY));
+  const history = Array.isArray(existing) ? existing : [];
+  const threshold = Date.parse(`${entry.date}T00:00:00Z`) - 90 * 86400000;
+  const next = [...history.filter((item) => item.date !== entry.date && Date.parse(`${item.date}T00:00:00Z`) >= threshold), entry].sort((a, b) => a.date.localeCompare(b.date));
+  await env.DATA_KV.put(EDITORIAL_MEMORY_KEY, JSON.stringify(next.slice(-90)), { expirationTtl: 91 * 86400 });
+}

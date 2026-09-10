@@ -68,6 +68,8 @@ import {
     extractSupplyDrivenAccountOpportunityMemory,
 } from '../supplyDrivenAccountOpportunity.js';
 import { buildAccountOpportunityContextOptions } from '../accountOpportunityContext.js';
+import { generateMerchantEditorial, storeMerchantEditorialMemory } from '../merchantEditorial.js';
+import { validateMerchantEditorialPublication } from '../publishValidation.js';
 import {
     extractGithubTopProjectsFromMarkdown,
     filterGithubProjectsAgainstRecentTop,
@@ -2069,6 +2071,22 @@ async function generateAccountOpportunityMarkdown(
         previewAssessment.candidates.length - overseasPreviewCandidates.length;
 
     if (options.supplySnapshot) {
+        if (env.ACCOUNT_MERCHANT_EDITORIAL_ENABLED === 'true') {
+            const editorial = await generateMerchantEditorial({ env, dateStr, snapshot: options.supplySnapshot, debugInfo, dryRun: options.dryRun });
+            debugInfo.accountOpportunityPipelineVersion = 'supply-merchant-daily-v3';
+            debugInfo.accountOpportunitySupplyDriven = true;
+            debugInfo.accountOpportunityGenerated = true;
+            debugInfo.accountOpportunityMerchantActionCount = 0;
+            debugInfo.accountOpportunityStarterProduct = null;
+            debugInfo.accountOpportunityEditorialMemoryEntry = editorial.memoryEntry;
+            return {
+                accountOpportunityPaths,
+                accountOpportunityMarkdownContent: editorial.markdown,
+                validation: validateMerchantEditorialPublication({ markdown: editorial.markdown, bundle: editorial.bundle }),
+                candidateAssessment: previewAssessment, qualitySkipped: false, observationMode: !debugInfo.accountOpportunityEditorialAccepted,
+                validationContext: null, accountOpportunityPageTitle: editorial.pageTitle, accountOpportunityPageDescription: editorial.pageDescription,
+            };
+        }
         const supplyResult = buildSupplyDrivenAccountOpportunityMarkdown({
             dateStr,
             snapshot: options.supplySnapshot,
@@ -3049,6 +3067,11 @@ export async function handleScheduledAccountOpportunity(event, env, ctx, specifi
             description: accountOpportunityPageDescription,
         }
     );
+    if (debugInfo.accountOpportunityEditorialMemoryEntry) {
+        try { await storeMerchantEditorialMemory(env, debugInfo.accountOpportunityEditorialMemoryEntry); }
+        catch { debugInfo.accountOpportunityEditorialMemoryWriteFailed = true; }
+        delete debugInfo.accountOpportunityEditorialMemoryEntry;
+    }
     await storeOpportunityReplayMemoryToKv(
         env,
         dateStr,

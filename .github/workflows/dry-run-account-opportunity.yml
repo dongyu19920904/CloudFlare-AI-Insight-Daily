@@ -7,6 +7,10 @@ on:
         description: "Asia/Shanghai date in YYYY-MM-DD; blank uses today"
         required: false
         type: string
+      editorial:
+        description: Evaluate evidence editor without publishing
+        type: boolean
+        default: false
 
 concurrency:
   group: dry-run-account-opportunity-${{ github.ref }}
@@ -39,6 +43,7 @@ jobs:
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+          EDITORIAL: ${{ inputs.editorial && '1' || '0' }}
         run: |
           if [ -z "$TEST_TRIGGER_SECRET" ]; then
             echo "::error::TEST_TRIGGER_SECRET is not configured"
@@ -50,11 +55,13 @@ jobs:
             --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
             --data-urlencode "date=${TARGET_DATE}" \
             --data-urlencode "dryRun=1" \
+            --data-urlencode "editorial=${EDITORIAL}" \
             --data-urlencode "stream=1" \
             --output account-opportunity-dry-run.ndjson
 
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           events = []
@@ -81,7 +88,12 @@ jobs:
               raise SystemExit("Dry-run contract failed: " + ", ".join(mismatches))
           if debug.get("accountOpportunityPipelineVersion") != "supply-merchant-daily-v3":
               raise SystemExit("Dry-run did not use supply-merchant-daily-v3")
-          if debug.get("accountOpportunityModelCalls") != 0:
+          editorial = os.environ.get("EDITORIAL") == "1"
+          if editorial and not debug.get("accountOpportunityEditorialAccepted"):
+              raise SystemExit("Evidence editor failed; production remains disabled: " + str(debug.get("accountOpportunityEditorialIssues")))
+          if editorial and not 0 <= debug.get("accountOpportunityModelCalls", 99) <= 2:
+              raise SystemExit("Editorial call budget exceeded")
+          if not editorial and debug.get("accountOpportunityModelCalls") != 0:
               raise SystemExit("Supply-driven generation unexpectedly used an AI model")
 
           markdown = debug.get("accountOpportunityDryRunMarkdown") or ""
@@ -120,7 +132,7 @@ jobs:
           print(
               "Merchant daily dry-run passed: "
               f"offers={debug.get('accountOpportunitySupplyAvailableOfferCount')}, "
-              f"products={len(core)}, signals={len(selected)}, model_calls=0"
+              f"products={len(core)}, signals={len(selected)}, model_calls={debug.get('accountOpportunityModelCalls')}"
           )
           PY
 
