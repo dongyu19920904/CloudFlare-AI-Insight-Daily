@@ -1,3 +1,5 @@
+import { fetchMerchantEvidence, originalOfferEvidence } from './merchantEvidenceBundle.js';
+
 const DEFAULT_SNAPSHOT_URL = "https://supply.aivora.cn/api/opportunities/snapshot";
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const MAX_SNAPSHOT_AGE_MS = 120 * 60 * 1000;
@@ -133,11 +135,11 @@ function parseProduct(value) {
   };
 }
 
-function sourceVerificationUrl(product) {
+function sourceVerificationUrl(product, offset = 0) {
   const url = new URL(`/api/products/${product.slug}/offers`, "https://supply.aivora.cn");
   url.searchParams.set("availability", "available");
   url.searchParams.set("limit", String(MAX_SOURCE_VERIFICATION_OFFERS));
-  url.searchParams.set("offset", "0");
+  url.searchParams.set("offset", String(offset));
   return url.toString();
 }
 
@@ -205,8 +207,44 @@ async function verifyProductSources(product, { fetchImpl, now }) {
     const text = await response.text();
     if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) return null;
     const payload = JSON.parse(text);
+    const items = Array.isArray(payload?.items) ? [...payload.items] : [];
+    let hasMore = Boolean(payload.pageInfo?.hasMore);
+    let offset = Number(payload.pageInfo?.nextOffset) || items.length;
+    // Bounded coverage, not an assertion that the first page is the whole market.
+    for (let page = 1; hasMore && page < 3 && offset > 0; page++) {
+      const next = await fetchImpl(sourceVerificationUrl(product, offset), { headers: { Accept: 'application/json' }, redirect: 'manual', signal: controller.signal });
+      if (!next.ok || !/application\/json/i.test(next.headers.get('content-type') || '')) break;
+      const body = await next.text();
+      if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) break;
+      const parsed = JSON.parse(body);
+      if (!Array.isArray(parsed.items) || !parsed.items.length) break;
+      items.push(...parsed.items);
+      const nextOffset = Number(parsed.pageInfo?.nextOffset);
+      hasMore = Boolean(parsed.pageInfo?.hasMore);
+      if (nextOffset <= offset) break;
+      offset = nextOffset;
+    }
+    const sourceOffers = [];
+    for (const item of items) {
+      const sourceObservedAt = nullableIsoDate(item.sourceObservedAt || item.updateTime);
+      const age = sourceObservedAt ? now.getTime() - Date.parse(sourceObservedAt) : Infinity;
+      if (item.status !== 'in_stock' || !(Number(item.price) > 0) || age < -MAX_FUTURE_SKEW_MS || age > 86400000) continue;
+      const spec = offerSpecification(product, item);
+      const url = parseExternalHttpsUrl(item.url);
+      if (!spec || !url) continue;
+      const tier = String(item.originalName).match(/\b(?:plus|pro|max|ultra|go|team|business|free)\b/i)?.[0]?.toLowerCase() || null;
+      sourceOffers.push({ url, originalName: boundedText(item.originalName, 250), price: Number(item.price), currency: item.currency || 'unknown', channel: boundedText(item.channel, 100), sourceObservedAt, spec: { ...spec, tier, delivery: item.deliveryType || null, warranty: item.warranty || null }, provenance: item.provenance || 'unknown', originalPageStatus: 'not_checked' });
+      if (sourceOffers.length >= 6) break;
+    }
+    await Promise.all(sourceOffers.slice(0, 2).map(async (offer) => {
+      try {
+        const html = await fetchMerchantEvidence(offer.url, { fetchImpl, timeoutMs: 4000 });
+        offer.originalPageStatus = originalOfferEvidence(html, offer)?.status || 'unconfirmed';
+      } catch { offer.originalPageStatus = 'unknown'; }
+      offer.originalPageCheckedAt = now.toISOString();
+    }));
     const groups = new Map();
-    for (const item of Array.isArray(payload?.items) ? payload.items : []) {
+    for (const item of items) {
       if (item?.status !== "in_stock" || nonNegativeNumber(item?.price) <= 0) continue;
       const channel = boundedText(item?.channel, 100);
       const url = parseExternalHttpsUrl(item?.url);
@@ -233,6 +271,9 @@ async function verifyProductSources(product, { fetchImpl, now }) {
       verifiedOfferCount: best?.offerCount || 0,
       verifiedReferencePrice: best?.prices?.length ? Math.min(...best.prices) : null,
       sourceVerificationAt: now.toISOString(),
+      verificationScope: 'aggregate-only',
+      sourceOffers,
+      sourceCoverage: { read: items.length, total: Number(payload.pageInfo?.total) || items.length, complete: !hasMore, freshUsable: sourceOffers.length },
     };
   } catch {
     return null;

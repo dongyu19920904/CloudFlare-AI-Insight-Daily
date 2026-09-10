@@ -1213,7 +1213,7 @@ async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, pro
             'User-Agent': 'Cloudflare-Worker/1.0'
         },
         body: JSON.stringify(payload)
-    }, 180000, retryConfig, isRetriableAnthropicError, debugLog);
+    }, env.MERCHANT_EDITORIAL_REQUEST === 'true' ? 60000 : 180000, retryConfig, isRetriableAnthropicError, debugLog);
 
     if (response.ok) {
         return response;
@@ -1222,6 +1222,7 @@ async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, pro
     const errorText = await response.text();
     const trimmedSystemPrompt = typeof systemPromptText === 'string' ? systemPromptText.trim() : '';
     const shouldFallbackToMergedUserPrompt =
+        env.MERCHANT_EDITORIAL_REQUEST !== 'true' &&
         trimmedSystemPrompt &&
         payload.system &&
         (response.status === 400 || response.status === 422);

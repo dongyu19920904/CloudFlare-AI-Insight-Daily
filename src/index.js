@@ -429,6 +429,10 @@ export default {
             const runAsync = url.searchParams.get('async') === '1';
             const runStream = url.searchParams.get('stream') === '1';
             const dryRun = url.searchParams.get('dryRun') === '1';
+            // Authenticated shadow evaluation only; never enables production publication.
+            if (dryRun && path === '/testTriggerScheduledAccountOpportunity' && url.searchParams.get('editorial') === '1') {
+                env = { ...env, ACCOUNT_MERCHANT_EDITORIAL_ENABLED: 'true' };
+            }
             const forceRun = ['1', 'true'].includes(String(url.searchParams.get('force') || '').toLowerCase());
             const mode =
                 path === '/testTriggerScheduledDaily'
