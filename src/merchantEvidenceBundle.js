@@ -94,6 +94,11 @@ export async function buildMerchantEvidenceBundle({ dateStr, snapshot, official 
     const fact = { name: product.name, offers, coverage: product.sourceCoverage, originalPagesVerified: offers.filter((item) => item.originalPageStatus === 'merchant_statement_matched').length };
     evidence.push({ id: `E${evidence.length + 1}`, kind: 'aggregate', platform: product.categoryId, title: `${product.name} 报价观察`, url: product.productUrl, observedAt: snapshot.generatedAt, occurredAt: null, text: JSON.stringify(fact), contentHash: await evidenceHash([product.slug, offers.map(({ sourceObservedAt, originalPageCheckedAt, ...offer }) => offer)]) });
   }
+  for (const signal of (snapshot.signals || []).filter((item) => ['price_drop', 'price_rise', 'stockout', 'restock'].includes(item.kind) && products.some((p) => p.slug === item.product?.slug)).slice(0, 6)) {
+    const text = String(signal.evidence || '').slice(0, 1000);
+    if (!text || !signal.observedAt) continue;
+    evidence.push({ id: `E${evidence.length + 1}`, kind: 'supply-change', platform: signal.product.categoryId, title: signal.title, url: 'https://supply.aivora.cn/changes', observedAt: snapshot.generatedAt, occurredAt: signal.observedAt, text, contentHash: await evidenceHash([signal.id, signal.observedAt, text]) });
+  }
   const recent = memory.filter((item) => item.date < dateStr && Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= 30 * 86400000);
   const used = new Set(recent.flatMap((item) => item.evidenceHashes || []));
   const newEvidenceIds = evidence.filter((item) => !used.has(item.contentHash)).map((item) => item.id);

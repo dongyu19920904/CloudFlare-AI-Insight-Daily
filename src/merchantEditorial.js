@@ -5,6 +5,7 @@ import { buildMerchantEvidenceBundle, focusMerchantEvidence, EDITORIAL_MEMORY_KE
 const FORBIDDEN = /稳赚|必赚|一定赚钱|保证赚钱|爆单|永久稳定|零风险|永不封号|官方授权|全网销量|市场火爆|供不应求|今天首次通过|忽略.{0,8}指令/i;
 const plain = (value, length = 3000) => typeof value === 'string' ? value.trim().slice(0, length) : '';
 const esc = (value) => plain(value).replace(/[<>\[\]`*_]/g, '').replace(/\r?\n/g, ' ');
+const chinaTime = (value) => Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'short', timeStyle: 'short', hour12: false }).format(new Date(value)) + '（北京时间）' : '时间未确认';
 const safeJson = (value) => { try { return JSON.parse(value); } catch { return null; } };
 export function parseEditorialJson(output) {
   const text = String(output || '').trim();
@@ -119,7 +120,7 @@ export function renderMerchantEditorial(draft, bundle) {
   const relatedProduct = bundle.products.find((product) => product.platform === sources[0]?.platform);
   const markdown = [
     '## 今天一句话', draft.summary, '[开始今天的任务](#merchant-task)',
-    `数据读取时间 ${bundle.sourceGeneratedAt}。最近货源记录 ${bundle.sourceObservedAt}。网页读取时间不代表事件发生时间。`,
+    `数据读取 ${chinaTime(bundle.sourceGeneratedAt)}；最近货源记录 ${chinaTime(bundle.sourceObservedAt)}。本期不构成可直接交付的商品推荐。`,
     '## 选择你的阅读方式', '一眼看懂先看结论；新手照做拿到今天的产出；老手看盘按自己的订单情况处理。',
     '## 一眼看懂', `### ${esc(draft.headline)}`, facts,
     '### 适合谁、交付什么', esc(draft.customerHypothesis), esc(draft.deliverable),
@@ -129,7 +130,7 @@ export function renderMerchantEditorial(draft, bundle) {
     '## 老商家今天看这三项', bundle.historyAvailable ? '下面只依据当前证据，账户和订单情况需你自己核对。' : '今天没有可比较的历史快照，不能据此判断市场涨跌。',
     draft.merchantActions.map((action) => `- ${esc(action)}`).join('\n'),
     '## 今天暂停什么', esc(draft.stopCondition),
-    '## 数据和判断依据', sources.map((source) => `- [${esc(source.title)}](${source.url})；读取 ${source.observedAt}；${source.kind === 'official' ? '官方说明' : '聚合报价，原页核验结果见报价证据'}；资料版本 ${source.contentHash.slice(0, 12)}。`).join('\n'),
+    '## 数据和判断依据', sources.map((source) => `- [${esc(source.title)}](${source.url})；读取 ${chinaTime(source.observedAt)}；${source.kind === 'official' ? '官方说明' : source.kind === 'supply-change' ? `同口径历史观察，事件时间 ${chinaTime(source.occurredAt)}` : '聚合报价，不代表原页当前可购买'}；资料版本 ${source.contentHash.slice(0, 12)}。`).join('\n'),
     draft.unknowns.map((unknown) => `- 待确认 ${esc(unknown)}`).join('\n'),
     relatedProduct ? `### 货源与这笔账\n\n[查看 ${esc(relatedProduct.name)} 的原始报价](${relatedProduct.url})。先核对账号形态、期限和交付，不把不同规格的最低价混用。\n\n[填写自己的成本与售价](${relatedProduct.calculatorUrl})。本期没有取得可自动带入的同规格原页核验成本，空项保持未知。` : '',
     '## 收盘填写结果', esc(draft.followUp), '在下方填写你实际完成的内容、询问和结果。数据只保存在当前浏览器，可以导出或删除；不填写就保持未知。',
