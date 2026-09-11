@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getSystemPromptSummarizationStepOne } from '../src/prompt/summarizationPromptStepZero.js';
 import { getSystemPromptSummarizationStepThree } from '../src/prompt/summarizationPromptStepThree.js';
+import { buildStandaloneDailyFunPromptInput } from '../src/dailyFunSection.js';
 
 test('daily prompt preserves source entities, numerical basis and deal evidence', () => {
   const prompt = getSystemPromptSummarizationStepOne('2026-09-11');
@@ -24,4 +25,11 @@ test('three-sentence summary preserves products, metrics and uncertain deal stat
   assert.match(prompt, /产品和人物归属不得互换/);
   assert.match(prompt, /不能新增“低一半”等推算结论/);
   assert.match(prompt, /来源或交易状态未确认的收购金额不要进入摘要/);
+});
+
+test('independent fun generation keeps the same attribution and evidence boundary', () => {
+  const prompt = buildStandaloneDailyFunPromptInput('2026-09-11', ['A developer tested an AI tool: https://example.org/test']);
+  assert.match(prompt, /有归属的第三人称/);
+  assert.match(prompt, /只有工具偏好而没有具体动作和反常结果时不要选用/);
+  assert.match(prompt, /未经确认的最终成果/);
 });
