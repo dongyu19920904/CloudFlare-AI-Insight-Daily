@@ -113,6 +113,7 @@ import {
     buildDailyGenerationPromptInput,
     countDailyTopEligiblePromptItems,
     getDailyPromptAllocationStats,
+    getDailyEditorialChecklist,
 } from '../dailyGenerationPromptInput.js';
 import {
     DAILY_OPEN_SOURCE_MIN,
@@ -783,6 +784,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         invalidMarkdown || "(空)",
         "",
         "输出前做最后一次逐项检查：",
+        getDailyEditorialChecklist(),
         duplicateSourceChecklist,
         `- 主候选和去重备用合计充足时，今日焦点必须保持 ${DAILY_TOP_TARGET} 条；两者各自最多使用一次，专用区素材不得回流凑数`,
         "- 需要署名时才放在链接外，不强制每条出现作者或媒体名；删除转发链不能删除必要归属、测试条件或事实状态。链接只包住核心事实，不得使用“AIBase 对这项消息的报道”或“宝玉整理的技术细节”一类来源标签",

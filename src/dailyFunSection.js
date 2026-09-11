@@ -34,12 +34,32 @@ export function isDailyFunSolicitation(value) {
   return benefit && offer && contact;
 }
 
+function funVisibleText(value) {
+  return String(value || "")
+    .replace(/!\[[^\]]*\]\([^\n]*?\)/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_`]/g, "");
+}
+
+export function hasDailyFunStorySignal(value) {
+  const text = funVisibleText(value);
+  return /写|生成|回复|拒绝|调用|修改|删除|执行|提交|报错|下单|点击/.test(text) &&
+    /却|反而|结果|没想到|竟然|本来|居然/.test(text);
+}
+
+export function isDailyFunPreferenceOnly(value) {
+  const text = funVisibleText(value);
+  return /偏好|最爱|更喜欢|推荐榜|工具推荐|最好用|常用工具/.test(text) &&
+    /工具|模型|搜索|DeepResearch|GPT|Gemini|Claude|Codex|Cursor/i.test(text) &&
+    !hasDailyFunStorySignal(text);
+}
+
 export function removeSolicitationDailyFun(markdown) {
   let removedCount = 0;
   const output = String(markdown || "").replace(
     /^##\s*\*{0,2}[^\r\n]*AI\s*趣闻[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/gim,
     (section) => {
-      if (!isDailyFunSolicitation(section)) return section;
+      if (!isDailyFunSolicitation(section) && !isDailyFunPreferenceOnly(section)) return section;
       removedCount += 1;
       return "";
     },
@@ -66,6 +86,7 @@ export function selectStandaloneDailyFunCandidates(
     if (
       !normalized ||
       isDailyFunSolicitation(normalized) ||
+      isDailyFunPreferenceOnly(normalized) ||
       seen.has(normalized) ||
       (candidateUrl && publishedSourceUrls.has(candidateUrl))
     ) continue;
@@ -80,7 +101,7 @@ export function selectStandaloneDailyFunCandidates(
 
 export function buildStandaloneDailyFunPromptInput(dateStr, candidateItems = []) {
   const candidates = (candidateItems || []).map(normalizeCandidateText)
-    .filter((item) => item && !isDailyFunSolicitation(item));
+    .filter((item) => item && !isDailyFunSolicitation(item) && !isDailyFunPreferenceOnly(item));
   if (candidates.length === 0) return "";
 
   return [
@@ -121,7 +142,7 @@ export function normalizeStandaloneDailyFunSection(markdown) {
     section = `## **😄 AI趣闻**\n\n${content}`;
   }
 
-  if (!section || isDailyFunSolicitation(section)) return "";
+  if (!section || isDailyFunSolicitation(section) || isDailyFunPreferenceOnly(section)) return "";
 
   const sourceLinks = [...section.matchAll(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g)]
     .filter((match) => match.index == null || section[match.index - 1] !== "!");

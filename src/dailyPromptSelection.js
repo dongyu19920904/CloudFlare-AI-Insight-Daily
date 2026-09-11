@@ -1,6 +1,6 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
-import { isDailyFunSolicitation } from "./dailyFunSection.js";
+import { hasDailyFunStorySignal, isDailyFunSolicitation } from "./dailyFunSection.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -241,8 +241,8 @@ function scoreDailyFunCandidate(candidate) {
   }
   if (candidate?.isWelfare) score -= 20;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
-  if (/(?:AI|Agent|模型|Codex|Claude|Cursor|ChatGPT)[^。！？\n]{0,30}(?:写|生成|回复|拒绝|调用|修改|删除)/i.test(text) &&
-      /却|反而|结果|没想到|竟然/.test(text)) score += 20;
+  // Real actions and reversals should outrank social-platform and screenshot bonuses.
+  if (hasDailyFunStorySignal(text)) score += 70;
 
   return score;
 }

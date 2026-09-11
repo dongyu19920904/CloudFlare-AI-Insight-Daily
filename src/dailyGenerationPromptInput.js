@@ -4,6 +4,20 @@ import {
   DAILY_SOCIAL_TARGET,
   DAILY_TOP_TARGET,
 } from "./dailyContentRules.js";
+import { isDailyFunPreferenceOnly } from "./dailyFunSection.js";
+
+export function getDailyEditorialChecklist() {
+  return [
+    "【成稿前事实核对：优先于条数、篇幅与高亮目标】",
+    "逐条回到该 Url 对应的素材，不从另一条新闻借人物、产品、参数或结论。旧稿不是证据：repair 必须删除旧稿增写但原素材没有的人物身份、套餐规则、普遍效果和判断，即使删后短于目标篇幅。",
+    "人物只写素材明示的姓名或角色，转发者不自动成为创作者；无法确定身份时省略头衔。涉及价格、免费条件、额度、地区或上线状态，只有输入中的对应官方证据才可下确定结论；没有证据就不写这些细节，不凭演示推断免费。",
+    "收购或融资只出现社交转述时，不写交易金额、已完成或行业最大等断言；只讲有据的报道线索，不确定状态不得变成黄色结论或蓝色事实。旧访谈和旧交易只有近期确有新进展才进焦点，转发日期不代表发生日期。",
+    "同一测试的对象、分段优劣、数字和条件逐项对应；不要把开头优劣反写到副歌，也不要将性能/美元变成 token 成本降幅。没有共同测算条件时分别陈述，不用‘换算成’把两个指标强行关联。",
+    "FAQ 从正文已证实的使用细节或限制提出一个窄问题，答案只重组已有事实并保留证据链接，不增加登录、付费、地区或售后条件。原材料没有证明的‘全部兑现’‘商业打印标准’‘无需订阅’等评价必须删除，而不是增加一句免责声明。",
+    "目标仍是 TOP 10、短句、短链接和事实高亮；不为凑数凑字而扩大事实。有问题的候选先用去重备用替换，没有合格备用时只省略该条，其他新闻照常输出。趣闻先确认真实动作和预期反差；偏好排名不是故事，不能用一个泛泛俏皮结尾伪造笑点。",
+    "以上检查在内部完成，只输出成稿，不附检查过程。",
+  ].join("\n");
+}
 
 function isDailyWelfarePromptItem(item) {
   const text = String(item || "");
@@ -307,7 +321,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
     `已从补位池提取 ${promotedTopBackupItems.length} 条，与原主候选组成 ${topCandidateItems.length} 条明确 TOP 候选；下面的 TOP 候选必须逐条使用，每条只生成一次。`,
-    `另有 ${replacementTopBackupItems.length} 条去重替换素材，只在明确 TOP 候选发生同源拆分或重复时替换。`,
+    `另有 ${replacementTopBackupItems.length} 条去重替换素材，用于替换同源拆分、重复或事实证据不足的候选。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
     `TOP 候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重替换素材替换。明确 TOP 候选达到 ${DAILY_TOP_TARGET} 条时必须逐条写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有明确候选确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
@@ -316,7 +330,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const numberedTopCandidates = topCandidateItems
     .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))
     .join("\n\n------\n\n");
-  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面每个明确 TOP 候选都必须在今日焦点中一对一生成一条；不得丢弃，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
+  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n合格候选在今日焦点中一对一生成一条；事实证据不足时先用去重备用替换，不扩大事实来凑数，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const selectedItemUrls = new Set(allSelectedItems.map(getDailyPromptItemUrl).filter(Boolean));
   const selectedEventKeys = new Set(allSelectedItems.map(getDailyPromptItemEventKey).filter(Boolean));
@@ -325,6 +339,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyPromptHiddenItem(item))
+    .filter((item) => !isDailyFunPreferenceOnly(item))
     .filter((item) => !selectedItemKeys.has(String(item).trim()))
     .filter((item) => {
       const url = getDailyPromptItemUrl(item);
@@ -342,9 +357,9 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (replacementTopBackupItems.length > 0) {
     promptParts.push([
       "【今日焦点去重替换素材】",
-      `下面 ${replacementTopBackupItems.length} 条素材只用于替换今日焦点中的同源重复，不是额外加条目。`,
+      `下面 ${replacementTopBackupItems.length} 条素材用于替换今日焦点中的同源重复或证据不足条目，不是额外加条目。`,
       `同一个 Source URL 在今日焦点最多出现一次；聚合文章也只能生成一条。发生重复时保留最重要的一条，再从这里补足 TOP ${DAILY_TOP_TARGET}。`,
-      "没有发生重复时不要使用；未被用于替换的素材不得出现在其他正文栏目，也不得超过目标条数。",
+      "没有发生重复或证据不足时不要使用；未被用于替换的素材不得出现在其他正文栏目，也不得超过目标条数。",
       "",
       replacementTopBackupItems
         .map((item, index) => [`去重备用 ${index + 1}:`, item].join("\n"))
@@ -421,8 +436,8 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (funOnlyItems.length > 0) {
     promptParts.push([
       "【AI趣闻专用候选素材】",
-      "下面这些素材是专门留给 `## **😄 AI趣闻**` 的候选。只要这里有可用素材，就必须先选 1 条写完整趣闻，不要省略。",
-      "只有当这些候选全是论文/融资/政策/公司通稿，且没有人物、用户、工具动作或反常结果时，才可以省略整个 AI趣闻栏目。",
+      "下面这些素材是专门留给 `## **😄 AI趣闻**` 的候选，不代表已经通过趣味审核。先找真实的预期、动作和反常结果，再最多选 1 条写完整趣闻。",
+      "只有人物、截图、功能或工具偏好而没有真实反差时直接省略趣闻；不得给普通推荐硬接一个玩笑，不影响其他栏目。",
       "不要因为它们出现在这里就塞进今日焦点；今日焦点仍按主线素材和评分标准筛选。",
       "写 AI趣闻时必须二次创作纯文本短标题，把原始来源链接放在正文真实细节附近，并按 Hook -> What -> Punchline 再开发，不要照搬原文标题、推文正文或项目名长句。",
       "",
@@ -433,5 +448,5 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     ].join("\n"));
   }
 
-  return promptParts.join("\n");
+  return [...promptParts, getDailyEditorialChecklist()].join("\n");
 }
