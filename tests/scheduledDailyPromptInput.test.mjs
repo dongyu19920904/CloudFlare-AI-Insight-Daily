@@ -21,7 +21,7 @@ test("buildDailyGenerationPromptInput includes AI fun candidates in the main gen
       "News Title: 现在的AI非常利好2D游戏开发，动作完全交给视频模型生成，卡牌、回合制、射击、对话类、塔防都能做。",
       "Published: 2026-05-26",
       "Url: https://x.com/Gorden_Sun/status/2058939766742335643",
-      "Content Summary: Gorden Sun 提到 AI 利好 2D 游戏开发，动作可以交给视频模型生成，但仍需要玩法和数值支撑。",
+      "Content Summary: 测试者让 AI 生成一段 2D 游戏动作，结果角色把自己的影子当成了敌人。",
     ].join("\n"),
   ];
 
@@ -157,7 +157,7 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
   const news = (index) => [
     `News Title: AI news ${index}`,
     `Url: https://example.com/news-${index}`,
-    `Content Summary: AI 产品变化 ${index}。`,
+    `Content Summary: ${index === 16 ? '开发者让 AI 写脚本，结果先给自己写了使用说明。' : `AI 产品变化 ${index}。`}`,
   ].join("\n");
   const social = (index) => [
     `socialMedia Post by backup-${index}`,

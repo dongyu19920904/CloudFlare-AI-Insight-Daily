@@ -43,8 +43,8 @@ function funVisibleText(value) {
 
 export function hasDailyFunStorySignal(value) {
   const text = funVisibleText(value);
-  return /写|生成|回复|拒绝|调用|修改|删除|执行|提交|报错|下单|点击/.test(text) &&
-    /却|反而|结果|没想到|竟然|本来|居然/.test(text);
+  return /写|生成|回复|拒绝|调用|修改|删除|执行|提交|报错|下单|点击|\b(?:write|wrote|generate[ds]?|replied|refused|deleted|executed|ordered|clicked)\b/i.test(text) &&
+    /却|反而|结果|没想到|竟然|本来|居然|\b(?:instead|unexpectedly|but|surprisingly)\b/i.test(text);
 }
 
 export function isDailyFunPreferenceOnly(value) {
@@ -54,12 +54,16 @@ export function isDailyFunPreferenceOnly(value) {
     !hasDailyFunStorySignal(text);
 }
 
-export function removeSolicitationDailyFun(markdown) {
+export function removeSolicitationDailyFun(markdown, sourceCandidates = null) {
   let removedCount = 0;
   const output = String(markdown || "").replace(
     /^##\s*\*{0,2}[^\r\n]*AI\s*趣闻[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/gim,
     (section) => {
-      if (!isDailyFunSolicitation(section) && !isDailyFunPreferenceOnly(section)) return section;
+      // Inspect the source, not a model-invented reversal in the generated story.
+      const hasSourceStory = !Array.isArray(sourceCandidates) || extractDailyMarkdownLinks(section).some((link) =>
+        sourceCandidates.some((source) => normalizeCandidateUrl(source?.url) === normalizeCandidateUrl(link.url) &&
+          hasDailyFunStorySignal([source?.title, source?.description, source?.plainText].filter(Boolean).join("\n"))));
+      if (!isDailyFunSolicitation(section) && !isDailyFunPreferenceOnly(section) && hasSourceStory) return section;
       removedCount += 1;
       return "";
     },

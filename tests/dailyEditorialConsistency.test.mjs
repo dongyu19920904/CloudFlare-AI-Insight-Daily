@@ -71,3 +71,28 @@ test("a real story outranks a screenshot recommendation without shrinking the ba
   assert.equal(result.selectedContentItems.length, 2);
   assert.ok(result.dailyFunContentItems.some((text) => /status\/1/.test(text)));
 });
+
+test("a generated punchline cannot manufacture story evidence missing from the source", () => {
+  const url = "https://x.com/GeminiApp/status/2098090725477105980";
+  const source = { url, title: "Gemini now available for Windows", plainText: "Press Alt + Space to bring Gemini alongside your favorite apps." };
+  const fun = `## **😄 AI趣闻**\n\n### 快捷键抢工作\n\nGemini 回复用户时，结果抢走老工具的快捷键。[快捷键冲突](https://x.com/GeminiApp/status/2098090725477105980)\n\n`;
+  const rest = "## **相关问题**\n\n### 怎么用？\n按官方文档操作。";
+  assert.equal(removeSolicitationDailyFun(fun + rest, [source]).markdown, rest);
+  assert.equal(removeSolicitationDailyFun(fun + rest, []).markdown, rest);
+  assert.doesNotMatch(buildDailyGenerationPromptInput([], [item(source.plainText, "shortcut")]), /【AI趣闻专用候选素材】/);
+});
+
+test("source-grounded story survives with canonicalized source URL while a wrong source does not", () => {
+  const source = { url: "https://twitter.com/dev/status/1", plainText: story };
+  const fun = `## **😄 AI趣闻**\n\n### 先给自己写手册\n\n${story}[动作和结果](https://x.com/dev/status/1#photo)\n`;
+  assert.equal(removeSolicitationDailyFun(fun, [source]).markdown, fun);
+  assert.equal(removeSolicitationDailyFun(fun, [{ ...source, url: "https://x.com/other/status/2" }]).markdown, "");
+  assert.equal(hasDailyFunStorySignal("Asked the agent to fix code, but it wrote instructions for itself instead."), true);
+});
+
+test("standalone fun uses the same source guard and does not select non-story material", () => {
+  const scheduled = readFileSync(new URL("../src/handlers/scheduled.js", import.meta.url), "utf8");
+  assert.match(scheduled, /removeSolicitationDailyFun\(markdown, options.dailySourceCandidates \|\| \[\]\)/);
+  assert.match(scheduled, /dailyFunContentItems \|\| \[\]\)\.filter\(hasDailyFunStorySignal\)/);
+  assert.match(scheduled, /screenFun\(checkSourceBindings\(standaloneDailyFunSection/);
+});

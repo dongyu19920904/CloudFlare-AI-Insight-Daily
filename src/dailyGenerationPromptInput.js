@@ -4,7 +4,7 @@ import {
   DAILY_SOCIAL_TARGET,
   DAILY_TOP_TARGET,
 } from "./dailyContentRules.js";
-import { isDailyFunPreferenceOnly } from "./dailyFunSection.js";
+import { hasDailyFunStorySignal, isDailyFunPreferenceOnly } from "./dailyFunSection.js";
 
 export function getDailyEditorialChecklist() {
   return [
@@ -340,6 +340,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     .filter(Boolean)
     .filter((item) => !isDailyPromptHiddenItem(item))
     .filter((item) => !isDailyFunPreferenceOnly(item))
+    .filter(hasDailyFunStorySignal)
     .filter((item) => !selectedItemKeys.has(String(item).trim()))
     .filter((item) => {
       const url = getDailyPromptItemUrl(item);

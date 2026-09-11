@@ -125,6 +125,7 @@ import { shouldAdoptDailyRepair } from '../dailyRepairPolicy.js';
 import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
 import {
     buildStandaloneDailyFunPromptInput,
+    hasDailyFunStorySignal,
     insertDailyFunSection,
     normalizeStandaloneDailyFunSection,
     removeSolicitationDailyFun,
@@ -1427,7 +1428,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         return result.markdown;
     };
     const screenFun = (markdown, stage) => {
-        const result = removeSolicitationDailyFun(markdown);
+        const result = removeSolicitationDailyFun(markdown, options.dailySourceCandidates || []);
         debugInfo.dailyFunSolicitationsRemoved ||= {};
         debugInfo.dailyFunSolicitationsRemoved[stage] = result.removedCount;
         return result.markdown;
@@ -1590,7 +1591,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     if (validation.ok && hasDedicatedDailyFunCandidates && !funStatsBeforeStandaloneGeneration.present) {
         const standaloneDailyFunCandidates = selectStandaloneDailyFunCandidates(
             dailySummaryMarkdownContent,
-            options.dailyFunContentItems,
+            (options.dailyFunContentItems || []).filter(hasDailyFunStorySignal),
             5
         );
         const standaloneDailyFunPrompt = buildStandaloneDailyFunPromptInput(dateStr, standaloneDailyFunCandidates);
@@ -1608,7 +1609,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 standaloneDailyFunSection = removeMarkdownCodeBlock(standaloneDailyFunSection);
                 standaloneDailyFunSection = normalizeStandaloneDailyFunSection(standaloneDailyFunSection);
                 standaloneDailyFunSection = normalizeStandaloneDailyFunSection(
-                    checkSourceBindings(standaloneDailyFunSection, 'standalone-fun')
+                    screenFun(checkSourceBindings(standaloneDailyFunSection, 'standalone-fun'), 'standalone-fun')
                 );
 
                 debugInfo.dailyFunSeparateGenerationValid = Boolean(standaloneDailyFunSection);
