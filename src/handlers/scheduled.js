@@ -1417,6 +1417,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         const result = quarantineDailySourceConflicts(markdown, options.dailySourceCandidates);
         debugInfo.dailySourceBindingChecks ||= {};
         debugInfo.dailySourceBindingChecks[stage] = result.quarantined;
+        debugInfo.dailyFactClaimCleanups ||= {};
+        debugInfo.dailyFactClaimCleanups[stage] = result.sanitized;
         if (result.removedCount) {
             console.warn(`[Scheduled][Daily] ${stage}: quarantined ${result.removedCount} source-conflicting items before media and summary.`);
         }

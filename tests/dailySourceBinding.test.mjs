@@ -67,6 +67,41 @@ test('corrected family guard is idempotent and still leaves FAQ/code untouched',
   assert.equal(quarantineDailySourceConflicts(code, [codexSubscription]).markdown, code);
 });
 
+test('social-only deal amount is removed before summary without dropping the item or its URL', () => {
+  const block = '### 10. OpenRouter 被 Stripe 以 70 亿美元收购\n\n**支付公司买了中转站。** [OpenRouter 被收购](https://t.me/aigc1024/24353)，交易价 **70 亿美元**。接入 **400+ 模型**。\n';
+  const r = quarantineDailySourceConflicts(block);
+  assert.doesNotMatch(r.markdown, /70|交易价/);
+  assert.match(r.markdown, /OpenRouter 被 Stripe 收购/);
+  assert.match(r.markdown, /400\+ 模型/);
+  assert.match(r.markdown, /https:\/\/t.me\/aigc1024\/24353/);
+  assert.equal(r.removedCount, 0);
+  assert.deepEqual(r.sanitized[0].changes, ['social-only-deal-amount']);
+});
+
+test('deal cleanup covers Chinese numerals and link text without altering destinations', () => {
+  const block = '### Stripe 以七十亿美元收购 OpenRouter\n\nStripe [以七十亿美元收购 OpenRouter](https://t.me/example/70)。';
+  const r = quarantineDailySourceConflicts(block);
+  assert.doesNotMatch(r.markdown, /七十|美元/);
+  assert.match(r.markdown, /https:\/\/t.me\/example\/70/);
+});
+
+test('non-social evidence and ordinary subscription amounts are not rewritten', () => {
+  for (const block of [
+    '### 公司完成收购\n\n[收购说明](https://company.example/news)。交易价 70 亿美元。',
+    '### Codex 订阅讨论\n\n[个人看法](https://www.v2ex.com/t/123)。价格 200 美元。',
+  ]) assert.equal(quarantineDailySourceConflicts(block).markdown, block);
+});
+
+test('quota workaround is removed but normal facts and explicit warnings survive', () => {
+  const before = '### 图片放大工具\n\n**分辨率够了。** 免费只能处理 **3 张**，但换浏览器或清 Cookie 后可以处理更多。拉到 **10 倍放大**。\n';
+  const r = quarantineDailySourceConflicts(before);
+  assert.doesNotMatch(r.markdown, /清 Cookie|换浏览器/);
+  assert.match(r.markdown, /分辨率够了|10 倍/);
+  assert.equal(r.removedCount, 0);
+  const warning = '### 图片工具使用边界\n\n不要清 Cookie 或换浏览器绕过免费额度。';
+  assert.equal(quarantineDailySourceConflicts(warning).markdown, warning);
+});
+
 const deepseek = {
   title: "我不认为这是个好操作，模型大小直接决定了世界知识的丰富程度，不是所有人都用AI来写代码，Flash在非代码场景比不上Pro。",
   url: "https://x.com/Gorden_Sun/status/2097607912076272029",

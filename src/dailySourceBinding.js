@@ -64,6 +64,44 @@ function findExplicitProductConflict(title, block, records) {
   return null;
 }
 
+function isSocialRelayUrl(value) {
+  try {
+    return /^(?:www\.)?(?:t\.me|telegram\.me|x\.com|twitter\.com|v2ex\.com|mp\.weixin\.qq\.com|m\.okjike\.com)$/.test(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeUnsupportedClaims(block) {
+  const changes = [];
+  // Remove actionable quota bypass instructions, but keep warnings against them.
+  let markdown = block.replace(/[^。！？\n]*(?:清\s*Cookie|换浏览器)[^。！？\n]*(?:[。！？]|$)/gi, (sentence) => {
+    if (!/(?:免费|额度|更多|继续|绕过)/.test(sentence) || /(?:不要|不得|不能|禁止|不应|请勿)/.test(sentence)) return sentence;
+    if (/!\[|<video|```/.test(sentence)) return sentence;
+    changes.push('quota-bypass-instruction');
+    return '';
+  });
+  const links = extractDailyMarkdownLinks(markdown);
+  const title = visibleText(markdown.split(/\r?\n/, 1)[0]);
+  if (/(?:收购|并购|融资)/.test(title) && links.length > 0 && links.every((link) => isSocialRelayUrl(link.url))) {
+    const beforeDealCleanup = markdown;
+    const amount = '(?:\\*\\*)?(?:\\d+(?:[.,]\\d+)*|[零〇一二两三四五六七八九十百千万亿]+)\\s*(?:万|亿|百万|千万)?\\s*(?:美元|美金|人民币|欧元)(?:\\*\\*)?';
+    // Keep destinations and media untouched; only remove unsupported display claims.
+    const parts = markdown.split(/(!?\[[^\]]*\]\([^\n]*?\)|<video[^\n]*<\/video>)/g);
+    const cleanText = (text) => text
+      .replace(new RegExp('(?:交易价(?:格)?|交易金额|收购价(?:格)?|融资金额|估值)(?:为|达|约|高达|：|:)?\\s*' + amount + '[，。]?', 'g'), '')
+      .replace(new RegExp('以\\s*' + amount, 'g'), '')
+      .replace(new RegExp(amount, 'g'), '');
+    markdown = parts.map((part) => {
+      if (/^!\[|^<video/.test(part)) return part;
+      if (part.startsWith('[')) return part.replace(/^\[([^\]]*)\]/, (_, text) => `[${cleanText(text)}]`);
+      return cleanText(part);
+    }).join('');
+    if (markdown !== beforeDealCleanup) changes.push('social-only-deal-amount');
+  }
+  return { markdown, changes };
+}
+
 // A negative lexical match alone is not evidence of a wrong source. Require a
 // competing selected record AND an unrelated named entity in the linked source.
 function findConflict(block, records) {
@@ -91,6 +129,7 @@ function findConflict(block, records) {
 
 export function quarantineDailySourceConflicts(markdown, candidates = []) {
   const quarantined = [];
+  const sanitized = [];
   const records = (candidates || []).filter((candidate) => sourceKey(candidate?.url)).map((candidate) => ({
     url: candidate.url,
     key: sourceKey(candidate.url),
@@ -105,7 +144,11 @@ export function quarantineDailySourceConflicts(markdown, candidates = []) {
     let cleaned = section.replace(/^###\s+[^\r\n]+(?:\r?\n|$)[\s\S]*?(?=^###\s+|(?![\s\S]))/gm, (block) => {
       if (/```|~~~/.test(block)) return block;
       const conflict = findConflict(block, records);
-      if (!conflict) return block;
+      if (!conflict) {
+        const result = sanitizeUnsupportedClaims(block);
+        if (result.changes.length) sanitized.push({ title: block.split(/\r?\n/, 1)[0], changes: result.changes });
+        return result.markdown;
+      }
       quarantined.push(conflict);
       return "";
     });
@@ -116,5 +159,5 @@ export function quarantineDailySourceConflicts(markdown, candidates = []) {
     }
     return cleaned;
   }).join("");
-  return { markdown: output, quarantined, removedCount: quarantined.length };
+  return { markdown: output, quarantined, removedCount: quarantined.length, sanitized };
 }
