@@ -74,12 +74,21 @@ function isSocialRelayUrl(value) {
 
 function sanitizeUnsupportedClaims(block) {
   const changes = [];
+  let input = block;
+  const heading = block.split(/\r?\n/, 1)[0];
+  const body = visibleText(block.slice(heading.length));
+  if (/(?:成本|费用|价格).*低一半/.test(heading) && /每美元性能[^。\n]{0,24}50[%％]/.test(body)) {
+    // Neutralize the unsupported cost headline; do not calculate a new percentage.
+    const corrected = heading.replace(/(?:推理)?(?:成本|费用|价格)比?/, '每美元性能对比').replace(/低一半/, '').trimEnd();
+    input = corrected + block.slice(heading.length);
+    changes.push('cost-performance-headline');
+  }
   // Remove actionable quota bypass instructions, but keep warnings against them.
-  let markdown = block.replace(/[^。！？\n]*(?:清\s*Cookie|换浏览器)[^。！？\n]*(?:[。！？]|$)/gi, (sentence) => {
+  let markdown = input.replace(/[^。！？\n]*(?:清\s*Cookie|换浏览器)[^。！？\n]*(?:[。！？]|$)/gi, (sentence) => {
     if (!/(?:免费|额度|更多|继续|绕过)/.test(sentence) || /(?:不要|不得|不能|禁止|不应|请勿)/.test(sentence)) return sentence;
     if (/!\[|<video|```/.test(sentence)) return sentence;
     changes.push('quota-bypass-instruction');
-    return '';
+    return extractDailyMarkdownLinks(sentence).map((link) => `[来源中的使用说明](${link.url})。`).join('');
   });
   const links = extractDailyMarkdownLinks(markdown);
   const title = visibleText(markdown.split(/\r?\n/, 1)[0]);

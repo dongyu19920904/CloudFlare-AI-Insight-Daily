@@ -102,6 +102,26 @@ test('quota workaround is removed but normal facts and explicit warnings survive
   assert.equal(quarantineDailySourceConflicts(warning).markdown, warning);
 });
 
+test('contradictory cost headline becomes a neutral comparison without inventing a percentage', () => {
+  const before = '### 2. 谷歌 TPU 推理成本比英伟达 B200 低一半\n\n**每美元性能领先 50%。** [第三方测算](https://www.36kr.com/p/test)，成本 0.181 美元，对照为 0.222 美元。';
+  const r = quarantineDailySourceConflicts(before);
+  assert.match(r.markdown, /谷歌 TPU 每美元性能对比英伟达 B200/);
+  assert.doesNotMatch(r.markdown, /低一半/);
+  assert.equal(r.markdown.split('\n\n')[1], before.split('\n\n')[1]);
+  assert.deepEqual(r.sanitized[0].changes, ['cost-performance-headline']);
+  assert.equal(quarantineDailySourceConflicts(r.markdown).markdown, r.markdown);
+  const valid = '### 产品价格低一半\n\n[官方降价](https://company.example/news)，价格从 20 美元降为 10 美元。';
+  assert.equal(quarantineDailySourceConflicts(valid).markdown, valid);
+});
+
+test('removing a quota instruction keeps its evidence URL for publication validation', () => {
+  const input = '### 图片工具\n\n[清 Cookie 后继续免费处理](https://example.org/tool)。图片可以放大十倍。';
+  const r = quarantineDailySourceConflicts(input);
+  assert.doesNotMatch(r.markdown, /清 Cookie/);
+  assert.match(r.markdown, /https:\/\/example.org\/tool/);
+  assert.match(r.markdown, /图片可以放大十倍/);
+});
+
 const deepseek = {
   title: "我不认为这是个好操作，模型大小直接决定了世界知识的丰富程度，不是所有人都用AI来写代码，Flash在非代码场景比不上Pro。",
   url: "https://x.com/Gorden_Sun/status/2097607912076272029",
