@@ -8,6 +8,65 @@ import { ensureDailyMediaCoverage, repairDailyMediaReferences } from "../src/dai
 import { ensureUniqueDailyTopSources } from "../src/dailySectionSanitizer.js";
 import { normalizeStandaloneDailyFunSection } from "../src/dailyFunSection.js";
 
+const codexSubscription = {
+  title: 'Codex $200 Pro plan 暂停供应',
+  url: 'https://www.v2ex.com/t/1241191#reply4',
+  plainText: 'Tibo 发 X 证实 Codex $200 Pro plan 暂停供应。已开通用户暂时不会断供。',
+};
+const wrongCursor = `### 6. Cursor 高档订阅暂停供应
+
+**买不到 Pro 了。** Cursor 创始人 Tibo [确认 $200 Pro plan 暂停供应](${codexSubscription.url})。
+
+![Cursor Pro 暂停供应截图](https://i.v2ex.co/Gt6Np99Z.png "Cursor Pro 暂停供应截图")
+
+`;
+
+test('real Sep 11 single-product substitution is quarantined with its wrong caption', () => {
+  const result = quarantineDailySourceConflicts(`## 今日焦点 TOP 10\n\n${wrongCursor}${good}`, [codexSubscription]);
+  assert.equal(result.removedCount, 1);
+  assert.equal(result.quarantined[0].reason, 'explicit-product-substitution');
+  assert.doesNotMatch(result.markdown, /Cursor|Gt6Np99Z/);
+  assert.match(result.markdown, /### 1\. 一条没有串线/);
+});
+
+test('ChatGPT and Codex belong to the same subscription family', () => {
+  const correct = wrongCursor.replaceAll('Cursor', 'ChatGPT');
+  assert.equal(quarantineDailySourceConflicts(correct, [codexSubscription]).markdown, correct);
+});
+
+test('reverse Cursor to Codex substitution is also rejected', () => {
+  const source = { ...codexSubscription, title: 'Cursor 高档订阅更新', plainText: 'Cursor 的服务更新' };
+  assert.equal(quarantineDailySourceConflicts(wrongCursor.replaceAll('Cursor', 'Codex'), [source]).removedCount, 1);
+});
+
+test('single-product guard preserves explicit comparisons and integrations', () => {
+  const bodyComparison = wrongCursor.replace('买不到 Pro 了。', '与 Codex 比较。');
+  assert.equal(quarantineDailySourceConflicts(bodyComparison, [codexSubscription]).markdown, bodyComparison);
+  const sourceComparison = { ...codexSubscription, plainText: 'Codex 与 Cursor 的订阅对比' };
+  assert.equal(quarantineDailySourceConflicts(wrongCursor, [sourceComparison]).markdown, wrongCursor);
+  const twoProducts = wrongCursor.replace('Cursor 高档订阅', 'Cursor 与 Codex 高档订阅');
+  assert.equal(quarantineDailySourceConflicts(twoProducts, [codexSubscription]).markdown, twoProducts);
+});
+
+test('ambiguous titles, unknown URLs and unrelated products are not guessed', () => {
+  const generic = { ...codexSubscription, title: 'Pro 高档订阅更新' };
+  assert.equal(quarantineDailySourceConflicts(wrongCursor, [generic]).removedCount, 0);
+  assert.equal(quarantineDailySourceConflicts(wrongCursor, []).removedCount, 0);
+  const unknown = wrongCursor.replaceAll('Cursor', 'UnlistedProduct');
+  assert.equal(quarantineDailySourceConflicts(unknown, [codexSubscription]).markdown, unknown);
+  const duplicated = [codexSubscription, { ...codexSubscription, title: 'Cursor 对比 Codex', plainText: '' }];
+  assert.equal(quarantineDailySourceConflicts(wrongCursor, duplicated).removedCount, 0);
+});
+
+test('corrected family guard is idempotent and still leaves FAQ/code untouched', () => {
+  const once = quarantineDailySourceConflicts(wrongCursor + good, [codexSubscription]);
+  assert.equal(quarantineDailySourceConflicts(once.markdown, [codexSubscription]).markdown, once.markdown);
+  const faq = `## 相关问题\n${wrongCursor}`;
+  assert.equal(quarantineDailySourceConflicts(faq, [codexSubscription]).markdown, faq);
+  const code = wrongCursor + '```js\nconst product = "Cursor";\n```';
+  assert.equal(quarantineDailySourceConflicts(code, [codexSubscription]).markdown, code);
+});
+
 const deepseek = {
   title: "我不认为这是个好操作，模型大小直接决定了世界知识的丰富程度，不是所有人都用AI来写代码，Flash在非代码场景比不上Pro。",
   url: "https://x.com/Gorden_Sun/status/2097607912076272029",

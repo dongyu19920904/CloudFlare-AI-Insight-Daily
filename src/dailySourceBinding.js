@@ -40,10 +40,36 @@ function specificTokens(value) {
     (/^[a-z]{4,}$/.test(token) || /^[a-z]+\d[\w.-]*$/.test(token)));
 }
 
+function subscriptionProductFamilies(value) {
+  const text = visibleText(value);
+  return [
+    /\b(?:codex|chatgpt)\b/i.test(text) ? "openai-subscription" : null,
+    /\bcursor\b/i.test(text) ? "cursor" : null,
+  ].filter(Boolean);
+}
+
+// Only reject a positively identified product substitution, not a missing keyword.
+// Keep comparisons, integrations, ambiguous sources and unknown products intact.
+function findExplicitProductConflict(title, block, records) {
+  const headlineFamilies = subscriptionProductFamilies(title);
+  if (headlineFamilies.length !== 1) return null;
+  const family = headlineFamilies[0];
+  if (subscriptionProductFamilies(block).some((value) => value !== family)) return null;
+  for (const link of extractDailyMarkdownLinks(block)) {
+    const linked = records.filter((record) => record.key === sourceKey(link.url));
+    if (!linked.length || linked.some((record) => record.productFamilies.includes(family))) continue;
+    if (!linked.every((record) => record.titleFamilies.length === 1 && record.titleFamilies[0] !== family)) continue;
+    return { title, sourceUrl: link.url, matchingSourceUrls: [], reason: "explicit-product-substitution" };
+  }
+  return null;
+}
+
 // A negative lexical match alone is not evidence of a wrong source. Require a
 // competing selected record AND an unrelated named entity in the linked source.
 function findConflict(block, records) {
   const title = block.split(/\r?\n/, 1)[0].replace(/^###\s+(?:\d+[.、]\s*)?/, "");
+  const productConflict = findExplicitProductConflict(title, block, records);
+  if (productConflict) return productConflict;
   const markers = specificTokens(title);
   if (markers.length < 2 || !markers.some((token) => /^[a-z]{4,}$/.test(token))) return null;
   const bodyTokens = tokens(block);
@@ -70,6 +96,8 @@ export function quarantineDailySourceConflicts(markdown, candidates = []) {
     key: sourceKey(candidate.url),
     tokens: tokens([candidate.title, candidate.description, candidate.plainText].filter(Boolean).join(" ")),
     entities: specificTokens(candidate.title).filter((token) => /^[a-z]{4,}$/.test(token)),
+    titleFamilies: subscriptionProductFamilies(candidate.title),
+    productFamilies: subscriptionProductFamilies([candidate.title, candidate.description, candidate.plainText].filter(Boolean).join(" ")),
   }));
   const output = String(markdown || "").split(/(?=^##(?!#)\s+)/m).map((section) => {
     if (/^##[^\r\n]*(?:FAQ|相关问题|常见问题)/i.test(section)) return section;
