@@ -19,6 +19,9 @@ test("all writing entrypoints share the required fun rules rather than optional 
   const repair = scheduled.slice(scheduled.indexOf("function buildDailyRepairPrompt("), scheduled.indexOf("function getDailyBodyGenerationEnv("));
   assert.match(repair, /getDailyFunWritingRules\(\)/);
   assert.doesNotMatch(repair, /是可选栏目/);
+  const standaloneSystem = scheduled.slice(scheduled.indexOf("function getStandaloneDailyFunSystemPrompt("), scheduled.indexOf("function buildDailyRepairPrompt("));
+  assert.match(standaloneSystem, /getDailyFunWritingRules\(\)/);
+  assert.match(standaloneSystem, /5-7 个完整句子/);
 });
 
 test("short sentences retain article information and do not change the three-line summary", () => {
@@ -39,5 +42,6 @@ test("required fun keeps evidence and does not invent fictional user incidents",
   assert.match(rules, /5-7 个完整短句/);
   assert.match(rules, /至少两个来源支持的细节/);
   assert.match(rules, /不能伪装成发生过的事故/);
+  assert.match(rules, /不要为制造反差补充素材以外的技术背景/);
   assert.match(rules, /不要输出通用兜底段子/);
 });
