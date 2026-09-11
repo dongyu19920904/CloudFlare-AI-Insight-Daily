@@ -1,4 +1,5 @@
 // src/index.js
+import { withWorkerConfigDefaults } from './workerConfig.js';
 import { handleWriteData } from './handlers/writeData.js';
 import { handleGetContent } from './handlers/getContent.js';
 import { handleGetContentHtml } from './handlers/getContentHtml.js';
@@ -272,9 +273,11 @@ async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'ma
 
 export default {
     async scheduled(event, env, ctx) {
+        env = withWorkerConfigDefaults(env);
         await runScheduledEventWithStatus(event, env, ctx);
     },
     async fetch(request, env, ctx) {
+        env = withWorkerConfigDefaults(env);
         const url = new URL(request.url);
         const path = url.pathname;
 
