@@ -47,23 +47,22 @@ export function hasDailyFunStorySignal(value) {
     /却|反而|结果|没想到|竟然|本来|居然|\b(?:instead|unexpectedly|but|surprisingly)\b/i.test(text);
 }
 
-export function isDailyFunPreferenceOnly(value) {
-  const text = funVisibleText(value);
-  return /偏好|最爱|更喜欢|推荐榜|工具推荐|最好用|常用工具/.test(text) &&
-    /工具|模型|搜索|DeepResearch|GPT|Gemini|Claude|Codex|Cursor/i.test(text) &&
-    !hasDailyFunStorySignal(text);
+export function getDailyFunWritingRules() {
+  return [
+    "AI趣闻是必写栏目，每期写 1 条完整趣闻，不能因为原文没有‘结果、反而’等词就省略。先从未使用的真实素材选出最值得会心一笑的一件事。",
+    "优先真实反常结果，也可以选有具体细节的开发过程、工具体验或产品设计，用准确的生活化比喻和一句轻巧评论写出趣味；普通偏好榜不能照搬成稿，要围绕已提供的具体区别组织铺垫。",
+    "正文 100-160 字，使用 5-7 个完整短句。先点出场景，再写至少两个来源支持的细节，最后一句收住包袱。笑点来自表达和真实细节，不靠‘笑死、离谱’、空泛行业结论或泛泛俏皮结尾。",
+    "比喻、设问和评论必须一眼看出是编辑表达，不能伪装成发生过的事故、快捷键冲突、对话、用户反应或亲测。不能把预想的风险写成已有用户遭遇；不编造笑点事实，也不冒充来源作者。",
+    "标题二次创作、不加链接；正文用一个原始链接自然挂在具体事实上。不要输出通用兜底段子、空标题或生成过程。",
+  ].join("\n");
 }
 
-export function removeSolicitationDailyFun(markdown, sourceCandidates = null) {
+export function removeSolicitationDailyFun(markdown) {
   let removedCount = 0;
   const output = String(markdown || "").replace(
     /^##\s*\*{0,2}[^\r\n]*AI\s*趣闻[^\r\n]*(?:\r?\n|$)[\s\S]*?(?=^##\s+|(?![\s\S]))/gim,
     (section) => {
-      // Inspect the source, not a model-invented reversal in the generated story.
-      const hasSourceStory = !Array.isArray(sourceCandidates) || extractDailyMarkdownLinks(section).some((link) =>
-        sourceCandidates.some((source) => normalizeCandidateUrl(source?.url) === normalizeCandidateUrl(link.url) &&
-          hasDailyFunStorySignal([source?.title, source?.description, source?.plainText].filter(Boolean).join("\n"))));
-      if (!isDailyFunSolicitation(section) && !isDailyFunPreferenceOnly(section) && hasSourceStory) return section;
+      if (!isDailyFunSolicitation(section)) return section;
       removedCount += 1;
       return "";
     },
@@ -90,7 +89,6 @@ export function selectStandaloneDailyFunCandidates(
     if (
       !normalized ||
       isDailyFunSolicitation(normalized) ||
-      isDailyFunPreferenceOnly(normalized) ||
       seen.has(normalized) ||
       (candidateUrl && publishedSourceUrls.has(candidateUrl))
     ) continue;
@@ -105,20 +103,20 @@ export function selectStandaloneDailyFunCandidates(
 
 export function buildStandaloneDailyFunPromptInput(dateStr, candidateItems = []) {
   const candidates = (candidateItems || []).map(normalizeCandidateText)
-    .filter((item) => item && !isDailyFunSolicitation(item) && !isDailyFunPreferenceOnly(item));
+    .filter((item) => item && !isDailyFunSolicitation(item));
   if (candidates.length === 0) return "";
 
   return [
     `你只负责为 ${dateStr} 的 AI日报生成一个栏目：\`## **😄 AI趣闻**\`。`,
     "这是一次独立生成，不要输出日报其它栏目，不要输出解释。",
-    "从下面候选里最多选 1 条有真实反常结果的素材。标题要二次创作并使用纯文本，不能照搬来源标题，也不能加入链接；原始来源链接必须放在正文的真实细节附近。",
+    "从下面候选里选 1 条真实素材。标题要二次创作并使用纯文本，不能照搬来源标题，也不能加入链接；原始来源链接必须放在正文的真实细节附近。",
     "链接文字必须是句子里自然成立的事实短语，说明这个原帖具体展示了什么；不要只写‘实测推文’‘原帖’‘来源’或‘详情’。",
-    "正文写 100-180 个中文字符，按 Hook -> What -> Punchline 写：先给具体场景，再交代真实细节，最后一句轻轻一抖。",
+    "按 Hook -> What -> Punchline 写：先给具体场景，再交代真实细节，最后一句轻轻一抖。",
     "正文用 `**...**` 标出 2-4 个产品名、真实动作、关键数字或反常结果；每处 2-12 个字符，不能整句加粗。",
     "语境要像 2026 年中文互联网，面向 90 后、00 后 AI 爱好者和程序员；可以借鉴马三立相声的铺垫、错位和冷面包袱结构，但不要模仿口音、台词或固定段子。",
-    "不要编造来源没有的事实，不要写成行业分析，不要写“这说明了”“值得关注”“未来可期”。来源作者的体验用有归属的第三人称，不冒充编辑亲测；只有工具偏好而没有具体动作和反常结果时不要选用。产品、人物身份、研究进展不得改写成另一对象或未经确认的最终成果。",
-    "先确认素材里确实有预期与结果的反差，再写铺垫。额度邀请、留邮箱领名额、优惠招领或只有功能介绍的帖子不是趣闻；有截图也不算笑点。收尾点出素材已有的错位，不补写评论区热度、领完速度或旁观者反应。",
-    "如果所有候选都写不出完整、有来源链接的趣闻，就输出空字符串，不要解释。",
+    "不要编造来源没有的事实，不要写成行业分析，不要写“这说明了”“值得关注”“未来可期”。来源作者的体验用有归属的第三人称，不冒充编辑亲测。产品、人物身份、研究进展不得改写成另一对象或未经确认的最终成果。",
+    "额度邀请、留邮箱领名额、优惠招领不是趣闻；有截图也不算笑点。不补写评论区热度、领完速度或旁观者反应。",
+    getDailyFunWritingRules(),
     "",
     "输出格式必须是：",
     "## **😄 AI趣闻**",
@@ -146,7 +144,7 @@ export function normalizeStandaloneDailyFunSection(markdown) {
     section = `## **😄 AI趣闻**\n\n${content}`;
   }
 
-  if (!section || isDailyFunSolicitation(section) || isDailyFunPreferenceOnly(section)) return "";
+  if (!section || isDailyFunSolicitation(section)) return "";
 
   const sourceLinks = [...section.matchAll(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g)]
     .filter((match) => match.index == null || section[match.index - 1] !== "!");

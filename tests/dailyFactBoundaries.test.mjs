@@ -16,7 +16,7 @@ test('daily prompt preserves source entities, numerical basis and deal evidence'
 test('daily prompt does not impersonate source authors or repeat quota bypass tips', () => {
   const prompt = getSystemPromptSummarizationStepOne();
   assert.match(prompt, /有归属的第三人称/);
-  assert.match(prompt, /个人偏好没有具体动作和反常结果时不作为趣闻/);
+  assert.match(prompt, /不能把评论编成已发生的事件/);
   assert.match(prompt, /不得推荐清 Cookie、换浏览器、多账号等规避免费额度/);
 });
 
@@ -30,6 +30,6 @@ test('three-sentence summary preserves products, metrics and uncertain deal stat
 test('independent fun generation keeps the same attribution and evidence boundary', () => {
   const prompt = buildStandaloneDailyFunPromptInput('2026-09-11', ['A developer tested an AI tool: https://example.org/test']);
   assert.match(prompt, /有归属的第三人称/);
-  assert.match(prompt, /只有工具偏好而没有具体动作和反常结果时不要选用/);
+  assert.match(prompt, /普通偏好榜不能照搬成稿/);
   assert.match(prompt, /未经确认的最终成果/);
 });

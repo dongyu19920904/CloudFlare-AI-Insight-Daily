@@ -4,7 +4,7 @@ import {
   DAILY_SOCIAL_TARGET,
   DAILY_TOP_TARGET,
 } from "./dailyContentRules.js";
-import { hasDailyFunStorySignal, isDailyFunPreferenceOnly } from "./dailyFunSection.js";
+import { getDailyFunWritingRules } from "./dailyFunSection.js";
 
 export function getDailyEditorialChecklist() {
   return [
@@ -14,7 +14,9 @@ export function getDailyEditorialChecklist() {
     "收购或融资只出现社交转述时，不写交易金额、已完成或行业最大等断言；只讲有据的报道线索，不确定状态不得变成黄色结论或蓝色事实。旧访谈和旧交易只有近期确有新进展才进焦点，转发日期不代表发生日期。",
     "同一测试的对象、分段优劣、数字和条件逐项对应；不要把开头优劣反写到副歌，也不要将性能/美元变成 token 成本降幅。没有共同测算条件时分别陈述，不用‘换算成’把两个指标强行关联。",
     "FAQ 从正文已证实的使用细节或限制提出一个窄问题，答案只重组已有事实并保留证据链接，不增加登录、付费、地区或售后条件。原材料没有证明的‘全部兑现’‘商业打印标准’‘无需订阅’等评价必须删除，而不是增加一句免责声明。",
-    "目标仍是 TOP 10、短句、短链接和事实高亮；不为凑数凑字而扩大事实。有问题的候选先用去重备用替换，没有合格备用时只省略该条，其他新闻照常输出。趣闻先确认真实动作和预期反差；偏好排名不是故事，不能用一个泛泛俏皮结尾伪造笑点。",
+    "目标仍是 TOP 10、短链接和事实高亮；不为凑数凑字而扩大事实。有问题的候选先用去重备用替换，没有合格备用时只省略该条，其他新闻照常输出。",
+    "短句检查：每条 TOP 保留约 120-170 字，拆成 6-8 个完整句子，多数普通句 18-28 个可见字符；超过 35 字主动拆开，必要长名称或限定句尽量不超过 45 字。每句一个事实，数据对比拆成两句，不用逗号串功能清单，不把短句写成缺主语的碎片。URL 不计入句长，链接文字计入。",
+    getDailyFunWritingRules(),
     "以上检查在内部完成，只输出成稿，不附检查过程。",
   ].join("\n");
 }
@@ -339,8 +341,6 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const funOnlyItems = (dailyFunContentItems || [])
     .filter(Boolean)
     .filter((item) => !isDailyPromptHiddenItem(item))
-    .filter((item) => !isDailyFunPreferenceOnly(item))
-    .filter(hasDailyFunStorySignal)
     .filter((item) => !selectedItemKeys.has(String(item).trim()))
     .filter((item) => {
       const url = getDailyPromptItemUrl(item);
@@ -437,8 +437,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (funOnlyItems.length > 0) {
     promptParts.push([
       "【AI趣闻专用候选素材】",
-      "下面这些素材是专门留给 `## **😄 AI趣闻**` 的候选，不代表已经通过趣味审核。先找真实的预期、动作和反常结果，再最多选 1 条写完整趣闻。",
-      "只有人物、截图、功能或工具偏好而没有真实反差时直接省略趣闻；不得给普通推荐硬接一个玩笑，不影响其他栏目。",
+      "下面这些素材是专门留给 `## **😄 AI趣闻**` 的候选。正常出稿必须选 1 条写完整趣闻，不得省略；优先真实反差，其次从具体体验和设计细节写出趣味，不伪造事故或结局。",
       "不要因为它们出现在这里就塞进今日焦点；今日焦点仍按主线素材和评分标准筛选。",
       "写 AI趣闻时必须二次创作纯文本短标题，把原始来源链接放在正文真实细节附近，并按 Hook -> What -> Punchline 再开发，不要照搬原文标题、推文正文或项目名长句。",
       "",

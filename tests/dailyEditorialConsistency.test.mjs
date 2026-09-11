@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildDailyGenerationPromptInput, getDailyEditorialChecklist, countDailyTopEligiblePromptItems } from "../src/dailyGenerationPromptInput.js";
 import { buildDailyPromptSelection } from "../src/dailyPromptSelection.js";
-import { hasDailyFunStorySignal, isDailyFunPreferenceOnly, removeSolicitationDailyFun, selectStandaloneDailyFunCandidates, buildStandaloneDailyFunPromptInput, normalizeStandaloneDailyFunSection } from "../src/dailyFunSection.js";
+import { hasDailyFunStorySignal, getDailyFunWritingRules, removeSolicitationDailyFun, selectStandaloneDailyFunCandidates, buildStandaloneDailyFunPromptInput, normalizeStandaloneDailyFunSection } from "../src/dailyFunSection.js";
 
 const preference = "深度搜索工具偏好榜出炉。日常最爱两个 DeepResearch 工具，一个精炼，一个内容丰富，Gemini 质量一般。";
 const story = "开发者让 Codex 写脚本，结果模型先给自己写了一份使用说明。";
@@ -21,36 +21,34 @@ test("initial and repair use the same final evidence checklist", () => {
   assert.ok(repair.indexOf("getDailyEditorialChecklist()") > repair.indexOf("invalidMarkdown ||"));
 });
 
-test("fun input no longer instructs the model to turn every ordinary recommendation into a joke", () => {
+test("fun is required while fabricated incidents remain prohibited", () => {
   const prompt = buildDailyGenerationPromptInput([], [item(story, "story")]);
-  assert.match(prompt, /不代表已经通过趣味审核/);
-  assert.doesNotMatch(prompt, /只要这里有可用素材，就必须/);
-  assert.match(prompt, /没有真实反差时直接省略趣闻/);
+  assert.match(prompt, /正常出稿必须选 1 条写完整趣闻/);
+  assert.match(prompt, /不能伪装成发生过的事故/);
+  assert.doesNotMatch(prompt, /没有真实反差时直接省略趣闻/);
 });
 
-test("preference-only detection ignores media and keeps stories with actual reversals", () => {
-  assert.equal(isDailyFunPreferenceOnly(preference), true);
-  assert.equal(isDailyFunPreferenceOnly(`更喜欢 Codex。${story}`), false);
+test("story signals remain a ranking heuristic, not an eligibility requirement", () => {
   assert.equal(hasDailyFunStorySignal(story), true);
-  assert.equal(isDailyFunPreferenceOnly(`${preference}\n![AI 写脚本结果报错](https://example.org/img.jpg)`), true);
-  assert.equal(isDailyFunPreferenceOnly("团队发布 AI 工具，今天可查看完整文档。"), false);
+  assert.equal(hasDailyFunStorySignal(preference), false);
+  assert.equal(selectStandaloneDailyFunCandidates("", [item(preference, "preference")]).length, 1);
 });
 
-test("reject preference-only fun without touching news, FAQ or their source links", () => {
+test("preference vocabulary no longer automatically deletes a linked fun section", () => {
   const news = `## **今日焦点 TOP 1**\n\n### 1. 工具使用偏好\n${preference}[比较说明](https://example.org/news)\n\n`;
   const faq = "## **相关问题**\n\n### 如何判断工具适用性？\n已有事实和限制。\n";
   const fun = `## **😄 AI趣闻**\n\n### 偏好榜出炉\n${preference}[质量一般](https://example.org/preference)\n\n`;
   const result = removeSolicitationDailyFun(news + fun + faq);
-  assert.equal(result.markdown, news + faq);
-  assert.equal(result.removedCount, 1);
+  assert.equal(result.markdown, news + fun + faq);
+  assert.equal(result.removedCount, 0);
   assert.equal(removeSolicitationDailyFun(result.markdown).removedCount, 0);
-  assert.equal(normalizeStandaloneDailyFunSection(fun), "");
+  assert.ok(normalizeStandaloneDailyFunSection(fun));
 });
 
-test("preference-only sources do not trigger a standalone fun model call", () => {
+test("real tool experiences remain available to the existing standalone writer", () => {
   const candidates = [item(preference, "preference")];
-  assert.deepEqual(selectStandaloneDailyFunCandidates("", candidates), []);
-  assert.equal(buildStandaloneDailyFunPromptInput("2026-09-11", candidates), "");
+  assert.deepEqual(selectStandaloneDailyFunCandidates("", candidates), candidates);
+  assert.ok(buildStandaloneDailyFunPromptInput("2026-09-12", candidates).includes(getDailyFunWritingRules()));
 });
 
 test("preference filtering does not reduce primary TOP capacity", () => {
@@ -72,27 +70,25 @@ test("a real story outranks a screenshot recommendation without shrinking the ba
   assert.ok(result.dailyFunContentItems.some((text) => /status\/1/.test(text)));
 });
 
-test("a generated punchline cannot manufacture story evidence missing from the source", () => {
+test("an ordinary source is not rejected by a keyword gate; the prompt forbids inventing incidents", () => {
   const url = "https://x.com/GeminiApp/status/2098090725477105980";
   const source = { url, title: "Gemini now available for Windows", plainText: "Press Alt + Space to bring Gemini alongside your favorite apps." };
   const fun = `## **😄 AI趣闻**\n\n### 快捷键抢工作\n\nGemini 回复用户时，结果抢走老工具的快捷键。[快捷键冲突](https://x.com/GeminiApp/status/2098090725477105980)\n\n`;
   const rest = "## **相关问题**\n\n### 怎么用？\n按官方文档操作。";
-  assert.equal(removeSolicitationDailyFun(fun + rest, [source]).markdown, rest);
-  assert.equal(removeSolicitationDailyFun(fun + rest, []).markdown, rest);
-  assert.doesNotMatch(buildDailyGenerationPromptInput([], [item(source.plainText, "shortcut")]), /【AI趣闻专用候选素材】/);
+  assert.equal(removeSolicitationDailyFun(fun + rest).markdown, fun + rest);
+  assert.match(buildDailyGenerationPromptInput([], [item(source.plainText, "shortcut")]), /【AI趣闻专用候选素材】/);
+  assert.match(getDailyFunWritingRules(), /不能伪装成发生过的事故、快捷键冲突/);
 });
 
-test("source-grounded story survives with canonicalized source URL while a wrong source does not", () => {
-  const source = { url: "https://twitter.com/dev/status/1", plainText: story };
+test("source URL normalization still prevents standalone reuse of published stories", () => {
   const fun = `## **😄 AI趣闻**\n\n### 先给自己写手册\n\n${story}[动作和结果](https://x.com/dev/status/1#photo)\n`;
-  assert.equal(removeSolicitationDailyFun(fun, [source]).markdown, fun);
-  assert.equal(removeSolicitationDailyFun(fun, [{ ...source, url: "https://x.com/other/status/2" }]).markdown, "");
+  assert.deepEqual(selectStandaloneDailyFunCandidates(fun, [`News Title: ${story}\nUrl: https://twitter.com/dev/status/1`]), []);
   assert.equal(hasDailyFunStorySignal("Asked the agent to fix code, but it wrote instructions for itself instead."), true);
 });
 
-test("standalone fun uses the same source guard and does not select non-story material", () => {
+test("standalone fun retains source binding and isolation without requiring story keywords", () => {
   const scheduled = readFileSync(new URL("../src/handlers/scheduled.js", import.meta.url), "utf8");
-  assert.match(scheduled, /removeSolicitationDailyFun\(markdown, options.dailySourceCandidates \|\| \[\]\)/);
-  assert.match(scheduled, /dailyFunContentItems \|\| \[\]\)\.filter\(hasDailyFunStorySignal\)/);
+  assert.match(scheduled, /removeSolicitationDailyFun\(markdown\)/);
+  assert.doesNotMatch(scheduled, /\.filter\(hasDailyFunStorySignal\)/);
   assert.match(scheduled, /screenFun\(checkSourceBindings\(standaloneDailyFunSection/);
 });

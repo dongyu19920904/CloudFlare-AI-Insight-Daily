@@ -36,7 +36,7 @@ test("generation and repair allow event-first prose but retain conditional attri
 test("natural prose retains density, short evidence links and optional actions", () => {
   for (const text of [prompt, repair]) {
     assert.match(text, /120-170/);
-    assert.match(text, /4-5 个/);
+    assert.match(text, /6-8 个/);
     assert.match(text, /每句只推进一个信息点/);
     assert.match(text, /不(?:要)?通过删除事实来/);
     assert.match(text, /具体可行的动作/);
@@ -48,7 +48,8 @@ test("natural prose retains density, short evidence links and optional actions",
   assert.match(prompt, /删除链接标记后句子也必须自然成立/);
   assert.match(prompt, /较短的专业栏目保留 2-3 处/);
   assert.match(prompt, /不得虚构现场、心理、销量、口碑或因果/);
-  assert.match(prompt, /缺少趣闻不得影响其他栏目发布/);
+  assert.match(prompt, /趣闻.*必写/);
+  assert.match(prompt, /不得用省略栏目代替编辑工作/);
 });
 
 // Synthetic editorial fixtures test Markdown processing, not model factuality.

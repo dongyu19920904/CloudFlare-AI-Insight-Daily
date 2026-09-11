@@ -57,9 +57,9 @@ test("daily prompt rejects low-evidence promotions and requires factual media ca
 test("daily prompt adapts human-writing principles without replacing the digest format", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /每条使用 3-5 个完整短句/);
-  assert.match(prompt, /普通句子优先控制在 18-32 个显示字符/);
-  assert.match(prompt, /原则上不得超过 55 个/);
+  assert.match(prompt, /每条使用 6-8 个完整短句/);
+  assert.match(prompt, /普通句子控制在 18-28 个可见字符/);
+  assert.match(prompt, /必要限定句尽量不超过 45 个/);
   assert.match(prompt, /不使用分号串联两个独立判断/);
   assert.match(prompt, /最多保留 3 个最重要的/);
   assert.match(prompt, /中文正文使用全角逗号/);
@@ -92,22 +92,22 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /禁止把“宝玉整理的技术细节”/);
   assert.match(prompt, /不能只写“实测推文”/);
   assert.match(prompt, /只能称为“报道\/整理”/);
-  assert.match(prompt, /使用 4-5 个完整短句/);
+  assert.match(prompt, /使用 6-8 个完整短句/);
   assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
   assert.match(prompt, /调用成本降了/);
   assert.match(prompt, /\[下调了标准调用费率\]\(URL\)/);
   assert.doesNotMatch(prompt, /### 1\. \[模型降价让开发者调用成本再松一截\]/);
 });
 
-test("AI fun remains source-driven and optional without blocking the daily", () => {
+test("AI fun is required and remains grounded in real source details", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /一个人 \+ 一个工具 \+ 一个动作 \+ 一个反常结果/);
+  assert.match(prompt, /有具体细节的开发过程、工具体验或产品设计/);
   assert.match(prompt, /12-24 个中文字符/);
   assert.match(prompt, /Hook -> What -> Punchline/);
   assert.match(prompt, /至少两个真实细节/);
-  assert.match(prompt, /写不出完整、有来源、有真实细节的趣闻时，省略整个栏目/);
-  assert.match(prompt, /缺少趣闻不得影响其他栏目发布/);
+  assert.match(prompt, /趣闻.*必写/);
+  assert.match(prompt, /不得用省略栏目代替编辑工作/);
   assert.match(prompt, /不靠“离谱、笑死、太抽象”充当笑点/);
 });
 
@@ -138,6 +138,6 @@ test("summary prompt asks for three progressive sentences instead of parallel he
   assert.match(prompt, /读者判断/);
   assert.match(prompt, /不能复述第一句/);
   assert.match(prompt, /不要写成三条并列新闻/);
-  assert.match(prompt, /每行 24-44 个中文字符/);
+  assert.match(prompt, /优先 18-32 个可见字符/);
   assert.match(prompt, /只输出 3 行纯文本/);
 });

@@ -29,9 +29,9 @@ test("buildDailyGenerationPromptInput includes AI fun candidates in the main gen
 
   assert.match(promptInput, /Codex 帮音频转 MP4/);
   assert.match(promptInput, /AI趣闻专用候选素材/);
-  assert.match(promptInput, /最多选 1 条写完整趣闻/);
-  assert.match(promptInput, /只有人物、截图、功能或工具偏好而没有真实反差时直接省略趣闻/);
-  assert.doesNotMatch(promptInput, /兜底/);
+  assert.match(promptInput, /必须选 1 条写完整趣闻/);
+  assert.match(promptInput, /具体体验和设计细节写出趣味/);
+  assert.match(promptInput, /不要输出通用兜底段子/);
   assert.match(promptInput, /不要因为它们出现在这里就塞进今日焦点/);
   assert.match(promptInput, /Hook -> What -> Punchline/);
   assert.match(promptInput, /2058939766742335643/);

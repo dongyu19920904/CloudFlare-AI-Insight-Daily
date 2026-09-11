@@ -125,7 +125,7 @@ import { shouldAdoptDailyRepair } from '../dailyRepairPolicy.js';
 import { prefetchDailySourceCategories } from '../dailySourcePrefetch.js';
 import {
     buildStandaloneDailyFunPromptInput,
-    hasDailyFunStorySignal,
+    getDailyFunWritingRules,
     insertDailyFunSection,
     normalizeStandaloneDailyFunSection,
     removeSolicitationDailyFun,
@@ -721,7 +721,7 @@ function getStandaloneDailyFunSystemPrompt() {
     return [
         "你是 AI日报的中文编辑，只写真实来源驱动的 AI趣闻栏目。",
         "不要编造新闻，不要写兜底内容，不要解释生成过程。",
-        "输出必须是 Markdown；如果写不出合格栏目，就输出空字符串。",
+        "输出必须是包含标题、完整正文和原始来源链接的 Markdown 趣闻。",
     ].join('\n');
 }
 
@@ -757,9 +757,9 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
         `- 输入有 ${DAILY_OPEN_SOURCE_MIN} 个以上合格 GitHub 日榜项目或 ${DAILY_SOCIAL_MIN} 条以上合格社媒原帖时，对应栏目至少输出 ${DAILY_OPEN_SOURCE_MIN} 条；不能只挑 1 条敷衍`,
         `- 修复清单出现 below target 时，按“TOP 主候选 -> 去重备用”补足 ${DAILY_TOP_TARGET} 条；输入已做 AI 相关性筛选，主候选和备用合计达到 ${DAILY_TOP_TARGET} 条时不得自行减为 6-9 条；专用区素材不得挪回今日焦点`,
-        "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
-        "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
-        "- 额度邀请、留邮箱领名额、优惠招领或只有功能介绍的帖子不是趣闻；有截图也不算笑点。只写原素材中真实的预期与结果反差，不编造领完速度、评论区热度或旁观者反应",
+        getDailyFunWritingRules(),
+        "- AI趣闻必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
+        "- 额度邀请、留邮箱领名额、优惠招领不是趣闻；有截图也不算笑点，不编造领完速度、评论区热度或旁观者反应",
         "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
         "- 每条正文不得以链接开头；第一句先写 6-18 字的 `**黄色短结论。**`，第二句或首段中部再把 1 个描述性原始来源链接放在可核实事实上",
         "- 以产品、事件或实际参与者为主语，省略没有信息增量的转发者与平台流水账；需要署名时才放在链接外，来源 URL 必须保留。个人实测保留条件，观点保留提出者，独家数字保留估算或自述主体；仅有二手转述时写清“转述的测试”或“案例称”，不得假装读过未提供的一手材料，也不得将传闻或单次体验升级为官方事实或普遍能力；标题和开头也不能写大",
@@ -768,7 +768,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 链接只挂在 8-24 字的核心事实上，例如“这款编辑器支持[通过自然语言调整三维场景](URL)”或“转述的测试中，研究者让模型[直接输出可执行的十六进制](URL)”。示例不是待发布素材，不能凭示例补事实。禁止使用“某某整理的技术细节”“某某的实测记录”“截图推文”“频道消息”“报道详情”等来源标签作为链接文字",
         "- 链接文案要说明点开能验证什么，不能写“原文链接”“点击查看”“了解更多”；输入里有官方公告或项目主页时优先使用，不得编造 URL",
         "- 同一个 Source URL 在今日焦点最多使用一次；一篇聚合稿也只能生成一条，绝不能拆成多条新闻。若有重复，保留最重要的一条并用“今日焦点去重备用素材”补足条数",
-        "- 每条正文写 4-5 个短句，每句尽量不超过 45 个可见字符，总长约 120-170 字；先给短结论，接着一句写事实，一句补细节，再一句说明限制或影响。每句只推进一个信息点，完整产品名写一次，后文用明确简称；不要通过删除事实来缩短，不强制行动结尾，没有来源支持且具体可行的动作时用真实限制收尾。删除链接标记后句子也必须自然成立，不要写“[新闻标题](URL)显示”或“[报道详情](URL)指出”",
+        "- 每条 TOP 正文写 6-8 个完整短句，保留约 120-170 字，不压缩成几句快讯；多数句子 18-28 个可见字符，超过 35 字拆句。按结论、事实、细节、限制展开，每句只推进一个信息点。每 2-4 句自然分段，专业栏目维持原有篇幅。完整产品名写一次，后文用明确简称；不要通过删除事实来缩短。有来源支持且具体可行的动作才给建议，不强制行动结尾。删除链接标记后句子也必须自然成立，不要写“[新闻标题](URL)显示”或“[报道详情](URL)指出”",
         "- 今日焦点每条正文通常恰好用 `**...**` 标出 3 处：开头黄色短结论，加上 2 个来源支持的关键能力、精确数字、限制或反常结果；作者名、媒体名、情绪反应、空泛评价和来源标签不得染黄。较短专业栏目保留 2-3 处，每处 2-12 个字符，链接文字保持蓝色且不要同时加粗",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
@@ -1428,7 +1428,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         return result.markdown;
     };
     const screenFun = (markdown, stage) => {
-        const result = removeSolicitationDailyFun(markdown, options.dailySourceCandidates || []);
+        const result = removeSolicitationDailyFun(markdown);
         debugInfo.dailyFunSolicitationsRemoved ||= {};
         debugInfo.dailyFunSolicitationsRemoved[stage] = result.removedCount;
         return result.markdown;
@@ -1591,7 +1591,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     if (validation.ok && hasDedicatedDailyFunCandidates && !funStatsBeforeStandaloneGeneration.present) {
         const standaloneDailyFunCandidates = selectStandaloneDailyFunCandidates(
             dailySummaryMarkdownContent,
-            (options.dailyFunContentItems || []).filter(hasDailyFunStorySignal),
+            options.dailyFunContentItems,
             5
         );
         const standaloneDailyFunPrompt = buildStandaloneDailyFunPromptInput(dateStr, standaloneDailyFunCandidates);

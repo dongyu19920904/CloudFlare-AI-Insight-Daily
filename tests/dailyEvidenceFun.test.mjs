@@ -69,12 +69,12 @@ test("standalone generation returns empty input when all candidates are solicita
   assert.equal(normalizeStandaloneDailyFunSection(`## **😄 AI趣闻**\n\n### 招领\n${solicitation}[说明](https://example.org/offer)`), "");
 });
 
-test("standalone prompt keeps real narrative and permits no fun without fallback", () => {
+test("standalone prompt requires real narrative without generic fallback", () => {
   const prompt = buildStandaloneDailyFunPromptInput("2026-09-10", [`News Title: ${story}\nUrl: https://example.org/story`]);
-  assert.match(prompt, /最多选 1 条/);
+  assert.match(prompt, /每期写 1 条完整趣闻/);
   assert.match(prompt, /额度邀请.*不是趣闻/);
   assert.match(prompt, /不补写评论区热度/);
-  assert.match(prompt, /输出空字符串/);
+  assert.match(prompt, /不要输出通用兜底段子/);
 });
 
 function candidate(title, url, text = title) {
