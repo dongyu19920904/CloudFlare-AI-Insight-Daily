@@ -1596,7 +1596,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             options.dailyFunContentItems,
             5
         );
-        const standaloneDailyFunPrompt = buildStandaloneDailyFunPromptInput(dateStr, standaloneDailyFunCandidates);
+        const standaloneDailyFunPrompt = buildStandaloneDailyFunPromptInput(dateStr, standaloneDailyFunCandidates, dailySummaryMarkdownContent);
 
         debugInfo.dailyFunSeparateGenerationAttempted = Boolean(standaloneDailyFunPrompt);
         debugInfo.dailyFunSeparateCandidateItems = standaloneDailyFunCandidates.length;

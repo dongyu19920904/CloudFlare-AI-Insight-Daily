@@ -22,6 +22,11 @@ test("all writing entrypoints share the required fun rules rather than optional 
   const standaloneSystem = scheduled.slice(scheduled.indexOf("function getStandaloneDailyFunSystemPrompt("), scheduled.indexOf("function buildDailyRepairPrompt("));
   assert.match(standaloneSystem, /getDailyFunWritingRules\(\)/);
   assert.match(standaloneSystem, /5-7 个完整句子/);
+  assert.match(scheduled, /buildStandaloneDailyFunPromptInput\(dateStr, standaloneDailyFunCandidates, dailySummaryMarkdownContent\)/);
+  const withPublished = buildStandaloneDailyFunPromptInput("2026-09-12", [candidate], "### 1. 桌面助手上线\n\n不应传入的整段正文。");
+  assert.match(withPublished, /1\. 桌面助手上线/);
+  assert.match(withPublished, /即使候选换了原帖 URL，也不能重复/);
+  assert.doesNotMatch(withPublished, /不应传入的整段正文/);
 });
 
 test("short sentences retain article information and do not change the three-line summary", () => {
