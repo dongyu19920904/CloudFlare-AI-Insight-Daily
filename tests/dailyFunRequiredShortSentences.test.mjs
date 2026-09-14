@@ -41,6 +41,18 @@ test("short sentences retain article information and do not change the three-lin
   assert.match(summary, /优先 18-32 个可见字符/);
 });
 
+test("short sentences stay in one prose paragraph without merging media or the summary", () => {
+  const scheduled = readFileSync(new URL("../src/handlers/scheduled.js", import.meta.url), "utf8");
+  const repair = scheduled.slice(scheduled.indexOf("function buildDailyRepairPrompt("), scheduled.indexOf("function getDailyBodyGenerationEnv("));
+  for (const prompt of [getSystemPromptSummarizationStepOne(), buildDailyGenerationPromptInput([], [candidate]), repair]) {
+    assert.match(prompt, /每条资讯正文默认一个紧凑自然段/);
+    assert.match(prompt, /不按句数插入空行/);
+    assert.match(prompt, /图片、视频和真正需要的列表或表格仍独立成块/);
+    assert.doesNotMatch(prompt, /每 2-4 句自然分段/);
+  }
+  assert.match(buildDailyGenerationPromptInput([], [candidate]), /不合并今日摘要的三行/);
+});
+
 test("required fun keeps evidence and does not invent fictional user incidents", () => {
   const rules = getDailyFunWritingRules();
   assert.match(rules, /每期写 1 条完整趣闻/);
