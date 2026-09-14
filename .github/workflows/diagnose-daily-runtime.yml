@@ -82,3 +82,17 @@ jobs:
               metrics = request('https://api.cloudflare.com/client/v4/graphql', headers, json.dumps({'query': query, 'variables': variables}).encode())
               print(json.dumps({'metrics': metrics}, ensure_ascii=False))
           PY
+      - name: Verify public daily page and home
+        env:
+          REPORT_DATE: ${{ inputs.date }}
+        run: |
+          set -euo pipefail
+          [[ "$REPORT_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          for path in / "/${REPORT_DATE:0:7}/${REPORT_DATE}/"; do
+            code=$(curl -sSL --max-time 30 --retry 1 -o public-page.html -w '%{http_code}' "https://news.aivora.cn${path}")
+            echo "Public page ${path}: HTTP ${code}"
+            test "$code" = 200
+            grep -q "$REPORT_DATE" public-page.html
+            echo "Latest date found: ${REPORT_DATE}"
+            grep -q 'AI趣闻' public-page.html && echo 'AI fun section present'
+          done
