@@ -1,0 +1,78 @@
+name: Diagnose Daily Runtime (Read Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Shanghai report date (YYYY-MM-DD)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read statuses and Cloudflare metrics
+        env:
+          REPORT_DATE: ${{ inputs.date }}
+          TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          python - <<'PY'
+          import datetime, json, os, urllib.parse, urllib.request
+
+          date = datetime.date.fromisoformat(os.environ['REPORT_DATE']).isoformat()
+          base = 'https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev'
+          script = 'cloudflare-ai-lnsight-daily'
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID']
+          token = os.environ['CLOUDFLARE_API_TOKEN']
+          trigger_secret = os.environ['TEST_TRIGGER_SECRET']
+          if not trigger_secret:
+              raise SystemExit('Missing test trigger secret')
+
+          def request(url, headers=None, body=None):
+              req = urllib.request.Request(url, headers=headers or {}, data=body)
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      return json.load(response)
+              except Exception as error:
+                  return {'requestError': type(error).__name__, 'httpCode': getattr(error, 'code', None)}
+
+          status_fields = ('mode', 'date', 'source', 'cron', 'state', 'phase', 'phaseAt', 'progress', 'startedAt', 'finishedAt', 'outcome', 'reason', 'error')
+          debug_fields = ('dailyGenerated', 'dailyPublished', 'dailyValidationPassed', 'dailyValidationIssues', 'dailyValidationWarnings', 'skipReason', 'dailyRepairAttempted', 'dailyRepairAdopted', 'dailyFunSectionPresent')
+          for mode in ('daily-prefetch', 'daily', 'daily-backup'):
+              for alias in (False, True):
+                  params = {'key': trigger_secret, 'mode': mode}
+                  if not alias:
+                      params['date'] = date
+                  payload = request(base + '/testTriggerScheduledStatus?' + urllib.parse.urlencode(params))
+                  status = payload.get('status') or {}
+                  safe = {key: status[key] for key in status_fields if key in status}
+                  safe['debug'] = {key: (status.get('debug') or {}).get(key) for key in debug_fields}
+                  print(json.dumps({'query': mode + (':current' if alias else ':' + date), 'status': safe, 'requestError': payload.get('requestError')}, ensure_ascii=False))
+
+          if token and account:
+              headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+              api = 'https://api.cloudflare.com/client/v4/accounts/' + account + '/workers/scripts/' + script
+              schedules = request(api + '/schedules', headers)
+              print(json.dumps({'schedules': schedules}, ensure_ascii=False))
+              settings = request(api + '/settings', headers)
+              result = settings.get('result') or {}
+              print(json.dumps({'settings': {key: result.get(key) for key in ('limits', 'usage_model', 'observability')}, 'errors': settings.get('errors')}, ensure_ascii=False))
+              query = '''query($account: string, $start: string, $end: string, $script: string) {
+                viewer { accounts(filter: {accountTag: $account}) {
+                  workersInvocationsAdaptive(limit: 100, filter: {scriptName: $script, datetime_geq: $start, datetime_leq: $end}) {
+                    sum { requests errors subrequests }
+                    quantiles { cpuTimeP50 cpuTimeP99 }
+                    dimensions { datetime scriptName status }
+                  }
+                } }
+              }'''
+              variables = {'account': account, 'start': date + 'T00:45:00Z', 'end': date + 'T02:00:00Z', 'script': script}
+              metrics = request('https://api.cloudflare.com/client/v4/graphql', headers, json.dumps({'query': query, 'variables': variables}).encode())
+              print(json.dumps({'metrics': metrics}, ensure_ascii=False))
+          PY
