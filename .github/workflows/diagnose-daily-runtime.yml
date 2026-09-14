@@ -50,10 +50,16 @@ jobs:
                   if not alias:
                       params['date'] = date
                   payload = request(base + '/testTriggerScheduledStatus?' + urllib.parse.urlencode(params))
+                  if payload.get('requestError') and token and account:
+                      key = 'scheduled-status:' + mode + ':' + ('current' if alias else date)
+                      kv_url = 'https://api.cloudflare.com/client/v4/accounts/' + account + '/storage/kv/namespaces/bd98e664917441a08118edc88790bf3f/values/' + urllib.parse.quote(key, safe='')
+                      saved = request(kv_url, {'Authorization': 'Bearer ' + token})
+                      if saved.get('state'):
+                          payload = {'status': saved, 'readFrom': 'Cloudflare KV API'}
                   status = payload.get('status') or {}
                   safe = {key: status[key] for key in status_fields if key in status}
                   safe['debug'] = {key: (status.get('debug') or {}).get(key) for key in debug_fields}
-                  print(json.dumps({'query': mode + (':current' if alias else ':' + date), 'status': safe, 'requestError': payload.get('requestError')}, ensure_ascii=False))
+                  print(json.dumps({'query': mode + (':current' if alias else ':' + date), 'status': safe, 'readFrom': payload.get('readFrom', 'Worker endpoint'), 'requestError': payload.get('requestError'), 'httpCode': payload.get('httpCode')}, ensure_ascii=False))
 
           if token and account:
               headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
