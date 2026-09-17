@@ -75,6 +75,27 @@ test('a passing mention in article body does not consume a vendor news slot', ()
   assert.equal(result.selectedCounts.news, 2);
 });
 
+test('distinct second vendor event can fill a scarce daily section slot', () => {
+  const social = Array.from({length:6},(_,index)=>({
+    type:'socialMedia',title:`AI Agent 实测 ${index}`,authors:`author${index}`,source:'X',
+    url:`https://x.com/author${index}/status/${index}`,published_date:'2026-09-17',
+    details:{content_html:`<p>AI Agent 实测 ${index}。</p>`},
+  }));
+  const vendorTitles=['Claude Cowork 新增团队协作入口','Claude 公布文本水印处理方案','Claude 发布语音对话接口'];
+  const vendor = vendorTitles.map((title,index)=>({
+    type:'news',title,source:'科技媒体',
+    url:`https://example.com/claude-${index}`,published_date:'2026-09-17',
+    description:`第 ${index} 项独立功能。`,details:{content_html:`<p>Claude 推出独立功能 ${index}。</p>`},
+  }));
+  const result=buildDailyPromptSelection({
+    news:[buildNewsItem(1),buildNewsItem(2),buildNewsItem(3),...vendor],
+    project:Array.from({length:4},(_,index)=>buildProjectItem(index)),
+    socialMedia:social,paper:[],
+  });
+  assert.ok(result.selectedContentItems.length >= 15);
+  assert.equal(result.selectedContentItems.filter(item=>/News Title: Claude/.test(item)).length,2);
+});
+
 function buildProjectItem(index) {
   return {
     type: "project",
