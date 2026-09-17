@@ -1,4 +1,5 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
+import { excerptDailyNewsEvidence, getDailySourceProvenanceHint } from "./dailySourceExcerpt.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { hasDailyFunStorySignal, isDailyFunSolicitation } from "./dailyFunSection.js";
 import {
@@ -472,7 +473,10 @@ function buildDailyPromptCandidate(item) {
   const stableContentHtml = removeUnusableMediaTagsFromHtml(item.details?.content_html);
   const mediaPlaceholders = extractMediaPlaceholdersFromHtml(stableContentHtml);
   const itemHasMedia = mediaPlaceholders.length > 0;
-  const plainTextContent = truncatePromptText(stripHtml(stableContentHtml));
+  const sourcePlainText = stripHtml(stableContentHtml);
+  const plainTextContent = sourceType === "news"
+    ? excerptDailyNewsEvidence(sourcePlainText)
+    : truncatePromptText(sourcePlainText);
   let itemText = "";
 
   switch (sourceType) {
@@ -502,6 +506,11 @@ function buildDailyPromptCandidate(item) {
   }
 
   if (!itemText) return null;
+  if (item.source && !/^Source:/m.test(itemText)) {
+    itemText += `\nSource: ${item.source}`;
+  }
+  const sourceHint = getDailySourceProvenanceHint(item.source, item.url);
+  if (sourceHint) itemText += `\n${sourceHint}`;
 
   if (mediaPlaceholders.length > 0) {
     itemText += `\nMedia References: ${mediaPlaceholders.join(" ")}`;
@@ -766,6 +775,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     dailySourceCandidates: [...orderedSelectedCandidates, ...dailyFunCandidates].map((candidate) => ({
       title: candidate.title,
       url: candidate.url,
+      source: candidate.source,
       description: candidate.description,
       plainText: candidate.plainText,
     })),

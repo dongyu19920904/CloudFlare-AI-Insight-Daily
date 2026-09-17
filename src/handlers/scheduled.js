@@ -2,7 +2,6 @@
 import { normalizeMarkdownImageSyntax, normalizeMarkdownMediaUrl } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
-import { excerptDailyNewsEvidence, getDailySourceProvenanceHint } from '../dailySourceExcerpt.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
 import { resolveScheduledModeFromEvent } from '../scheduleRouting.js';
 import { resolveFoloCookie } from './foloCookieAdmin.js';
@@ -1218,10 +1217,7 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
         for (const item of items) {
             const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
             const itemHasMedia = mediaPlaceholders.length > 0;
-            const sourcePlainText = stripHtml(item.details?.content_html);
-            const plainTextContent = item.type === 'news'
-                ? excerptDailyNewsEvidence(sourcePlainText)
-                : truncatePromptText(sourcePlainText);
+            const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
             let itemText = "";
 
             switch (item.type) {
@@ -1244,12 +1240,6 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
                     if (item.details?.content_html) itemText += `\nContent: ${plainTextContent}`;
                     break;
             }
-
-            if (item.source && !/^Source:/m.test(itemText)) {
-                itemText += `\nSource: ${item.source}`;
-            }
-            const sourceHint = getDailySourceProvenanceHint(item.source, item.url);
-            if (sourceHint) itemText += `\n${sourceHint}`;
 
             if (mediaPlaceholders.length > 0) {
                 itemText += `\nMedia References: ${mediaPlaceholders.join(' ')}`;
