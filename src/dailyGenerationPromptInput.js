@@ -9,9 +9,9 @@ import { hasDailyFunStorySignal, isDailyFunPreferenceOnly } from "./dailyFunSect
 export function getDailyReadabilityRules() {
   return [
     "【统一阅读规则：初稿与修复共用】",
-    "标题写短而具体的事件，保留必要主体和条件；正文首句补充事实，不重复标题，不另写抽象口号式短结论。",
+    "标题写短而具体的事件，保留必要主体和条件；正文首句补充事实，不重复标题，不另写抽象口号式短结论。分数、倍率和排名若因测试框架、适配器或对照对象而变化，标题与首句不能只留下最高值，正文须并列交代素材给出的关键条件。",
     "一条聚焦一个事件，默认一个自然段；短句不等于多分段。普通句子一次推进一个信息点，必要名称和条件可较长；不逐句卡死字数，不删事实来达标，不凑句数或字数。",
-    "来源链接优先挂在约 5–12 字的完整事实或能力短语，必要时放宽；删除链接标记后句子也必须自然成立。保留真实 URL，不机械截字或截断英文名称，不写‘作者整理的技术细节’等来源标签。",
+    "来源链接优先挂在约 5–12 字的完整事实或能力短语，必要时放宽；长产品名放在链接外，链接内只放可核对的短事实，删除链接标记后句子也须自然成立。保留真实 URL，不机械截字或截断英文名称。链接文案只能称呼该 URL 的实际发布方；媒体、社媒或频道转述不能写成被转述公司的官方说明。",
     "高亮选择来源支持的完整数字及单位、能力、条件或反差，通常 1–3 处即可，不强行凑数；没有适合的重点时可不加粗。不要高亮连接词、半截词、空泛评价或整段，链接不要同时加粗。",
     "聚合来源只选其中一个有充分证据的主事件，其余无关事件略去；同一 URL 不拆成多条。只有参会、泛泛推荐或模糊趋势而没有具体 AI 进展的候选，优先用已有合格备用替换；没有合格素材时省略，不虚构补位。",
   ].join("\n");
@@ -23,7 +23,7 @@ export function getDailyEditorialChecklist() {
     "逐条回到该 Url 对应的素材，不从另一条新闻借人物、产品、参数或结论。旧稿不是证据：repair 必须删除旧稿增写但原素材没有的人物身份、套餐规则、普遍效果和判断，即使删后短于目标篇幅。",
     "人物只写素材明示的姓名或角色，转发者不自动成为创作者；无法确定身份时省略头衔。涉及价格、免费条件、额度、地区或上线状态，只有输入中的对应官方证据才可下确定结论；没有证据就不写这些细节，不凭演示推断免费。",
     "收购或融资只出现社交转述时，不写交易金额、已完成或行业最大等断言；只讲有据的报道线索，不确定状态不得变成黄色结论或蓝色事实。旧访谈和旧交易只有近期确有新进展才进焦点，转发日期不代表发生日期。",
-    "同一测试的对象、分段优劣、数字和条件逐项对应；不要把开头优劣反写到副歌，也不要将性能/美元变成 token 成本降幅。没有共同测算条件时分别陈述，不用‘换算成’把两个指标强行关联。",
+    "同一测试的对象、数字和条件逐项对应；素材若同时给出标准框架与额外适配后的成绩，写最高分时必须同时说明配置差别与标准成绩。不要把性能/美元变成 token 成本降幅；没有共同测算条件时分别陈述，不强行换算。",
     "FAQ 从正文已证实的使用细节或限制提出一个窄问题，答案只重组已有事实并保留证据链接，不增加登录、付费、地区或售后条件。原材料没有证明的‘全部兑现’‘商业打印标准’‘无需订阅’等评价必须删除，而不是增加一句免责声明。",
     "目标仍是 TOP 10、短句、短链接和事实高亮；不为凑数凑字而扩大事实。有问题的候选先用去重备用替换，没有合格备用时只省略该条，其他新闻照常输出。趣闻先确认真实动作和预期反差；偏好排名不是故事，不能用一个泛泛俏皮结尾伪造笑点。",
     "以上检查在内部完成，只输出成稿，不附检查过程。",
@@ -55,6 +55,12 @@ function classifyDailyPromptItem(item) {
   if (/^Papers Title:/m.test(text)) return "paper";
   if (/^News Title:/m.test(text)) return "news";
   return "other";
+}
+
+function isProductUpdatePromptItem(item) {
+  const title = String(item || "").match(/^News Title:\s*(.+)$/im)?.[1] || "";
+  return /(?:AI|模型|助手|智能体|API|应用|工具|Claude|Gemini|豆包|通义|Kimi)/i.test(title) &&
+    /(?:发布|推出|上线|升级|更新|新增|开放|强化|接入)/.test(title);
 }
 
 function allocateDailyPromptItems(items = []) {
@@ -96,13 +102,23 @@ function allocateDailyPromptItems(items = []) {
   reserveOne("socialMedia", DAILY_SOCIAL_MIN);
   reserveOne("news", 2);
 
+  const reservedNews = [];
+  if (reserveCounts.news > 0) {
+    const productUpdate = [...buckets.news].reverse().find(isProductUpdatePromptItem);
+    if (productUpdate) reservedNews.push(productUpdate);
+    for (const item of [...buckets.news].reverse()) {
+      if (reservedNews.length >= reserveCounts.news) break;
+      if (!reservedNews.includes(item)) reservedNews.push(item);
+    }
+  }
+  const reservedNewsSet = new Set(reservedNews);
   const reserved = {
     project: reserveCounts.project >= buckets.project.length
       ? buckets.project
       : buckets.project.slice(1, reserveCounts.project + 1),
     socialMedia: buckets.socialMedia.slice(0, reserveCounts.socialMedia),
     paper: buckets.paper.slice(0, reserveCounts.paper),
-    news: reserveCounts.news > 0 ? buckets.news.slice(-reserveCounts.news) : [],
+    news: buckets.news.filter((item) => reservedNewsSet.has(item)),
   };
   const reservedItems = new Set(Object.values(reserved).flat());
 
@@ -331,11 +347,11 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `本次主素材共有：新闻 ${newsCount} 条、GitHub 当日日榜项目 ${projectCount} 个、社媒原帖 ${socialCount} 条、论文 ${paperCount} 篇。`,
     `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
-    `已从补位池提取 ${promotedTopBackupItems.length} 条，与原主候选组成 ${topCandidateItems.length} 条明确 TOP 候选；下面的 TOP 候选必须逐条使用，每条只生成一次。`,
+    `已从补位池提取 ${promotedTopBackupItems.length} 条，与原主候选组成 ${topCandidateItems.length} 条 TOP 候选；每个事件最多写一次，证据弱或只是泛讲解的候选应换用去重备用。`,
     `另有 ${replacementTopBackupItems.length} 条去重替换素材，用于替换同源拆分、重复或事实证据不足的候选。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
-    `TOP 候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重替换素材替换。明确 TOP 候选达到 ${DAILY_TOP_TARGET} 条时必须逐条写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有明确候选确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
+    `TOP 候选已过 AI 相关性筛选，但不等于每条都值得发布；泛讲解、弱消息和重复项目先换去重备用。合格主候选与备用足够时写满 ${DAILY_TOP_TARGET} 条；确实不足时按合格数量输出，不得挪用专用区素材或泛科技内容凑数。`,
     "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
   ].join("\n");
   const numberedTopCandidates = topCandidateItems

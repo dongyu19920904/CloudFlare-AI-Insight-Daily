@@ -41,3 +41,11 @@ test('draft and repair share readability rules and omit conflicting numerical qu
     assert.doesNotMatch(text, /18-32|不得超过 55|不超过 45|恰好保留 3|必须有 3 个短高亮|使用 3-5 个|写 4-5 个/);
   }
 });
+
+test('shared rules preserve metric conditions and distinguish relay links from official sources', () => {
+  const rules = getDailyReadabilityRules();
+  assert.match(rules, /标准|测试框架/);
+  assert.match(rules, /最高值/);
+  assert.match(rules, /转述不能写成.*官方说明/);
+  assert.match(rules, /长产品名放在链接外/);
+});

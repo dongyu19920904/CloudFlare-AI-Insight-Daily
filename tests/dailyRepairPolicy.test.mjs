@@ -122,3 +122,20 @@ test("daily repair does not trade fuller TOP coverage for worse writing quality"
     targetTopItemCount: 10,
   }), false);
 });
+
+test("daily repair cannot improve prose by dropping a covered section or adding a second TOP project", () => {
+  const longSentences = "Daily writing has dense long sentences: 9/40 over 55 chars, p90 65, max 90";
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true, repairedPassed: true,
+    initialQualityWarnings: [longSentences],
+    repairedQualityWarnings: [
+      "Daily professional sections are below target: expected 3, got 2",
+      "Daily social section is below target: expected 2, got 1",
+    ],
+  }), false);
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true, repairedPassed: true,
+    initialQualityWarnings: [longSentences],
+    repairedQualityWarnings: ["Daily TOP must contain at most one GitHub/open-source project item"],
+  }), false);
+});

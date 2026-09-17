@@ -23,6 +23,15 @@ export function scoreDailyQualityWarnings(warnings = []) {
   }, 0);
 }
 
+function getSectionDeficits(warnings = []) {
+  const deficits = new Map();
+  for (const warning of warnings) {
+    const match = String(warning || "").match(/^Daily (.+?) (?:is|are) below target: expected (\d+), got (\d+)/i);
+    if (match) deficits.set(match[1], Math.max(0, Number(match[2]) - Number(match[3])));
+  }
+  return deficits;
+}
+
 export function shouldAdoptDailyRepair({
   initialPassed,
   repairedPassed,
@@ -36,6 +45,15 @@ export function shouldAdoptDailyRepair({
 }) {
   if (!repairedPassed) return false;
   if (!initialPassed) return true;
+
+  const initialDeficits = getSectionDeficits(initialQualityWarnings);
+  for (const [section, deficit] of getSectionDeficits(repairedQualityWarnings)) {
+    if (deficit > (initialDeficits.get(section) || 0)) return false;
+  }
+  if (
+    repairedQualityWarnings.some((warning) => /Daily TOP must contain at most one GitHub\/open-source project item/i.test(warning)) &&
+    !initialQualityWarnings.some((warning) => /Daily TOP must contain at most one GitHub\/open-source project item/i.test(warning))
+  ) return false;
 
   const initialQualityScore = initialQualityWarnings.length > 0
     ? scoreDailyQualityWarnings(initialQualityWarnings)

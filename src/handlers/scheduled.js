@@ -765,7 +765,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 以产品、事件或实际参与者为主语，省略没有信息增量的转发者与平台流水账；需要署名时才放在链接外，来源 URL 必须保留。个人实测保留条件，观点保留提出者，独家数字保留估算或自述主体；仅有二手转述时写清“转述的测试”或“案例称”，不得假装读过未提供的一手材料，也不得将传闻或单次体验升级为官方事实或普遍能力；标题和开头也不能写大",
         "- 普通功能消息直接以工具为主语，不是把转发链缩成“某某介绍”就算改好。仅有企业自述时，标题写“企业自述：扩店三倍未增编”，正文说明企业自述的具体条件；仅有一次用户测试时，正文保留“这次测试”的范围。这些只是条件式范例，不是新增素材。不能先断言、到末句才说未经核实；开头不重复标题或塞入全部能力，必要限定保留，其余细节移到后文",
         "- 标题、首句、正文及 FAQ 保留研究证据边界：公布证明稿不等于已获独立认可，模型预测不等于实验或临床有效，统计相关不等于因果；不能把帮助筛选实验方向写成不必实验。仅有转述时不要自行宣布已经核实，不为每条普通消息机械增加免责声明",
-        "- 链接文案要说明点开能验证什么，不能写“原文链接”“点击查看”“了解更多”；输入里有官方公告或项目主页时优先使用，不得编造 URL",
+        "- 链接文案要说明点开能验证什么；长产品名放在链接外，单条长蓝链也要改成完整的短事实。Source 字段是当前 URL 的发布方，Telegram 等转述链接不得写成被转述公司的官方技术说明；输入里有官方公告或项目主页时优先使用，不得编造 URL",
         "- 同一个 Source URL 在今日焦点最多使用一次；一篇聚合稿只选一个有充分证据的主事件，绝不能罗列无关事件或拆成多条新闻。若有重复，保留最重要的一条并用“今日焦点去重备用素材”补足条数",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
@@ -1239,6 +1239,10 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
                     if (item.source) itemText += `\nSource: ${item.source}`;
                     if (item.details?.content_html) itemText += `\nContent: ${plainTextContent}`;
                     break;
+            }
+
+            if (item.source && !/^Source:/m.test(itemText)) {
+                itemText += `\nSource: ${item.source}`;
             }
 
             if (mediaPlaceholders.length > 0) {

@@ -116,6 +116,12 @@ test("daily presentation audit flags source-led and overlong fact links", () => 
   assert.match(warnings.join("\n"), /awkward source-led or overlong link anchors/);
 });
 
+test("a single very long blue link requests repair", () => {
+  const markdown = `## **🔥 今日焦点 TOP 10**\n\n### 1. Gemini 展示实时语音交互\n\n谷歌称，[3.8 Live Extended Thinking 在语音对话排行榜排名第一](https://blog.google/example)。演示展示了实时读取画面。`;
+  assert.equal(analyzeDailyPresentationQuality(markdown).awkwardFactLinkCount, 1);
+  assert.match(collectDailyWritingStyleWarnings(markdown).join("\n"), /awkward source-led or overlong link anchors/);
+});
+
 test("daily style audit warns on repeated generic judgments without rejecting prose", () => {
   const warnings = collectDailyWritingStyleWarnings(`
 这意味着开发者需要重新判断。值得关注的是工具已经更新。可以看出市场仍在变化。

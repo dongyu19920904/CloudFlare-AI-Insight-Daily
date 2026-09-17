@@ -86,7 +86,7 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   assert.match(promptInput, /社媒精选专用候选素材/);
   assert.match(promptInput, /产品与行业栏目专用候选素材/);
   assert.match(promptInput, /只准写入后面的开源专用区/);
-  assert.match(promptInput, /不得挪用专用区素材凑数/);
+  assert.match(promptInput, /不得挪用专用区素材或泛科技内容凑数/);
   assert.doesNotMatch(promptInput, /尚未使用的专用区合格素材提升到今日焦点/);
   assert.match(promptInput, /候选编号、筛选数量、淘汰原因和补位过程/);
   const selectedItems = [
@@ -104,6 +104,18 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   });
   assert.equal(promptInput.match(/user-5\/status\/5/g)?.length, 1);
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
+});
+
+test("product update is reserved for the topic section even when not among the last news", () => {
+  const news = (index) => `News Title: AI 行业消息 ${index}\nUrl: https://example.com/news-${index}`;
+  const product = "News Title: Claude 新增文件分析功能\nSource: Example News\nUrl: https://example.com/product-update";
+  const prompt = buildDailyGenerationPromptInput([
+    news(1), news(2), product, ...Array.from({length: 11}, (_, index) => news(index + 3)),
+  ]);
+  const topicSection = prompt.split("【产品与行业栏目专用候选素材】")[1] || "";
+  assert.match(topicSection, /Claude 新增文件分析功能/);
+  assert.match(topicSection, /Source: Example News/);
+  assert.doesNotMatch(prompt.split("【今日焦点候选素材】")[1]?.split("【产品与行业栏目专用候选素材】")[0] || "", /Claude 新增文件分析功能/);
 });
 
 test("daily prompt allocation keeps at most one GitHub project in a low-volume TOP", () => {
@@ -183,8 +195,8 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
   assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 5);
   assert.match(promptInput, /AI趣闻专用候选素材/);
   assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 1);
-  assert.match(promptInput, /组成 10 条明确 TOP 候选/);
-  assert.match(promptInput, /不得凭主观判断自行减为 6-9 条/);
+  assert.match(promptInput, /组成 10 条 TOP 候选/);
+  assert.match(promptInput, /合格主候选与备用足够时写满 10 条/);
 });
 
 test("buildDailyGenerationPromptInput removes duplicate source URLs and fills the TOP gap", () => {
@@ -213,7 +225,7 @@ test("buildDailyGenerationPromptInput removes duplicate source URLs and fills th
   const promptInput = buildDailyGenerationPromptInput(selectedItems, funItems);
 
   assert.equal((promptInput.match(/https:\/\/example\.com\/digest/g) || []).length, 1);
-  assert.match(promptInput, /已从补位池提取 1 条，与原主候选组成 10 条明确 TOP 候选/);
+  assert.match(promptInput, /已从补位池提取 1 条，与原主候选组成 10 条 TOP 候选/);
   assert.match(promptInput, /TOP 候选 10:/);
   assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 2);
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
