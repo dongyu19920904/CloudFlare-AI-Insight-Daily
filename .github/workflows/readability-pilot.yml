@@ -1,0 +1,75 @@
+name: One-off daily readability pilot
+on:
+  push:
+    branches: [codex/readability-pilot-20260917]
+    paths: [.github/workflows/readability-pilot.yml]
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify and save the fixed date source cache
+        run: |
+          mkdir -p pilot
+          python - <<'PY'
+          import os,json,urllib.request,hashlib
+          from pathlib import Path
+          base='https://api.cloudflare.com/client/v4/accounts/'+os.environ['CLOUDFLARE_ACCOUNT_ID']
+          headers={'Authorization':'Bearer '+os.environ['CLOUDFLARE_API_TOKEN']}
+          manifest={}
+          for kind in ['news','project','paper','socialMedia']:
+              key='2026-09-17-'+kind
+              req=urllib.request.Request(base+'/storage/kv/namespaces/bd98e664917441a08118edc88790bf3f/values/'+key,headers=headers)
+              with urllib.request.urlopen(req,timeout=30) as response: raw=response.read()
+              data=json.loads(raw)
+              assert isinstance(data,list), 'Cache is incomplete; do not fetch new sources'
+              Path('pilot/'+key+'.json').write_bytes(raw)
+              manifest[kind]={'items':len(data),'sha256':hashlib.sha256(raw).hexdigest()}
+          Path('pilot/cache-manifest.json').write_text(json.dumps(manifest,indent=2))
+          print(json.dumps(manifest))
+          req=urllib.request.Request(base+'/workers/scripts/cloudflare-ai-lnsight-daily/deployments',headers=headers)
+          with urllib.request.urlopen(req,timeout=30) as response: data=json.load(response)
+          Path('pilot/production-before.json').write_text(json.dumps(data))
+          PY
+      - name: Upload a version without moving production traffic
+        run: |
+          npx --yes wrangler@4.59.2 versions upload --preview-alias readability-20260917 --message 'Fixed-date readability dry-run; no production rollout' > pilot/version-upload.log 2>&1
+          grep -E 'Version ID|Preview URL|Version Preview|Alias Preview|Uploaded' pilot/version-upload.log || true
+      - name: Generate exactly one dry-run from the cached sample
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 600 --get \
+            'https://readability-20260917-cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testTriggerScheduledDaily' \
+            --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+            --data-urlencode 'date=2026-09-17' \
+            --data-urlencode 'dryRun=1' \
+            --data-urlencode 'stream=1' \
+            --output pilot/result.ndjson
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          events=[json.loads(line) for line in Path('pilot/result.ndjson').read_text().splitlines() if line.strip()]
+          final=next((x for x in reversed(events) if x.get('state') in ['success','error']),{})
+          debug=final.get('debug') or {}
+          Path('pilot/debug.json').write_text(json.dumps(debug,ensure_ascii=False,indent=2))
+          Path('pilot/daily-preview.md').write_text(debug.get('dailyPreviewMarkdown',''),encoding='utf8')
+          assert debug.get('usedCachedDailySourceData') is True, 'Did not use original cached sources'
+          assert debug.get('dailyPublished') is False, 'Dry-run publication contract missing'
+          assert debug.get('dailyWouldPublish') is True, 'Generated draft did not pass existing publication checks'
+          print('Preview saved; editorial review still required')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-readability-pilot-20260917
+          path: pilot/
+          retention-days: 7
