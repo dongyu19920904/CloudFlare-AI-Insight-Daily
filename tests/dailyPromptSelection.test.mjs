@@ -3,6 +3,29 @@ import assert from "node:assert/strict";
 
 import { buildDailyPromptSelection } from "../src/dailyPromptSelection.js";
 
+test("the active daily selection path includes source identity and later benchmark conditions", () => {
+  const benchmark = {
+    type: "news", title: "GPT-6 AI 评测出现两种成绩", source: "科技媒体",
+    url: "https://example.com/benchmark", published_date: "2026-09-17",
+    description: "同一模型的评测成绩不同。",
+    details: { content_html: `<p>模型在半私有集得到 99.9%。${'背景说明。'.repeat(100)}标准框架得到 62.7%。接入 Provider Adapter 后才达到 99.9%。</p>` },
+  };
+  const relay = {
+    type: "news", title: "Claude AI 水印说明被转述", source: "AI探索指南 - Telegram Channel",
+    url: "https://t.me/example/123", published_date: "2026-09-17",
+    description: "频道转述技术说明。", details: { content_html: "<p>频道转述水印方法。</p>" },
+  };
+  const selectOne = item => buildDailyPromptSelection(
+    {news:[item],project:[],socialMedia:[],paper:[]},
+    {DAILY_PROMPT_MAX_ITEMS:1,DAILY_PROMPT_NEWS_ITEMS:1},
+  ).selectedContentItems[0];
+  const benchmarkPrompt = selectOne(benchmark);
+  assert.match(benchmarkPrompt, /Source: 科技媒体/);
+  assert.match(benchmarkPrompt, /标准框架得到 62\.7%/);
+  assert.match(benchmarkPrompt, /Provider Adapter 后才达到 99\.9%/);
+  assert.match(selectOne(relay), /没有机构原始 URL 时，只能称频道转述/);
+});
+
 function buildNewsItem(index) {
   return {
     type: "news",
