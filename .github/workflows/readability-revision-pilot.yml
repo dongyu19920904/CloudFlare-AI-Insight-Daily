@@ -43,7 +43,7 @@ jobs:
           PY
       - name: Upload a version without moving production traffic
         run: |
-          npx --yes wrangler@4.59.2 versions upload --preview-alias readability-revision-20260917 --message 'Fixed-date bounded-evidence dry-run; no production rollout' > pilot/version-upload.log 2>&1
+          npx --yes wrangler@4.59.2 versions upload --preview-alias readability-revision-20260917 --message 'Fixed-date active-selector dry-run; no production rollout' > pilot/version-upload.log 2>&1
           grep -E 'Version ID|Preview URL|Version Preview|Alias Preview|Uploaded' pilot/version-upload.log || true
       - name: Generate exactly one dry-run from the cached sample
         run: |
