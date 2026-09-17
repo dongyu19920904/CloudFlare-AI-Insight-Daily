@@ -2,6 +2,7 @@
 import { normalizeMarkdownImageSyntax, normalizeMarkdownMediaUrl } from '../helpers.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
+import { excerptDailyNewsEvidence, getDailySourceProvenanceHint } from '../dailySourceExcerpt.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
 import { resolveScheduledModeFromEvent } from '../scheduleRouting.js';
 import { resolveFoloCookie } from './foloCookieAdmin.js';
@@ -770,7 +771,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
         "- 今日焦点最多 1 个 GitHub 项目；今日焦点和开源 TOP 中只要出现 GitHub 仓库链接，都必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint，媒体或社媒顺手提到的非日榜仓库不能使用",
-        "- FAQ 每天必须有 1 条；问题要像真实搜索问句。涉及模型价格、额度或可用性时必须有输入中的官方来源，第一段先直接回答并可用三行以内对比表说明限制；第二段固定写：需要进一步比较当前公开的 AI 账号或订阅服务时，可查看 [**爱窝啦·AI账号店**](https://www.aivora.cn/)；商品、价格与可用状态以官网实时页面为准。正文只允许这 1 个主站链接，不得加 UTM、猜测商品 URL，也不得写成直接体验、统一访问、省去逐个注册、工具导航、官方入口或免注册聚合站",
+        "- FAQ 每天必须有 1 条；问题要像真实搜索问句。只有素材明确给出访问渠道、账号、订阅或地区条件才问怎么用；否则问有证据的能力或限制，不补登录要求。涉及价格、额度或可用性必须有输入中的官方来源；第二段固定写：需要进一步比较当前公开的 AI 账号或订阅服务时，可查看 [**爱窝啦·AI账号店**](https://www.aivora.cn/)；商品、价格与可用状态以官网实时页面为准。正文只允许这 1 个主站链接，不得加 UTM、猜测商品 URL，也不得写成直接体验、统一访问、省去逐个注册、工具导航、官方入口或免注册聚合站",
         "- 允许从最近 2 天内补位，但不要解释日期过滤、候选编号、候选数量、淘汰原因或为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“今日合格素材共几条”“TOP 候选几属于非 AI”“实际只能输出几条”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
         "- 直接输出可发布成稿，不要输出任何元话术",
@@ -1217,7 +1218,10 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
         for (const item of items) {
             const mediaPlaceholders = extractMediaPlaceholdersFromHtml(item.details?.content_html);
             const itemHasMedia = mediaPlaceholders.length > 0;
-            const plainTextContent = truncatePromptText(stripHtml(item.details?.content_html));
+            const sourcePlainText = stripHtml(item.details?.content_html);
+            const plainTextContent = item.type === 'news'
+                ? excerptDailyNewsEvidence(sourcePlainText)
+                : truncatePromptText(sourcePlainText);
             let itemText = "";
 
             switch (item.type) {
@@ -1244,6 +1248,8 @@ function buildPromptCollections(allUnifiedData, debugInfo) {
             if (item.source && !/^Source:/m.test(itemText)) {
                 itemText += `\nSource: ${item.source}`;
             }
+            const sourceHint = getDailySourceProvenanceHint(item.source, item.url);
+            if (sourceHint) itemText += `\n${sourceHint}`;
 
             if (mediaPlaceholders.length > 0) {
                 itemText += `\nMedia References: ${mediaPlaceholders.join(' ')}`;

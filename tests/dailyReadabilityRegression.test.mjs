@@ -49,3 +49,10 @@ test('shared rules preserve metric conditions and distinguish relay links from o
   assert.match(rules, /转述不能写成.*官方说明/);
   assert.match(rules, /长产品名放在链接外/);
 });
+
+test('FAQ prefers evidenced capabilities over invented account requirements', () => {
+  const draft = getSystemPromptSummarizationStepOne('2026-09-17');
+  assert.match(draft, /只有输入的官方来源明确给出渠道、账号、订阅或地区条件时/);
+  assert.match(draft, /不得根据工具所属公司推断登录要求/);
+  assert.doesNotMatch(draft, /每条正文是否有 2-3 个简短、真实的黄色重点/);
+});
