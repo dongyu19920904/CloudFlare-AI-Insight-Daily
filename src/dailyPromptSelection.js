@@ -347,6 +347,17 @@ function isAiRelevantDailyPromptCandidate(candidate) {
   ].join(" ");
   const headline = candidate?.title || "";
 
+  if (/(?:参加|参会|逛).{0,24}(?:AI|人工智能).{0,12}(?:大会|会议|峰会)/i.test(headline) &&
+    !/(?:发布|推出|展示|上线|公布|实测)/.test(headline)) return false;
+  if (/^[🎬\s]*(?:估计|感觉|猜测).{0,45}(?:AI|人工智能|智能).{0,20}(?:普及|火|爆发|流行)/i.test(headline) &&
+    String(candidate?.plainText || "").length < 100) return false;
+
+  if (candidate?.sourceType === "news" && /\biOS\s*\d+\b/i.test(headline) &&
+    !hasStrongAiRelevanceSignal(headline) &&
+    /(?:没有|尚未|未)(?:[^。；]{0,12})(?:实装|上线|推出|接入)(?:[^。；]{0,12})(?:苹果智能|Apple Intelligence)/i.test(candidate?.description || "")) {
+    return false;
+  }
+
   if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }
@@ -385,13 +396,8 @@ function isWelfareCandidateText(text) {
 }
 
 function getDailyPromptEntityKey(candidate) {
-  const text = [
-    candidate?.title || "",
-    candidate?.description || "",
-    candidate?.source || "",
-    candidate?.url || "",
-    candidate?.plainText || "",
-  ].join(" ").toLowerCase();
+  const title = String(candidate?.title || "").toLowerCase();
+  const lead = `${title} ${String(candidate?.description || "").slice(0, 160).toLowerCase()}`;
 
   const majorEntities = [
     ["anthropic", /\b(anthropic|claude)\b/i],
@@ -405,7 +411,8 @@ function getDailyPromptEntityKey(candidate) {
     ["xiaomi", /\bxiaomi\b|小米|玄戒/i],
   ];
 
-  return majorEntities.find(([, pattern]) => pattern.test(text))?.[0] || "";
+  return majorEntities.find(([, pattern]) => pattern.test(title))?.[0] ||
+    majorEntities.find(([, pattern]) => pattern.test(lead))?.[0] || "";
 }
 
 function getDailyPromptEntityCountKey(candidate) {
@@ -605,6 +612,10 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
       if (candidate.sourceType === "project" && !candidate.isDailyTrendingProject) continue;
+      // A roundup URL contains several independent events, so it is not an atomic news candidate.
+      if (candidate.sourceType === "news" &&
+        /^(?:AI日报|AI简报|每日(?:AI)?速览)[：:]/i.test(candidate.title || "") &&
+        (String(candidate.title).match(/[；;]/g) || []).length >= 2) continue;
       if (!isAiRelevantDailyPromptCandidate(candidate)) {
         rejectedNonAiCount += 1;
         continue;

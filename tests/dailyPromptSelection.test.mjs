@@ -40,6 +40,41 @@ function buildNewsItem(index) {
   };
 }
 
+test('multi-story roundup is not offered as a single news candidate', () => {
+  const roundup = {
+    ...buildNewsItem(90),
+    title: 'AI日报：豆包模型上线；Vidu 视频升级；vivo 模型更新',
+    description: '豆包、Vidu 和 vivo 的多条新闻汇总。',
+  };
+  const result = buildDailyPromptSelection({
+    news: [roundup, buildNewsItem(91)], project: [], socialMedia: [], paper: [],
+  });
+  assert.doesNotMatch(result.selectedContentItems.join('\n'), /AI日报：豆包/);
+  assert.match(result.selectedContentItems.join('\n'), /News 91/);
+});
+
+test('ordinary iOS update with AI feature absent is not an AI news candidate', () => {
+  const ios = { ...buildNewsItem(92), title: 'iOS 27 正式推送：假日闹钟与界面更新', description: '国行仍未实装苹果智能。' };
+  const result = buildDailyPromptSelection({news:[ios,buildNewsItem(93)],project:[],socialMedia:[],paper:[]});
+  assert.doesNotMatch(result.selectedContentItems.join('\n'), /iOS 27/);
+  assert.match(result.selectedContentItems.join('\n'), /News 93/);
+});
+
+test('attendance and a speculative one-line AI device post do not fill news slots', () => {
+  const attendee = { ...buildNewsItem(94), title: '来参加教育 AI 大会，感觉会场全是老师', description: '参会随感。', details: { content_html: '<p>会场有很多老师。</p>' } };
+  const speculation = { ...buildNewsItem(95), title: '估计这个 AI 桌面很快就能普及了', description: '估计这个 AI 桌面很快就能普及了', details: { content_html: '<p>估计这个 AI 桌面很快就能普及了。</p>' } };
+  const result = buildDailyPromptSelection({news:[attendee,speculation,buildNewsItem(96)],project:[],socialMedia:[],paper:[]});
+  assert.doesNotMatch(result.selectedContentItems.join('\n'), /参加教育 AI 大会|估计这个 AI 桌面/);
+  assert.match(result.selectedContentItems.join('\n'), /News 96/);
+});
+
+test('a passing mention in article body does not consume a vendor news slot', () => {
+  const study = { ...buildNewsItem(97), title: 'AI Harness 方法实测', description: '比较多轮任务策略。', details: { content_html: '<p>研究把 GPT-6 Astra 作为对照模型之一。</p>' } };
+  const release = { ...buildNewsItem(98), title: 'GPT-6 Astra 新评测发布', description: '标准框架与适配器分数不同。' };
+  const result = buildDailyPromptSelection({news:[study,release],project:[],socialMedia:[],paper:[]}, {DAILY_PROMPT_NEWS_ITEMS:2});
+  assert.equal(result.selectedCounts.news, 2);
+});
+
 function buildProjectItem(index) {
   return {
     type: "project",

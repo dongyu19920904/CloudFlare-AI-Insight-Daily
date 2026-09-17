@@ -58,7 +58,7 @@ function classifyDailyPromptItem(item) {
 }
 
 function isProductUpdatePromptItem(item) {
-  const title = String(item || "").match(/^News Title:\s*(.+)$/im)?.[1] || "";
+  const title = String(item || "").match(/^(?:News Title|Title):\s*(.+)$/im)?.[1] || "";
   return /(?:AI|模型|助手|智能体|API|应用|工具|Claude|Gemini|豆包|通义|Kimi)/i.test(title) &&
     /(?:发布|推出|上线|升级|更新|新增|开放|强化|接入)/.test(title);
 }
@@ -104,7 +104,8 @@ function allocateDailyPromptItems(items = []) {
 
   const reservedNews = [];
   if (reserveCounts.news > 0) {
-    const productUpdate = [...buckets.news].reverse().find(isProductUpdatePromptItem);
+    const productUpdate = [...buckets.news].reverse().find(isProductUpdatePromptItem) ||
+      buckets.socialMedia.find(isProductUpdatePromptItem);
     if (productUpdate) reservedNews.push(productUpdate);
     for (const item of [...buckets.news].reverse()) {
       if (reservedNews.length >= reserveCounts.news) break;
@@ -116,9 +117,9 @@ function allocateDailyPromptItems(items = []) {
     project: reserveCounts.project >= buckets.project.length
       ? buckets.project
       : buckets.project.slice(1, reserveCounts.project + 1),
-    socialMedia: buckets.socialMedia.slice(0, reserveCounts.socialMedia),
+    socialMedia: buckets.socialMedia.filter((item) => !reservedNewsSet.has(item)).slice(0, reserveCounts.socialMedia),
     paper: buckets.paper.slice(0, reserveCounts.paper),
-    news: buckets.news.filter((item) => reservedNewsSet.has(item)),
+    news: reservedNews,
   };
   const reservedItems = new Set(Object.values(reserved).flat());
 
@@ -349,7 +350,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
     `已从补位池提取 ${promotedTopBackupItems.length} 条，与原主候选组成 ${topCandidateItems.length} 条 TOP 候选；每个事件最多写一次，证据弱或只是泛讲解的候选应换用去重备用。`,
     `另有 ${replacementTopBackupItems.length} 条去重替换素材，用于替换同源拆分、重复或事实证据不足的候选。`,
-    `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
+    `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条素材，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
     `TOP 候选已过 AI 相关性筛选，但不等于每条都值得发布；泛讲解、弱消息和重复项目先换去重备用。合格主候选与备用足够时写满 ${DAILY_TOP_TARGET} 条；确实不足时按合格数量输出，不得挪用专用区素材或泛科技内容凑数。`,
     "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
@@ -425,7 +426,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (allocation.reserved.news.length > 0) {
     promptParts.push([
       "【产品与行业栏目专用候选素材】",
-      "下面新闻已从今日焦点候选中移出。按内容分别写进产品与功能更新或行业变化与个人影响，每条素材只能使用一次。",
+      "下面素材已从今日焦点候选中移出。按内容分别写进产品与功能更新或行业变化与个人影响，每条素材只能使用一次；社媒来源须如实标明转述者。",
       "",
       allocation.reserved.news
         .map((item, index) => [`栏目新闻候选 ${index + 1}:`, item].join("\n"))
