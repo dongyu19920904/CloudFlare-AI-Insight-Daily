@@ -32,6 +32,12 @@ function getSectionDeficits(warnings = []) {
   return deficits;
 }
 
+function getLongSentenceRatio(warnings = []) {
+  const warning = warnings.find((value) => /dense long sentences:/i.test(String(value)));
+  const match = String(warning || "").match(/dense long sentences:\s*(\d+)\/(\d+) over 55 chars/i);
+  return match ? Number(match[1]) / Math.max(1, Number(match[2])) : 0;
+}
+
 export function shouldAdoptDailyRepair({
   initialPassed,
   repairedPassed,
@@ -45,6 +51,8 @@ export function shouldAdoptDailyRepair({
 }) {
   if (!repairedPassed) return false;
   if (!initialPassed) return true;
+
+  if (getLongSentenceRatio(repairedQualityWarnings) > getLongSentenceRatio(initialQualityWarnings)) return false;
 
   const initialDeficits = getSectionDeficits(initialQualityWarnings);
   for (const [section, deficit] of getSectionDeficits(repairedQualityWarnings)) {

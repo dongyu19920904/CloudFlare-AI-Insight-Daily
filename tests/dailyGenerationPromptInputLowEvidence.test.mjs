@@ -6,6 +6,17 @@ import {
   countDailyTopEligiblePromptItems,
 } from "../src/dailyGenerationPromptInput.js";
 
+test('a concrete social product update fills the product section before a vague news item', () => {
+  const news = Array.from({ length: 11 }, (_, index) => `News Title: AI research ${index}\nUrl: https://example.com/news-${index}\nContent Summary: AI research result.`);
+  const product = 'socialMedia Post by 宝玉\nTitle: 豆包大模型 2.1 Pro 发布，API 上线火山方舟\nUrl: https://x.com/dotey/status/123\nContent: 模型更新了 Agent 和多模态能力。';
+  const social = 'socialMedia Post by tester\nTitle: 一次 AI 开发者实测\nUrl: https://x.com/tester/status/456\nContent: 对比两个 AI 工具。';
+  const prompt = buildDailyGenerationPromptInput([...news, product, social], []);
+  const productSection = prompt.split('【产品与行业栏目专用候选素材】')[1]?.split('【')[0] || '';
+  assert.match(productSection, /豆包大模型 2\.1 Pro 发布/);
+  assert.doesNotMatch(prompt.split('【社媒精选专用候选素材】')[1]?.split('【')[0] || '', /豆包大模型 2\.1 Pro 发布/);
+});
+
+
 test("buildDailyGenerationPromptInput hides low-evidence AI workflow pitches from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code adds a safer planning mode",

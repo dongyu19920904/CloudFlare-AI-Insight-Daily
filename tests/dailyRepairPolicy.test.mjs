@@ -123,6 +123,16 @@ test("daily repair does not trade fuller TOP coverage for worse writing quality"
   }), false);
 });
 
+test('repair cannot trade much denser sentences for fewer unrelated warnings', () => {
+  const initial = ['Daily writing has dense long sentences: 9/31 over 55 chars, p90 80, max 100', 'Daily TOP items are too sparse for quick reading: 10'];
+  const repaired = ['Daily writing has dense long sentences: 14/33 over 55 chars, p90 110, max 140'];
+  assert.equal(shouldAdoptDailyRepair({
+    initialPassed: true, repairedPassed: true,
+    initialQualityWarnings: initial, repairedQualityWarnings: repaired,
+    initialTopItemCount: 10, repairedTopItemCount: 10, targetTopItemCount: 10,
+  }), false);
+});
+
 test("daily repair cannot improve prose by dropping a covered section or adding a second TOP project", () => {
   const longSentences = "Daily writing has dense long sentences: 9/40 over 55 chars, p90 65, max 90";
   assert.equal(shouldAdoptDailyRepair({

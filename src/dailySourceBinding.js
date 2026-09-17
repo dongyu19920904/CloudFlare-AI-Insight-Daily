@@ -72,7 +72,7 @@ function isSocialRelayUrl(value) {
   }
 }
 
-function sanitizeUnsupportedClaims(block) {
+function sanitizeUnsupportedClaims(block, records = []) {
   const changes = [];
   let input = block;
   const heading = block.split(/\r?\n/, 1)[0];
@@ -89,6 +89,14 @@ function sanitizeUnsupportedClaims(block) {
     if (/!\[|<video|```/.test(sentence)) return sentence;
     changes.push('quota-bypass-instruction');
     return extractDailyMarkdownLinks(sentence).map((link) => `[来源中的使用说明](${link.url})。`).join('');
+  });
+  markdown = markdown.replace(/(?<!!)\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (match, label, url) => {
+    const linked = records.filter((record) => record.key === sourceKey(url));
+    if (!linked.length || !linked.every((record) => /Telegram Channel/i.test(record.source || ""))) return match;
+    if (!/^https:\/\/(?:t\.me|telegram\.me)\//i.test(url)) return match;
+    if (!/(?:官方|[A-Za-z][\w.-]{2,}\s+(?:技术说明|技术文档|公告|声明|论文))/i.test(label)) return match;
+    changes.push('relay-source-link-label');
+    return `[频道转述内容](${url})`;
   });
   const links = extractDailyMarkdownLinks(markdown);
   const title = visibleText(markdown.split(/\r?\n/, 1)[0]);
@@ -146,6 +154,7 @@ export function quarantineDailySourceConflicts(markdown, candidates = []) {
     entities: specificTokens(candidate.title).filter((token) => /^[a-z]{4,}$/.test(token)),
     titleFamilies: subscriptionProductFamilies(candidate.title),
     productFamilies: subscriptionProductFamilies([candidate.title, candidate.description, candidate.plainText].filter(Boolean).join(" ")),
+    source: candidate.source,
   }));
   const output = String(markdown || "").split(/(?=^##(?!#)\s+)/m).map((section) => {
     if (/^##[^\r\n]*(?:FAQ|相关问题|常见问题)/i.test(section)) return section;
@@ -154,7 +163,7 @@ export function quarantineDailySourceConflicts(markdown, candidates = []) {
       if (/```|~~~/.test(block)) return block;
       const conflict = findConflict(block, records);
       if (!conflict) {
-        const result = sanitizeUnsupportedClaims(block);
+        const result = sanitizeUnsupportedClaims(block, records);
         if (result.changes.length) sanitized.push({ title: block.split(/\r?\n/, 1)[0], changes: result.changes });
         return result.markdown;
       }
