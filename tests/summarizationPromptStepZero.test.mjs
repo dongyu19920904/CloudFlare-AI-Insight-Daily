@@ -57,9 +57,9 @@ test("daily prompt rejects low-evidence promotions and requires factual media ca
 test("daily prompt adapts human-writing principles without replacing the digest format", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /每条使用 3-5 个完整短句/);
-  assert.match(prompt, /普通句子优先控制在 18-32 个显示字符/);
-  assert.match(prompt, /原则上不得超过 55 个/);
+  assert.match(prompt, /默认一个自然段/);
+  assert.match(prompt, /普通句子一次推进一个信息点/);
+  assert.match(prompt, /不逐句卡死字数/);
   assert.match(prompt, /不使用分号串联两个独立判断/);
   assert.match(prompt, /最多保留 3 个最重要的/);
   assert.match(prompt, /中文正文使用全角逗号/);
@@ -71,32 +71,23 @@ test("daily prompt adapts human-writing principles without replacing the digest 
   assert.doesNotMatch(prompt, /成稿正文严禁冒号/);
 });
 
-test("daily prompt gives plain yellow conclusions and contextual cyan source links distinct roles", () => {
+test("daily prompt uses concrete titles and contextual source links without a repeated lead", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /普通新闻、研究和社媒的三级标题必须是一句 14-30 个显示字符的关键结论/);
+  assert.match(prompt, /普通新闻、研究和社媒的三级标题写短而具体的事件/);
   assert.match(prompt, /开源标题保留 `owner\/repo`/);
   assert.match(prompt, /用途说明控制在 8-16 个显示字符/);
   assert.match(prompt, /不得包含 Markdown 链接/);
   assert.match(prompt, /正文不得以 Markdown 链接开头/);
-  assert.match(prompt, /第二句或首段中部/);
+  assert.match(prompt, /来源链接自然放在相关事实处/);
   assert.match(prompt, /优先链接官方来源/);
   assert.match(prompt, /二次创作的关键结论句/);
-  assert.match(prompt, /6-18 字的.*黄色短结论/);
-  assert.match(prompt, /今日焦点每条再从来源直接支持的数字、关键能力、限制或反常结果中选 2 个不同重点/);
-  assert.match(prompt, /通常恰好保留 3 处黄色/);
-  assert.match(prompt, /作者名、媒体名、情绪反应、空泛评价和来源标签不能染黄/);
-  assert.match(prompt, /链接文案控制在 8-24 个显示字符/);
   assert.match(prompt, /需要署名时才放在链接外/);
   assert.doesNotMatch(prompt, /宝玉在推文中介绍/);
-  assert.match(prompt, /禁止把“宝玉整理的技术细节”/);
   assert.match(prompt, /不能只写“实测推文”/);
   assert.match(prompt, /只能称为“报道\/整理”/);
-  assert.match(prompt, /使用 4-5 个完整短句/);
-  assert.match(prompt, /### 1\. 模型降价让开发者调用成本再松一截/);
-  assert.match(prompt, /调用成本降了/);
-  assert.match(prompt, /\[下调了标准调用费率\]\(URL\)/);
-  assert.doesNotMatch(prompt, /### 1\. \[模型降价让开发者调用成本再松一截\]/);
+  assert.match(prompt, /### 1\. 三档模型下调标准接口费率/);
+  assert.doesNotMatch(prompt, /### 1\. \[三档模型下调标准接口费率\]/);
 });
 
 test("AI fun remains source-driven and optional without blocking the daily", () => {

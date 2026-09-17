@@ -112,7 +112,7 @@ test("normalizeDailyTopEvidenceLinkLabels removes bold and shortens overlong fac
   assert.doesNotMatch(normalized, /\[[^\]]*\*\*[^\]]*\]\(/);
 });
 
-test("ensureDailyTopHighlightDensity adds factual highlights without styling links", () => {
+test("ensureDailyTopHighlightDensity preserves chosen highlights without filling a quota or styling links", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
 
 ### 1. Origin 单仓库并发性能已经公开
@@ -129,11 +129,11 @@ test("ensureDailyTopHighlightDensity adds factual highlights without styling lin
 
   assert.equal(items.length, 3);
   for (const item of items) {
-    assert.equal((item.body.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 3);
+    assert.equal((item.body.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 2);
   }
-  assert.match(normalized, /\*\*低于 400 毫秒\*\*/);
-  assert.match(normalized, /\*\*立即获得反馈\*\*/);
-  assert.match(normalized, /\*\*穷举反例\*\*/);
+  assert.ok(normalized.includes("低于 400 毫秒"));
+  assert.ok(normalized.includes("立即获得反馈"));
+  assert.ok(normalized.includes("穷举反例"));
   assert.doesNotMatch(normalized, /\*\*\[[^\]]+\]\(/);
   assert.match(normalized, /\[Origin 达到每秒 22\.6 次提交\]\(https:\/\/example\.com\/1\)/);
 });
@@ -158,13 +158,13 @@ test("ensureDailyTopHighlightDensity prefers useful facts over bare dates and au
 
   const normalized = ensureDailyTopHighlightDensity(markdown);
 
-  assert.match(normalized, /\*\*无缝迁移仓库\*\*/);
-  assert.match(normalized, /\*\*策略性欺骗\*\*/);
+  assert.ok(normalized.includes("无缝迁移仓库"));
+  assert.ok(normalized.includes("策略性欺骗"));
   assert.doesNotMatch(normalized, /\*\*2025 年\*\*/);
   assert.doesNotMatch(normalized, /\*\*宝玉\*\*/);
 });
 
-test("ensureDailyTopHighlightDensity replaces low-value emotional highlights with facts", () => {
+test("ensureDailyTopHighlightDensity removes low-value emotional emphasis without adding replacement highlights", () => {
   const markdown = `## **🔥 今日焦点 TOP 1**
 
 ### 1. AI 找到数学猜想反例
@@ -173,8 +173,8 @@ test("ensureDailyTopHighlightDensity replaces low-value emotional highlights wit
   const normalized = ensureDailyTopHighlightDensity(markdown);
 
   assert.doesNotMatch(normalized, /\*\*松了一口气\*\*/);
-  assert.match(normalized, /\*\*严格证明\*\*/);
-  assert.equal((normalized.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 4);
+  assert.ok(normalized.includes("严格证明"));
+  assert.equal((normalized.match(/\*\*[^*\r\n]+\*\*/g) || []).length, 3);
 });
 
 test("ensureDailyTopHighlightDensity keeps framework names and Chinese words intact", () => {
@@ -188,14 +188,14 @@ test("ensureDailyTopHighlightDensity keeps framework names and Chinese words int
 
   const normalized = ensureDailyTopHighlightDensity(markdown);
 
-  assert.match(normalized, /\*\*MITRE ATT&CK\*\*/);
+  assert.ok(normalized.includes("MITRE ATT&CK"));
   assert.doesNotMatch(normalized, /ATT&\*\*CK/);
-  assert.match(normalized, /\*\*有想法、有素材\*\*/);
-  assert.match(normalized, /\*\*不需要专业剪辑\*\*就能出成品/);
+  assert.ok(normalized.includes("有想法、有素材"));
+  assert.ok(normalized.includes("不需要专业剪辑就能出成品"));
   assert.doesNotMatch(normalized, /\*\*[^*]*出成\*\*品/);
 });
 
-test("ensureDailyTopHighlightDensity can emphasize account requirements and UI entries", () => {
+test("ensureDailyTopHighlightDensity does not invent emphasis for account requirements and UI entries", () => {
   const markdown = `## **🔥 今日焦点 TOP 1**
 
 ### 1. 豆包手机可以远程操控电脑
@@ -203,11 +203,11 @@ test("ensureDailyTopHighlightDensity can emphasize account requirements and UI e
 
   const normalized = ensureDailyTopHighlightDensity(markdown);
 
-  assert.match(normalized, /登录\*\*同一账号\*\*后/);
-  assert.match(normalized, /"\*\*工作任务\*\*"/);
+  assert.ok(normalized.includes("登录同一账号后"));
+  assert.ok(normalized.includes('"工作任务"'));
 });
 
-test("ensureDailyTopHighlightDensity replaces social reactions with a dated limitation", () => {
+test("ensureDailyTopHighlightDensity removes social reactions while preserving the dated limitation", () => {
   const markdown = `## **🔥 今日焦点 TOP 1**
 
 ### 1. 旧围棋 AI 被策略带偏
@@ -216,7 +216,7 @@ test("ensureDailyTopHighlightDensity replaces social reactions with a dated limi
   const normalized = ensureDailyTopHighlightDensity(markdown);
 
   assert.doesNotMatch(normalized, /\*\*网友神评：\*\*/);
-  assert.match(normalized, /\*\*现在估计不行了\*\*/);
+  assert.ok(normalized.includes("现在估计不行了"));
 });
 
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { getDailyReadabilityRules } from "../src/dailyGenerationPromptInput.js";
 import { getSystemPromptSummarizationStepOne } from "../src/prompt/summarizationPromptStepZero.js";
 import { normalizeDailyOutputPresentation } from "../src/dailySectionSanitizer.js";
 
@@ -10,7 +11,8 @@ const scheduled = readFileSync(new URL("../src/handlers/scheduled.js", import.me
 const start = scheduled.indexOf("function buildDailyRepairPrompt(");
 const end = scheduled.indexOf("function getDailyBodyGenerationEnv(", start);
 assert.ok(start >= 0 && end > start, "The actual daily repair prompt must be inspected");
-const repair = scheduled.slice(start, end);
+assert.match(scheduled.slice(start, end), /getDailyReadabilityRules\(\)/);
+const repair = scheduled.slice(start, end) + getDailyReadabilityRules();
 
 test("generation and repair allow event-first prose but retain conditional attribution", () => {
   for (const text of [prompt, repair]) {
@@ -24,8 +26,8 @@ test("generation and repair allow event-first prose but retain conditional attri
     assert.match(text, /不得假装读过未提供的一手材料/);
     assert.match(text, /普遍能力/);
     assert.match(text, /不能先断言、到末句才说未经核实/);
-    assert.match(text, /案例称扩店未增员/);
-    assert.match(text, /这次测试保住了排版/);
+    assert.match(text, /企业自述/);
+    assert.match(text, /这次测试/);
     assert.doesNotMatch(text, /宝玉在推文中介绍|据 36氪报道|来源名称必须留在链接外/);
   }
   assert.match(prompt, /不把转发者误写成创作者/);
@@ -35,18 +37,18 @@ test("generation and repair allow event-first prose but retain conditional attri
 
 test("natural prose retains density, short evidence links and optional actions", () => {
   for (const text of [prompt, repair]) {
-    assert.match(text, /120-170/);
-    assert.match(text, /4-5 个/);
-    assert.match(text, /每句只推进一个信息点/);
-    assert.match(text, /不(?:要)?通过删除事实来/);
-    assert.match(text, /具体可行的动作/);
-    assert.match(text, /8-24/);
+    assert.match(text, /不凑句数或字数/);
+    assert.match(text, /默认一个自然段/);
+    assert.match(text, /普通句子一次推进一个信息点/);
+    assert.match(text, /不删事实来达标/);
+    assert.match(text, /有来源支持且具体可行的动作|不凑句数或字数/);
+    assert.match(text, /5–12/);
     assert.doesNotMatch(text, /第二句写来源能够证明的事实，第三句补一个关键细节/);
   }
-  assert.match(prompt, /8-18 个显示字符、一般不超过 24 个/);
-  assert.match(prompt, /不强制每条以行动建议结尾/);
+  assert.match(prompt, /5–12 字的完整事实/);
+  assert.match(prompt, /有来源支持且具体可行的动作|不凑句数或字数/);
   assert.match(prompt, /删除链接标记后句子也必须自然成立/);
-  assert.match(prompt, /较短的专业栏目保留 2-3 处/);
+  assert.match(prompt, /通常 1–3 处即可，不强行凑数/);
   assert.match(prompt, /不得虚构现场、心理、销量、口碑或因果/);
   assert.match(prompt, /缺少趣闻不得影响其他栏目发布/);
 });

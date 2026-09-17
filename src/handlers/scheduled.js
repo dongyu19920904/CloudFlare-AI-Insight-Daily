@@ -113,7 +113,7 @@ import {
     buildDailyGenerationPromptInput,
     countDailyTopEligiblePromptItems,
     getDailyPromptAllocationStats,
-    getDailyEditorialChecklist,
+    getDailyEditorialChecklist, getDailyReadabilityRules,
 } from '../dailyGenerationPromptInput.js';
 import {
     DAILY_OPEN_SOURCE_MIN,
@@ -752,6 +752,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         ...(validationIssues || []).map((issue) => `- ${issue}`),
         "",
         "请严格遵守以下规则：",
+        getDailyReadabilityRules(),
         `- 只输出从 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 开始的 Markdown 正文，不要生成今日摘要、快速导航、前言、备注、AI思考或规则说明`,
         `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 和 \`## **❓ 相关问题**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条`,
         "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
@@ -760,16 +761,12 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- `## **😄 AI趣闻**` 是可选栏目；写不出完整、有来源链接的趣闻就省略，不能因为趣闻缺失影响主体日报",
         "- 如果输出 AI趣闻，必须标题二次创作，正文按 Hook -> What -> Punchline 再开发，不要照搬来源标题或正文",
         "- 额度邀请、留邮箱领名额、优惠招领或只有功能介绍的帖子不是趣闻；有截图也不算笑点。只写原素材中真实的预期与结果反差，不编造领完速度、评论区热度或旁观者反应",
-        "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题 14-30 字，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
-        "- 每条正文不得以链接开头；第一句先写 6-18 字的 `**黄色短结论。**`，第二句或首段中部再把 1 个描述性原始来源链接放在可核实事实上",
+        "- 所有 `###` 标题都必须是纯文本，不得包含 Markdown 链接；普通新闻、研究和社媒标题短而具体，AI 趣闻 12-24 字，开源标题保留 owner/repo 且冒号后用途说明 8-16 字，FAQ 使用固定问句格式",
         "- 以产品、事件或实际参与者为主语，省略没有信息增量的转发者与平台流水账；需要署名时才放在链接外，来源 URL 必须保留。个人实测保留条件，观点保留提出者，独家数字保留估算或自述主体；仅有二手转述时写清“转述的测试”或“案例称”，不得假装读过未提供的一手材料，也不得将传闻或单次体验升级为官方事实或普遍能力；标题和开头也不能写大",
-        "- 普通功能消息直接以工具为主语，不是把转发链缩成“某某介绍”就算改好。仅有企业自述时，标题写“企业自述：扩店三倍未增编”，开头用“**案例称扩店未增员。**”；仅有一次用户测试时，用“**这次测试保住了排版。**”。这些只是条件式范例，不是新增素材。不能先断言、到末句才说未经核实；开头短结论不塞完整产品名、参数和全部能力，必要限定保留，其余细节移到后文",
+        "- 普通功能消息直接以工具为主语，不是把转发链缩成“某某介绍”就算改好。仅有企业自述时，标题写“企业自述：扩店三倍未增编”，正文说明企业自述的具体条件；仅有一次用户测试时，正文保留“这次测试”的范围。这些只是条件式范例，不是新增素材。不能先断言、到末句才说未经核实；开头不重复标题或塞入全部能力，必要限定保留，其余细节移到后文",
         "- 标题、首句、正文及 FAQ 保留研究证据边界：公布证明稿不等于已获独立认可，模型预测不等于实验或临床有效，统计相关不等于因果；不能把帮助筛选实验方向写成不必实验。仅有转述时不要自行宣布已经核实，不为每条普通消息机械增加免责声明",
-        "- 链接只挂在 8-24 字的核心事实上，例如“这款编辑器支持[通过自然语言调整三维场景](URL)”或“转述的测试中，研究者让模型[直接输出可执行的十六进制](URL)”。示例不是待发布素材，不能凭示例补事实。禁止使用“某某整理的技术细节”“某某的实测记录”“截图推文”“频道消息”“报道详情”等来源标签作为链接文字",
         "- 链接文案要说明点开能验证什么，不能写“原文链接”“点击查看”“了解更多”；输入里有官方公告或项目主页时优先使用，不得编造 URL",
-        "- 同一个 Source URL 在今日焦点最多使用一次；一篇聚合稿也只能生成一条，绝不能拆成多条新闻。若有重复，保留最重要的一条并用“今日焦点去重备用素材”补足条数",
-        "- 每条正文写 4-5 个短句，每句尽量不超过 45 个可见字符，总长约 120-170 字；先给短结论，接着一句写事实，一句补细节，再一句说明限制或影响。每句只推进一个信息点，完整产品名写一次，后文用明确简称；不要通过删除事实来缩短，不强制行动结尾，没有来源支持且具体可行的动作时用真实限制收尾。删除链接标记后句子也必须自然成立，不要写“[新闻标题](URL)显示”或“[报道详情](URL)指出”",
-        "- 今日焦点每条正文通常恰好用 `**...**` 标出 3 处：开头黄色短结论，加上 2 个来源支持的关键能力、精确数字、限制或反常结果；作者名、媒体名、情绪反应、空泛评价和来源标签不得染黄。较短专业栏目保留 2-3 处，每处 2-12 个字符，链接文字保持蓝色且不要同时加粗",
+        "- 同一个 Source URL 在今日焦点最多使用一次；一篇聚合稿只选一个有充分证据的主事件，绝不能罗列无关事件或拆成多条新闻。若有重复，保留最重要的一条并用“今日焦点去重备用素材”补足条数",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
         "- 今日焦点最多 1 个 GitHub 项目；今日焦点和开源 TOP 中只要出现 GitHub 仓库链接，都必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint，媒体或社媒顺手提到的非日榜仓库不能使用",
@@ -789,7 +786,6 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         duplicateSourceChecklist,
         `- 主候选和去重备用合计充足时，今日焦点必须保持 ${DAILY_TOP_TARGET} 条；两者各自最多使用一次，专用区素材不得回流凑数`,
         "- 需要署名时才放在链接外，不强制每条出现作者或媒体名；删除转发链不能删除必要归属、测试条件或事实状态。链接只包住核心事实，不得使用“AIBase 对这项消息的报道”或“宝玉整理的技术细节”一类来源标签",
-        "- 今日焦点每条正文必须有 3 个短高亮：1 个开头结论和 2 个事实重点；长句拆成短句，不得通过删除事实来缩短",
         "检查完成后仍然只输出 Markdown 成稿，不要附检查报告。",
     ].join('\n');
 }
@@ -1497,7 +1493,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         ...dailyValidationOptions,
     });
     const getQualityTargetWarnings = (result) => (result?.warnings || [])
-        .filter((warning) => /below target|reuses the same source URL|must contain at most one GitHub|dense long sentences|generic source-only link labels|awkward source-led or overlong link anchors|too few short highlights|too sparse for quick reading/i.test(warning));
+        .filter((warning) => /below target|reuses the same source URL|must contain at most one GitHub|dense long sentences|generic source-only link labels|awkward source-led or overlong link anchors/i.test(warning));
     let validation = validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,

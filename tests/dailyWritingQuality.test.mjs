@@ -23,7 +23,7 @@ canonical: https://news.aivora.cn/2026-08/2026-08-06/
   assert.deepEqual(warnings, []);
 });
 
-test("daily presentation audit flags generic source labels, sparse copy, and weak highlights", () => {
+test("daily presentation audit flags generic source labels and sparse copy without requiring highlight counts", () => {
   const markdown = `
 ## **🔥 今日焦点 TOP 10**
 
@@ -41,10 +41,9 @@ test("daily presentation audit flags generic source labels, sparse copy, and wea
 
   assert.equal(stats.genericSourceLinkCount, 2);
   assert.equal(stats.awkwardFactLinkCount, 1);
-  assert.equal(stats.underHighlightedItemCount, 2);
   assert.equal(stats.sparseItemCount, 2);
   assert.match(warnings.join("\n"), /generic source-only link labels/);
-  assert.match(warnings.join("\n"), /too few short highlights/);
+  assert.doesNotMatch(warnings.join("\n"), /too few short highlights/);
   assert.match(warnings.join("\n"), /too sparse for quick reading/);
 });
 
@@ -61,7 +60,6 @@ test("daily presentation audit accepts natural fact links and three concise high
     topItemCount: 1,
     genericSourceLinkCount: 0,
     awkwardFactLinkCount: 0,
-    underHighlightedItemCount: 0,
     overHighlightedItemCount: 0,
     sparseItemCount: 0,
   });

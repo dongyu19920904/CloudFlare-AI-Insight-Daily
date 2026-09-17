@@ -48,12 +48,6 @@ function percentile(values, ratio) {
   return sorted[index];
 }
 
-function countBodySentences(text) {
-  return (maskNonProse(text).match(/[^。！？!?]+[。！？!?]?/g) || [])
-    .map((sentence) => countVisibleCharacters(sentence))
-    .filter((length) => length >= 3).length;
-}
-
 function isGenericSourceOnlyLinkLabel(label) {
   const compact = String(label || "")
     .normalize("NFKC")
@@ -79,7 +73,6 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
   const topItems = extractNumberedDailyItems(pageMarkdown);
   let genericSourceLinkCount = 0;
   let awkwardFactLinkCount = 0;
-  let underHighlightedItemCount = 0;
   let overHighlightedItemCount = 0;
   let sparseItemCount = 0;
 
@@ -99,14 +92,13 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
     if (item.bodyLinks.some((link) => isAwkwardDailyFactLinkLabel(link.title))) {
       awkwardFactLinkCount += 1;
     }
-    if (boldSpans.length < 3) underHighlightedItemCount += 1;
     if (
       boldSpans.length > 4 ||
       (visibleBodyLength > 0 && highlightedLength / visibleBodyLength > 0.34)
     ) {
       overHighlightedItemCount += 1;
     }
-    if (visibleBodyLength < 85 || countBodySentences(item.body) < 3) {
+    if (visibleBodyLength < 40) {
       sparseItemCount += 1;
     }
   }
@@ -115,7 +107,6 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
     topItemCount: topItems.length,
     genericSourceLinkCount,
     awkwardFactLinkCount,
-    underHighlightedItemCount,
     overHighlightedItemCount,
     sparseItemCount,
   };
@@ -186,11 +177,6 @@ export function collectDailyWritingStyleWarnings(pageMarkdown) {
   if (presentation.awkwardFactLinkCount >= 2) {
     warnings.push(
       `Daily TOP uses awkward source-led or overlong link anchors: ${presentation.awkwardFactLinkCount}`
-    );
-  }
-  if (presentation.underHighlightedItemCount >= 2) {
-    warnings.push(
-      `Daily TOP items have too few short highlights: ${presentation.underHighlightedItemCount}`
     );
   }
   if (presentation.overHighlightedItemCount > 0) {

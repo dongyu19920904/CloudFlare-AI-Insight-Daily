@@ -6,6 +6,17 @@ import {
 } from "./dailyContentRules.js";
 import { hasDailyFunStorySignal, isDailyFunPreferenceOnly } from "./dailyFunSection.js";
 
+export function getDailyReadabilityRules() {
+  return [
+    "【统一阅读规则：初稿与修复共用】",
+    "标题写短而具体的事件，保留必要主体和条件；正文首句补充事实，不重复标题，不另写抽象口号式短结论。",
+    "一条聚焦一个事件，默认一个自然段；短句不等于多分段。普通句子一次推进一个信息点，必要名称和条件可较长；不逐句卡死字数，不删事实来达标，不凑句数或字数。",
+    "来源链接优先挂在约 5–12 字的完整事实或能力短语，必要时放宽；删除链接标记后句子也必须自然成立。保留真实 URL，不机械截字或截断英文名称，不写‘作者整理的技术细节’等来源标签。",
+    "高亮选择来源支持的完整数字及单位、能力、条件或反差，通常 1–3 处即可，不强行凑数；没有适合的重点时可不加粗。不要高亮连接词、半截词、空泛评价或整段，链接不要同时加粗。",
+    "聚合来源只选其中一个有充分证据的主事件，其余无关事件略去；同一 URL 不拆成多条。只有参会、泛泛推荐或模糊趋势而没有具体 AI 进展的候选，优先用已有合格备用替换；没有合格素材时省略，不虚构补位。",
+  ].join("\n");
+}
+
 export function getDailyEditorialChecklist() {
   return [
     "【成稿前事实核对：优先于条数、篇幅与高亮目标】",
@@ -330,7 +341,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const numberedTopCandidates = topCandidateItems
     .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))
     .join("\n\n------\n\n");
-  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n合格候选在今日焦点中一对一生成一条；事实证据不足时先用去重备用替换，不扩大事实来凑数，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
+  const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n合格候选在今日焦点中一对一生成一条；事实证据不足时先用去重备用替换，不扩大事实来凑数，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也只选一个有充分证据的主事件，不罗列其他无关事件，不能拆分占位。\n\n${numberedTopCandidates}\n\n------\n\n`;
   const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
   const selectedItemUrls = new Set(allSelectedItems.map(getDailyPromptItemUrl).filter(Boolean));
   const selectedEventKeys = new Set(allSelectedItems.map(getDailyPromptItemEventKey).filter(Boolean));
