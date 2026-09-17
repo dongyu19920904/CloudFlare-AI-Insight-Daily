@@ -79,6 +79,16 @@ test('Telegram relay link is not labeled as an organization technical statement'
   assert.equal(quarantineDailySourceConflicts(block, [{ ...source, url: 'https://anthropic.com/news' }]).markdown, block);
 });
 
+test('Telegram relay does not make an institution the headline publisher', () => {
+  const url='https://t.me/aigc1024/24641';
+  const source={title:'Claude 文本水印',source:'AI探索指南 - Telegram Channel',url};
+  const block=`### 4. Anthropic 说明 Claude 文本水印工作方式\n\nClaude [用密钥改变选词时的随机数来源](${url})。`;
+  const result=quarantineDailySourceConflicts(block,[source]);
+  assert.match(result.markdown,/### 4\. 频道转述 Claude 文本水印工作方式/);
+  assert.match(result.markdown,/用密钥改变选词时的随机数来源/);
+  assert.match(result.markdown,/https:\/\/t\.me\/aigc1024\/24641/);
+});
+
 test('social-only deal amount is removed before summary without dropping the item or its URL', () => {
   const block = '### 10. OpenRouter 被 Stripe 以 70 亿美元收购\n\n**支付公司买了中转站。** [OpenRouter 被收购](https://t.me/aigc1024/24353)，交易价 **70 亿美元**。接入 **400+ 模型**。\n';
   const r = quarantineDailySourceConflicts(block);

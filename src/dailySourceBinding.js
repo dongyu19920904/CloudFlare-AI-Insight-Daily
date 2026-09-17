@@ -77,6 +77,13 @@ function sanitizeUnsupportedClaims(block, records = []) {
   let input = block;
   const heading = block.split(/\r?\n/, 1)[0];
   const body = visibleText(block.slice(heading.length));
+  if (extractDailyMarkdownLinks(block).some((link) =>
+    /^https:\/\/(?:t\.me|telegram\.me)\//i.test(link.url) &&
+    records.some((record) => record.key === sourceKey(link.url) && /Telegram Channel/i.test(record.source || "")))) {
+    input = input.replace(/^(###\s+(?:\d+[.、]\s*)?)[A-Za-z][\w.-]*\s+(?:公布|发布|说明|宣布|披露)\s+/,
+      '$1频道转述 ');
+    if (input !== block) changes.push('relay-source-headline');
+  }
   if (/(?:成本|费用|价格).*低一半/.test(heading) && /每美元性能[^。\n]{0,24}50[%％]/.test(body)) {
     // Neutralize the unsupported cost headline; do not calculate a new percentage.
     const corrected = heading.replace(/(?:推理)?(?:成本|费用|价格)比?/, '每美元性能对比').replace(/低一半/, '').trimEnd();

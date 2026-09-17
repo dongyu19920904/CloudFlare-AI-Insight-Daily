@@ -667,7 +667,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
   };
 
-  const tryAddCandidate = (candidate) => {
+  const tryAddCandidate = (candidate, allowSecondEntity = false) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
     const hardCap = hardCaps[candidate.sourceType];
     if (
@@ -677,7 +677,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       return false;
     }
     const entityKey = getDailyPromptEntityCountKey(candidate);
-    if (entityHardCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= entityHardCap) {
+    const currentEntityCap = allowSecondEntity ? Math.max(entityHardCap, 2) : entityHardCap;
+    if (currentEntityCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= currentEntityCap) {
       return false;
     }
     const isProjectLike = isProjectLikeDailyPromptCandidate(candidate);
@@ -736,6 +737,19 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     for (const candidate of remainingCandidates) {
       if (selectedCandidates.length >= maxItems) break;
       tryAddCandidate(candidate);
+    }
+  }
+
+  // Preserve the normal one-per-vendor mix, then admit a second distinct event only
+  // when too few candidates remain for TOP and the existing dedicated sections.
+  if (selectedCandidates.length >= 10 && selectedCandidates.length < Math.min(maxItems, 15)) {
+    const backups = ["news", "socialMedia"]
+      .flatMap((sourceType) => buckets.get(sourceType) || [])
+      .filter((candidate) => !candidate.isWelfare && !candidate.isLowEvidenceAiWorkflowPitch)
+      .sort((left, right) => right.score - left.score);
+    for (const candidate of backups) {
+      if (selectedCandidates.length >= Math.min(maxItems, 15)) break;
+      tryAddCandidate(candidate, true);
     }
   }
 
