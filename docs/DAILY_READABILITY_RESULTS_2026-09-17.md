@@ -33,4 +33,6 @@
 
 ## 状态与回滚
 
-代码发布需分别核对后端 Worker 与前端 Pages 工作流；文章 09-17 仍保持线上原文。仅 revert 本次后端及前端代码提交并按原工作流发布即可回滚，不重复执行历史回退，不 force push。
+后端代码提交 `b67eec9f6963fb6dcb116c809a7fa78b877cee1f` 已经随 main 正常发布：[Worker 工作流 35202132333](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35202132333) 成功，当前版本 `39a9900b-cf64-4cdd-86a5-d355a9aa886b`。前端样式提交 `074fa1465977b6f2ef7743bc42b92a8e5d1ae634` 经最新远端 rebase 后发布：[Pages 工作流 35202160670](https://github.com/dongyu19920904/Hextra-AI-Insight-Daily/actions/runs/35202160670) 成功。文章 09-17 文件 blob 在发布前后均为 `f0374d4548803615ae28cb5b977bc299770fea1b`，没有覆盖修订稿。
+
+只需分别 revert 上述后端代码提交和前端样式提交并按原工作流发布即可回滚，不重复执行历史回退，不 force push。当前上线的是代码和样式；自动试点已生成但人工质量未通过；人工修订只在本地独立预览中，线上 09-17 正文未更新。
