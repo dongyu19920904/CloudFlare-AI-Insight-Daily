@@ -27,6 +27,11 @@
 - 18 日人工校订稿单独保存在前端独立分支，沿用原始缓存中的新闻与图片 URL，并以当日事件替换空泛摘要。它与自动生成代码是否部署分别验收，不把人工稿伪称为模型试点产物。
 - [修订试点 35318920689](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35318920689) 的失败稿已在 dry-run 调试产物中留存。第 1 条把新闻源里的 `TencentCloud/Octop` 仓库链接写进 TOP；它不是本次选中的 GitHub Trending Daily 项目，所以现有校验拒绝发布。问题发生在候选入口，不是字数规则。仅在日报候选选择处排除新闻/社媒直达 GitHub 仓库的条目，让仓库项目只从已有 Trending Daily 来源进入；保留普通新闻及其它栏目。加入该源类型边界的小测试，再做有明确检验目标的隔离试点。
 
+## 最终试点结论与发布边界
+
+- [修正候选后的隔离试点 35319580321](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35319580321) 使用同一 18 日缓存，`dailyWouldPublish=true`、`dailyPublished=false`，通过现有结构校验，但人工审稿仍不合格：TOP 正文中位数仅 72 字，10 条中 5 条不足 80 字；摘要又把 Dream-RSI 的 317 次调用和另一测试的 51200 代写成直接对比。结构校验还有 4 条稀疏提示。故不把这轮自动生成代码合并到 main，也不部署 Worker；保留分支供后续针对编辑问题继续改进。
+- 18 日中文文章采用有据素材人工校订并单独发布，TOP 正文中位数 133.5 字；这只证明当日文章质量已修正，不证明自动流水线已经稳定。临时隔离试点工作流随本次记录移除，避免后续推送再次运行付费生成。
+
 ## 第一轮隔离试点与局部修正
 
 - [试点运行 35296825519](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35296825519)的流式连接约 90 秒后重置；[只读状态检查 35297097813](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35297097813)确认同一次 Worker 运行稍后成功完成，使用固定缓存，`dailyWouldPublish=true`、`dailyPublished=false`，且 repair 被采用。预览从状态 KV 读取，没有再次生成。
