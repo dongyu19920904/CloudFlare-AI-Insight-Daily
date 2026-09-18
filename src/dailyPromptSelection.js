@@ -1,6 +1,6 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
-import { hasDailyFunStorySignal, isDailyFunSolicitation } from "./dailyFunSection.js";
+import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -241,8 +241,6 @@ function scoreDailyFunCandidate(candidate) {
   }
   if (candidate?.isWelfare) score -= 20;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
-  // Real actions and reversals should outrank social-platform and screenshot bonuses.
-  if (hasDailyFunStorySignal(text)) score += 70;
 
   return score;
 }
@@ -269,8 +267,7 @@ function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
       candidate,
       funScore: scoreDailyFunCandidate(candidate),
     }))
-    .filter(({ candidate, funScore }) => candidate.sourceType !== "paper" && funScore >= 55 &&
-      !isDailyFunSolicitation([candidate.title, candidate.description, candidate.plainText].join("\n")))
+    .filter(({ candidate, funScore }) => candidate.sourceType !== "paper" && funScore >= 55)
     .sort((left, right) => right.funScore - left.funScore)
     .slice(0, limit)
     .map(({ candidate }) => candidate);
@@ -491,7 +488,7 @@ function buildDailyPromptCandidate(item) {
       itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
       break;
     case "socialMedia":
-      itemText = `socialMedia Post by ${item.authors}\nTitle: ${item.title || ""}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
+      itemText = `socialMedia Post by ${item.authors}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
       break;
     default:
       itemText = `Type: ${item.type}\nTitle: ${item.title || "N/A"}\nDescription: ${truncatePromptText(item.description || "N/A")}\nURL: ${item.url || "N/A"}`;
@@ -596,6 +593,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
       if (candidate.sourceType === "project" && !candidate.isDailyTrendingProject) continue;
+      if (candidate.sourceType !== "project" && normalizeGithubProjectUrl(candidate.url)) continue;
       if (!isAiRelevantDailyPromptCandidate(candidate)) {
         rejectedNonAiCount += 1;
         continue;
@@ -763,12 +761,6 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   return {
     selectedContentItems: orderedSelectedCandidates.map((candidate) => candidate.itemText),
-    dailySourceCandidates: [...orderedSelectedCandidates, ...dailyFunCandidates].map((candidate) => ({
-      title: candidate.title,
-      url: candidate.url,
-      description: candidate.description,
-      plainText: candidate.plainText,
-    })),
     allowedTopGithubProjectUrls,
     dailyFunContentItems: dailyFunCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,

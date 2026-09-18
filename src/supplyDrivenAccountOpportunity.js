@@ -429,7 +429,6 @@ function eligibleNewSellerProducts(snapshot) {
     const cost = resolveMerchantCostReference(product);
     const starterCost = resolveNewSellerCostReference(product);
     return product.availableOfferCount > 0 &&
-      product.verificationScope !== 'aggregate-only' &&
       CORE_CATEGORY_IDS.includes(product.categoryId) &&
       cost.referencePrice !== null &&
       !cost.abnormalLowestPrice &&
@@ -617,9 +616,8 @@ function selectOperationalMission({
     ...anomalousProducts,
     ...coreProducts,
     ...products,
-  ].filter((product) => product && CORE_CATEGORY_IDS.includes(product.categoryId)).map((product) => [product.slug, product])).values()];
-  const beginnerMissions = OPERATION_MISSIONS.filter((mission) => !['pending-order-stock', 'real-margin'].includes(mission.id));
-  const missions = rotate(beginnerMissions, dateRotationIndex(dateStr, beginnerMissions.length));
+  ].filter(Boolean).map((product) => [product.slug, product])).values()];
+  const missions = rotate(OPERATION_MISSIONS, dateRotationIndex(dateStr, OPERATION_MISSIONS.length));
   const rotatedTargets = rotate(targets, dateRotationIndex(dateStr, Math.max(1, targets.length)));
   for (const mission of missions) {
     for (const product of rotatedTargets) {

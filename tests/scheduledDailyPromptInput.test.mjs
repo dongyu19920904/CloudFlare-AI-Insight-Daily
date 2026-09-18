@@ -21,7 +21,7 @@ test("buildDailyGenerationPromptInput includes AI fun candidates in the main gen
       "News Title: 现在的AI非常利好2D游戏开发，动作完全交给视频模型生成，卡牌、回合制、射击、对话类、塔防都能做。",
       "Published: 2026-05-26",
       "Url: https://x.com/Gorden_Sun/status/2058939766742335643",
-      "Content Summary: 测试者让 AI 生成一段 2D 游戏动作，结果角色把自己的影子当成了敌人。",
+      "Content Summary: Gorden Sun 提到 AI 利好 2D 游戏开发，动作可以交给视频模型生成，但仍需要玩法和数值支撑。",
     ].join("\n"),
   ];
 
@@ -29,8 +29,8 @@ test("buildDailyGenerationPromptInput includes AI fun candidates in the main gen
 
   assert.match(promptInput, /Codex 帮音频转 MP4/);
   assert.match(promptInput, /AI趣闻专用候选素材/);
-  assert.match(promptInput, /最多选 1 条写完整趣闻/);
-  assert.match(promptInput, /只有人物、截图、功能或工具偏好而没有真实反差时直接省略趣闻/);
+  assert.match(promptInput, /必须先选 1 条写完整趣闻/);
+  assert.match(promptInput, /没有人物、用户、工具动作或反常结果/);
   assert.doesNotMatch(promptInput, /兜底/);
   assert.match(promptInput, /不要因为它们出现在这里就塞进今日焦点/);
   assert.match(promptInput, /Hook -> What -> Punchline/);
@@ -157,7 +157,7 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
   const news = (index) => [
     `News Title: AI news ${index}`,
     `Url: https://example.com/news-${index}`,
-    `Content Summary: ${index === 16 ? '开发者让 AI 写脚本，结果先给自己写了使用说明。' : `AI 产品变化 ${index}。`}`,
+    `Content Summary: AI 产品变化 ${index}。`,
   ].join("\n");
   const social = (index) => [
     `socialMedia Post by backup-${index}`,
@@ -178,8 +178,7 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
   assert.match(promptInput, /聚合文章也只能生成一条/);
   assert.match(promptInput, /TOP 候选 1:/);
   assert.match(promptInput, /TOP 候选 10:/);
-  assert.match(promptInput, /合格候选在今日焦点中一对一生成一条/);
-  assert.match(promptInput, /事实证据不足时先用去重备用替换/);
+  assert.match(promptInput, /每个明确 TOP 候选都必须在今日焦点中一对一生成一条/);
   assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 5);
   assert.match(promptInput, /AI趣闻专用候选素材/);
   assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 1);

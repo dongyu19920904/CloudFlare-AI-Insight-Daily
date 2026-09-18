@@ -36,6 +36,18 @@ function buildProjectItem(index) {
   };
 }
 
+test("direct repository news cannot bypass the Trending Daily project source", () => {
+  const repoNews = { ...buildNewsItem(96), url: "https://github.com/TencentCloud/Octop" };
+  const ordinaryNews = buildNewsItem(97);
+  const project = buildProjectItem(98);
+  const result = buildDailyPromptSelection({
+    news: [repoNews, ordinaryNews], project: [project], paper: [], socialMedia: [],
+  });
+  assert.ok(result.selectedContentItems.some((item) => item.includes(ordinaryNews.url)));
+  assert.ok(result.selectedContentItems.some((item) => item.includes(project.url)));
+  assert.ok(!result.selectedContentItems.some((item) => item.includes(repoNews.url)));
+});
+
 test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () => {
   const result = buildDailyPromptSelection(
     {

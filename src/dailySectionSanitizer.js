@@ -142,56 +142,43 @@ export function normalizeDailyTopEvidenceLinkLabels(markdown) {
   for (const item of extractNumberedDailyItems(output)) {
     const sourceLink = item.sourceLink;
     if (!sourceLink) continue;
-    if (/[`<\\]/.test(item.body) || /^(?: {4}|\t)/m.test(item.body) || /[()\\]/.test(sourceLink.url)) continue;
 
     const originalLink = `[${sourceLink.title}](${sourceLink.url})`;
-    let linkOffset = item.body.indexOf(originalLink);
-    while (linkOffset > 0 && item.body[linkOffset - 1] === "!") {
-      linkOffset = item.body.indexOf(originalLink, linkOffset + originalLink.length);
-    }
-    if (linkOffset < 0) continue;
+    const factLabel = String(item.title || "").replace(/\s+/g, " ").trim();
+    if (!factLabel || !item.block.includes(originalLink)) continue;
     const cleanLabel = String(sourceLink.title || "").replace(/\*\*/g, "").trim();
-    if (/[\[\]*`<>\\\r\n]/.test(cleanLabel)) continue;
-    let originalSpan = originalLink;
-    let replacement = `[${cleanLabel}](${sourceLink.url})`;
+    const shouldUseFactLabel = (
+      isDailySourceTagLinkLabel(cleanLabel) ||
+      countDailyHighlightCharacters(cleanLabel) > 24
+    );
+    if (!shouldUseFactLabel && cleanLabel === sourceLink.title) continue;
 
-    // Move only link boundaries around existing complete clauses, never inject a heading.
-    if (isDailySourceTagLinkLabel(cleanLabel)) {
-      const following = item.body.slice(linkOffset + originalLink.length);
-      const adjacent = following.match(/^((?:显示|称|指出|介绍|报道|说明|表示)[，：: \t]*|[，：:][ \t]*)([^，。！？；\r\n\[\]*`<>\\]+)(?=[，。！？；\r\n]|$)/);
-      if (adjacent) {
-        const clause = adjacent[2].trim();
-        if ([...clause].length >= 8 && [...clause].length <= 24) {
-          originalSpan += adjacent[0];
-          replacement = cleanLabel + adjacent[1] + adjacent[2].replace(
-            clause, `[${clause}](${sourceLink.url})`
-          );
-        }
-      }
-    } else if ([...cleanLabel].length > 24) {
-      const clauses = [...cleanLabel.matchAll(/[^，。！？；\r\n]+/g)];
-      const candidate = clauses.find((match) => {
-        const clause = match[0].trim();
-        return [...clause].length >= 8 && [...clause].length <= 24 && !isDailySourceTagLinkLabel(clause);
-      });
-      if (candidate) {
-        const clause = candidate[0].trim();
-        const offset = candidate.index + candidate[0].indexOf(clause);
-        replacement = cleanLabel.slice(0, offset)
-          + `[${clause}](${sourceLink.url})`
-          + cleanLabel.slice(offset + clause.length);
-      }
-    }
-
-    if (replacement === originalSpan) continue;
-    const bodyOffset = item.block.length - item.body.length;
-    const offset = bodyOffset + linkOffset;
-    const normalizedBlock = item.block.slice(0, offset) + replacement
-      + item.block.slice(offset + originalSpan.length);
+    const normalizedBlock = item.block.replace(
+      originalLink,
+      `[${shouldUseFactLabel ? factLabel : cleanLabel}](${sourceLink.url})`
+    );
     output = output.replace(item.block, normalizedBlock);
   }
 
   return output;
+}
+
+function countDailyHighlightCharacters(value) {
+  return (String(value || "").match(/[A-Za-z0-9\u3400-\u9fff]/g) || []).length;
+}
+
+function collectDailyHighlightProtectedRanges(body) {
+  return [...String(body || "").matchAll(
+    /\*\*[^*\r\n]+\*\*|!\[[^\]]*\]\([^\r\n]*?\)|\[[^\]]+\]\([^\r\n]*?\)|`[^`\r\n]+`|<[^>]+>/g
+  )].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+function overlapsDailyHighlightRange(start, length, ranges) {
+  const end = start + length;
+  return ranges.some((range) => start < range.end && end > range.start);
 }
 
 function isLowValueDailyHighlight(text) {
@@ -200,23 +187,130 @@ function isLowValueDailyHighlight(text) {
     .replace(/[\s。.!！?？、:：、“”‘’]+/g, "");
 
   return (
-    /^(?:宝玉|dotey|作者|博主|网友|开发者|官方|媒体|频道|提高时|这意味着|因此|同时)$/i.test(compact) ||
+    /^(?:宝玉|dotey|作者|博主|网友|开发者|官方|媒体|频道)$/i.test(compact) ||
     /^(?:网友神评|神评|热评|评论区热评|松了一口气|值得关注|值得注意|意义重大|未来可期|很有意思|太离谱了?|令人兴奋)$/i.test(compact)
   );
 }
 
-// Keep the exported name for callers; presentation must never invent emphasis to meet a quota.
-export function ensureDailyTopHighlightDensity(markdown) {
+function collectDailyHighlightCandidates(body, title, protectedRanges) {
+  const candidates = [];
+  const seen = new Set();
+
+  const addMatches = (pattern, priority) => {
+    for (const match of String(body || "").matchAll(pattern)) {
+      const leadingWhitespace = match[0].search(/\S/);
+      const text = match[0].trim();
+      const index = match.index + Math.max(0, leadingWhitespace);
+      const visibleLength = countDailyHighlightCharacters(text);
+      const key = text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+      if (
+        !text ||
+        visibleLength < 2 ||
+        visibleLength > 16 ||
+        (
+          /(?:从|的|了|为|与|和|及|并|可|在|向|对|把|将)$/.test(text) &&
+          !/(?:不行了|失效了)$/.test(text)
+        ) ||
+        seen.has(key) ||
+        overlapsDailyHighlightRange(index, text.length, protectedRanges)
+      ) {
+        continue;
+      }
+      seen.add(key);
+      candidates.push({ index, text, priority, visibleLength });
+    }
+  };
+
+  addMatches(
+    /(?:约|近|超|超过|低于|高于|最高|至少|仅)?\s*\d+(?:\.\d+)?\s*(?:%|％|万|亿|千|百|GB|TB|MB|毫秒|秒|分钟|小时|个月|次|项|类|家|颗(?:星)?|Stars?|Star|吉瓦|GW|美元|元|倍|分|个)/gi,
+    0
+  );
+  addMatches(/(?:MITRE\s+ATT&CK|NIST\s+CSF\s+\d(?:\.\d+)?)/gi, 1);
+  addMatches(/(?<![A-Za-z0-9&])\b[A-Z]{2,}(?:\s*[、/]\s*[A-Z]{2,})+\b/g, 1);
+  addMatches(
+    /(?:无需|不需要)[\u3400-\u9fff]{1,6}(?=就|也|即可|便|，|。|；)/g,
+    2
+  );
+  addMatches(
+    /(?:允许|免费|本地|远程|自动|即时|立即|无缝|严格|穷举|修复|降低|提高|重置|覆盖|收录|统一|推翻|找到|干扰|策略性|支持|开放|上线|发布)[\u3400-\u9fff]{1,8}(?=[，。；、：:的而并与或就可尚])/g,
+    2
+  );
+  addMatches(
+    /(?:一个|一种|一项|首个|首次|同样|现有|当前|主要|关键|真实|独立|开放|完整|原生|结构化)(?:反例|漏洞|限制|风险|结果|能力|接口|范围|成本|费用|利润|反馈|定价|证明)/g,
+    3
+  );
+  addMatches(/(?:同一|相同)(?:账号|账户|仓库|设备|网络|环境|版本)/g, 3);
+  addMatches(/(?:现在|目前|当前)(?:估计|可能|也许)?(?:不行了|失效了|不可用|未证实|仍存疑)/g, 3);
+  addMatches(/(?<=")[^"\r\n]{2,12}(?=")/g, 3);
+  addMatches(/有[\u3400-\u9fff]{1,4}、有[\u3400-\u9fff]{1,4}/g, 3);
+  addMatches(
+    /(?:\d{4}\s*年(?:\s*\d{1,2}\s*月)?|\d{1,2}\s*月\s*(?:到|至|-)\s*\d{1,2}\s*月)/g,
+    4
+  );
+
+  const titleTerms = [
+    ...(String(title || "").match(/[A-Za-z][A-Za-z0-9.+/-]{2,}/g) || []),
+  ].filter((term) => !/^(?:agent|stars?|top)$/i.test(term));
+  const chineseEntity = String(title || "").match(
+    /^([\u3400-\u9fff]{2,8}?)(?=手机|推出|发布|上线|新增|支持|开放|登上|反思|免费|可|用)/
+  )?.[1];
+  if (chineseEntity) titleTerms.push(chineseEntity);
+
+  for (const term of titleTerms) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    addMatches(new RegExp(escaped, "gi"), 5);
+  }
+
+  return candidates.sort((left, right) =>
+    left.priority - right.priority ||
+    (left.priority === 2 ? left.visibleLength - right.visibleLength : left.index - right.index)
+  );
+}
+
+export function ensureDailyTopHighlightDensity(markdown, targetCount = 3) {
   let output = String(markdown || "");
+  const target = Math.max(0, Number(targetCount) || 0);
+
   for (const item of extractNumberedDailyItems(output)) {
-    const body = item.body.replace(
+    let normalizedBody = item.body.replace(
       /\*\*([^*\r\n]+)\*\*/g,
       (fullMatch, text) => isLowValueDailyHighlight(text) ? text : fullMatch
     );
-    if (body !== item.body) {
-      output = output.replace(item.block, item.block.replace(item.body, body));
+    const existingHighlights = [...normalizedBody.matchAll(/\*\*([^*\r\n]+)\*\*/g)];
+    let needed = target - existingHighlights.length;
+    if (needed <= 0) {
+      if (normalizedBody !== item.body) {
+        output = output.replace(item.block, item.block.replace(item.body, normalizedBody));
+      }
+      continue;
     }
+
+    const protectedRanges = collectDailyHighlightProtectedRanges(normalizedBody);
+    const selected = [];
+    for (const candidate of collectDailyHighlightCandidates(normalizedBody, item.title, protectedRanges)) {
+      if (needed <= 0) break;
+      if (selected.some((entry) =>
+        candidate.index < entry.index + entry.text.length &&
+        candidate.index + candidate.text.length > entry.index
+      )) {
+        continue;
+      }
+      selected.push(candidate);
+      needed -= 1;
+    }
+
+    if (selected.length === 0) {
+      if (normalizedBody !== item.body) {
+        output = output.replace(item.block, item.block.replace(item.body, normalizedBody));
+      }
+      continue;
+    }
+    for (const candidate of selected.sort((left, right) => right.index - left.index)) {
+      normalizedBody = `${normalizedBody.slice(0, candidate.index)}**${candidate.text}**${normalizedBody.slice(candidate.index + candidate.text.length)}`;
+    }
+    output = output.replace(item.block, item.block.replace(item.body, normalizedBody));
   }
+
   return output;
 }
 

@@ -1213,7 +1213,7 @@ async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, pro
             'User-Agent': 'Cloudflare-Worker/1.0'
         },
         body: JSON.stringify(payload)
-    }, env.MERCHANT_EDITORIAL_REQUEST === 'true' ? 60000 : 180000, retryConfig, isRetriableAnthropicError, debugLog);
+    }, 180000, retryConfig, isRetriableAnthropicError, debugLog);
 
     if (response.ok) {
         return response;
@@ -1222,7 +1222,6 @@ async function fetchAnthropicWithSystemFallback(url, apiKey, env, modelName, pro
     const errorText = await response.text();
     const trimmedSystemPrompt = typeof systemPromptText === 'string' ? systemPromptText.trim() : '';
     const shouldFallbackToMergedUserPrompt =
-        env.MERCHANT_EDITORIAL_REQUEST !== 'true' &&
         trimmedSystemPrompt &&
         payload.system &&
         (response.status === 400 || response.status === 422);
@@ -1295,9 +1294,6 @@ async function callAnthropicChatAPI(env, promptText, systemPromptText = null, mo
     try {
         const response = await fetchAnthropicAcrossBaseUrls(env, modelName, promptText, systemPromptText, false);
         const data = await response.json();
-        if (env.MERCHANT_EDITORIAL_REQUEST === 'true' && typeof env.MERCHANT_EDITORIAL_USAGE === 'function') {
-            env.MERCHANT_EDITORIAL_USAGE({ inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, stopReason: data.stop_reason ?? null, reportedModel: /^[a-zA-Z0-9._-]{1,80}$/.test(data.model || '') ? data.model : null });
-        }
 
         // Filter out thinking blocks and only return text content
         if (data.content && Array.isArray(data.content)) {
