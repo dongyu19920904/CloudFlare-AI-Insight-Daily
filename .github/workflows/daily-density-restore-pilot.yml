@@ -1,5 +1,5 @@
 name: One-off daily density restore pilot
-# Targeted replay with failed-draft capture for source and section diagnosis.
+# Targeted replay after removing cross-metric comparison from the three-line summary.
 on:
   push:
     branches: [codex/daily-content-density-20260918]

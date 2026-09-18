@@ -121,14 +121,13 @@ test("daily prompt requires one search-like Aivora FAQ with accurate service bou
   assert.match(prompt, /只输出最终 Markdown 正文/);
 });
 
-test("summary prompt asks for three progressive sentences instead of parallel headlines", () => {
+test("summary prompt asks for three concrete, independently sourced facts", () => {
   const prompt = getSystemPromptSummarizationStepThree();
 
-  assert.match(prompt, /大事件/);
-  assert.match(prompt, /主线变化/);
-  assert.match(prompt, /读者判断/);
-  assert.match(prompt, /不能复述第一句/);
-  assert.match(prompt, /不要写成三条并列新闻/);
-  assert.match(prompt, /每行 24-44 个中文字符/);
+  assert.match(prompt, /三个不同的具体进展/);
+  assert.match(prompt, /主体、动作和关键条件或结果/);
+  assert.match(prompt, /不重复同一事件/);
+  assert.match(prompt, /不同实验的调用次数、迭代代数或其他不同口径指标/);
+  assert.doesNotMatch(prompt, /每行 24-44 个中文字符/);
   assert.match(prompt, /只输出 3 行纯文本/);
 });
