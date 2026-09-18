@@ -16,6 +16,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, urllib.parse, urllib.request
+          from pathlib import Path
           key = urllib.parse.quote('scheduled-status:daily:2026-09-18', safe='')
           url = ('https://api.cloudflare.com/client/v4/accounts/' + os.environ['CLOUDFLARE_ACCOUNT_ID'] +
                  '/storage/kv/namespaces/bd98e664917441a08118edc88790bf3f/values/' + key)
@@ -23,6 +24,23 @@ jobs:
           with urllib.request.urlopen(req, timeout=30) as response:
               data = json.load(response)
           debug = data.get('debug') or {}
+          preview = debug.get('dailyPreviewMarkdown') or ''
+          Path('pilot-status').mkdir(exist_ok=True)
+          Path('pilot-status/daily-preview.md').write_text(preview, encoding='utf8')
+          Path('pilot-status/status-summary.json').write_text(json.dumps({
+              'state': data.get('state'), 'phase': data.get('phase'),
+              'startedAt': data.get('startedAt'), 'finishedAt': data.get('finishedAt'),
+              'usedCachedDailySourceData': debug.get('usedCachedDailySourceData'),
+              'sourceItemCounts': debug.get('sourceItemCounts'),
+              'promptSelectedItems': debug.get('promptSelectedItems'),
+              'dailyValidationPassed': debug.get('dailyValidationPassed'),
+              'dailyWouldPublish': debug.get('dailyWouldPublish'),
+              'dailyPublished': debug.get('dailyPublished'),
+              'dailyRepairAttempted': debug.get('dailyRepairAttempted'),
+              'dailyRepairAdopted': debug.get('dailyRepairAdopted'),
+              'dailySourceUrlCorrections': debug.get('dailySourceUrlCorrections'),
+          }, ensure_ascii=False, indent=2), encoding='utf8')
+          print('Saved preview characters:', len(preview))
           print(json.dumps({
               'state': data.get('state'), 'phase': data.get('phase'),
               'phaseAt': data.get('phaseAt'), 'startedAt': data.get('startedAt'),
@@ -34,3 +52,8 @@ jobs:
                   'dailyPublished', 'dailyRepairAttempted', 'dailyRepairAdopted')},
           }, ensure_ascii=False))
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-content-density-status-20260918
+          path: pilot-status/
+          retention-days: 7
