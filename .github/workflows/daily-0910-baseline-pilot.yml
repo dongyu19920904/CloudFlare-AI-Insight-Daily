@@ -3,7 +3,7 @@ name: One-off September 10 backend baseline pilot
 on:
   push:
     branches: [codex/daily-0910-baseline-pilot-20260918]
-    paths: [.github/workflows/daily-0910-baseline-pilot.yml]
+    paths: [.github/workflows/daily-0910-baseline-pilot.yml, wrangler.toml]
 permissions:
   contents: read
 jobs:
