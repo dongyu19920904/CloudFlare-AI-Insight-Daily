@@ -49,7 +49,8 @@ test('draft and repair share readability rules and omit conflicting numerical qu
 
 test('shared rules keep supported details without padding thin sources or unrelated events', () => {
   const rules = getDailyReadabilityRules();
-  assert.match(rules, /机制、操作条件、具体数字、观察结果或使用限制/);
+  assert.match(rules, /120–160 个可见字符/);
+  assert.match(rules, /具体做法或条件、可核实结果及必要边界/);
   assert.match(rules, /素材只有一项可靠事实时可以短/);
   assert.match(rules, /至少保留两项互不重复的有用事实/);
   assert.match(rules, /不能把降本写成已证实的标题或摘要结论/);
