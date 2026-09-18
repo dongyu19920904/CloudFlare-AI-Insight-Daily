@@ -53,6 +53,7 @@ jobs:
       - name: Generate one unpublished edition from the cached sample
         run: |
           PREVIEW_URL=$(cat pilot/version-url.txt)
+          set +e
           curl --fail-with-body --silent --show-error --max-time 600 --get \
             "${PREVIEW_URL}/testTriggerScheduledDaily" \
             --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
@@ -60,11 +61,27 @@ jobs:
             --data-urlencode 'dryRun=1' \
             --data-urlencode 'stream=1' \
             --output pilot/result.ndjson
+          STREAM_EXIT=$?
+          set -e
+          echo "Preview stream exit code: ${STREAM_EXIT}; checking saved run status if needed."
           python - <<'PY'
-          import json
+          import json, os, time, urllib.parse, urllib.request
           from pathlib import Path
           events = [json.loads(line) for line in Path('pilot/result.ndjson').read_text().splitlines() if line.strip()]
           final = next((item for item in reversed(events) if item.get('state') in ('success', 'error')), {})
+          if not final:
+              base = Path('pilot/version-url.txt').read_text().strip()
+              query = urllib.parse.urlencode({'key': os.environ['TEST_TRIGGER_SECRET'], 'date': '2026-09-18', 'mode': 'daily'})
+              for attempt in range(20):
+                  try:
+                      with urllib.request.urlopen(base + '/testTriggerScheduledStatus?' + query, timeout=20) as response:
+                          final = (json.load(response).get('status') or {})
+                  except Exception as exc:
+                      print('Status read failed:', type(exc).__name__)
+                  if final.get('state') in ('success', 'error'):
+                      break
+                  time.sleep(20)
+          assert final.get('state') == 'success', 'Unpublished generation did not complete successfully'
           debug = final.get('debug') or {}
           Path('pilot/debug.json').write_text(json.dumps(debug, ensure_ascii=False, indent=2), encoding='utf8')
           Path('pilot/daily-preview.md').write_text(debug.get('dailyPreviewMarkdown', ''), encoding='utf8')
