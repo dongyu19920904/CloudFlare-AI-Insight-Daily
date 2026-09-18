@@ -2,6 +2,7 @@ import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { hasDailyFunStorySignal, isDailyFunSolicitation } from "./dailyFunSection.js";
 import { getDailyPromptItemEventKey } from "./dailyGenerationPromptInput.js";
+import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -621,6 +622,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
       if (candidate.sourceType === "project" && !candidate.isDailyTrendingProject) continue;
+      if (candidate.sourceType !== "project" && normalizeGithubProjectUrl(candidate.url)) continue;
       if (!isAiRelevantDailyPromptCandidate(candidate)) {
         rejectedNonAiCount += 1;
         continue;

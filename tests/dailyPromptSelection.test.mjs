@@ -48,6 +48,22 @@ test('selection rejects unrelated film news, multi-event roundups and result-fre
   assert.deepEqual([...new Set(result.dailySourceCandidates.map((candidate) => candidate.url))], [valid.url]);
 });
 
+test('direct GitHub repository news does not bypass the Trending Daily project source', () => {
+  const repoNews = {
+    ...buildNewsItem(96),
+    title: 'TencentCloud Octop open-source AI assistant',
+    url: 'https://github.com/TencentCloud/Octop',
+  };
+  const ordinaryNews = buildNewsItem(97);
+  const trendingProject = buildProjectItem(98);
+  const result = buildDailyPromptSelection({
+    news: [repoNews, ordinaryNews], project: [trendingProject], paper: [], socialMedia: [],
+  });
+  assert.ok(result.dailySourceCandidates.some((candidate) => candidate.url === ordinaryNews.url));
+  assert.ok(result.dailySourceCandidates.some((candidate) => candidate.url === trendingProject.url));
+  assert.ok(!result.dailySourceCandidates.some((candidate) => candidate.url === repoNews.url));
+});
+
 test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () => {
   const result = buildDailyPromptSelection(
     {

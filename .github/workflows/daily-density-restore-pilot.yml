@@ -1,5 +1,5 @@
 name: One-off daily density restore pilot
-# Targeted replay after removing cross-metric comparison from the three-line summary.
+# Targeted replay after excluding direct non-Trending repository news from TOP candidates.
 on:
   push:
     branches: [codex/daily-content-density-20260918]
