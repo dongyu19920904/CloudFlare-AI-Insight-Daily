@@ -23,12 +23,17 @@ test('keeps one paragraph, complete highlights, natural short links and original
   assert.equal(normalizeDailyOutputPresentation(input), input);
 });
 
-test('one or no highlight and two informative sentences do not request cosmetic repair', () => {
+test('one or no highlight and two sentences only produce a nonblocking sparse warning', () => {
   for (const emphasis of ['', '**']) {
     const body = `研究者在${emphasis}同一版本${emphasis}下比较了[两组测试条件](https://example.com/test)，分别记录尝试次数和最终得分。实验只覆盖这批样本，尚未测试其他任务。`;
     const input = page(body) + '\n\n### 2. 第二项测试\n\n' + body.replace('/test)', '/test2)');
-    assert.deepEqual(collectDailyWritingStyleWarnings(input), []);
+    assert.deepEqual(collectDailyWritingStyleWarnings(input), [
+      'Daily TOP items are too sparse for quick reading: 2',
+    ]);
   }
+  const scheduled = readFileSync(new URL('../src/handlers/scheduled.js', import.meta.url), 'utf8');
+  const repairWarningFilter = scheduled.slice(scheduled.indexOf('const getQualityTargetWarnings'), scheduled.indexOf('let validation = validateDailyPublication'));
+  assert.doesNotMatch(repairWarningFilter, /too sparse/);
 });
 
 test('draft and repair share readability rules and omit conflicting numerical quotas', () => {
@@ -40,4 +45,15 @@ test('draft and repair share readability rules and omit conflicting numerical qu
   for (const text of [draft, repair]) {
     assert.doesNotMatch(text, /18-32|不得超过 55|不超过 45|恰好保留 3|必须有 3 个短高亮|使用 3-5 个|写 4-5 个/);
   }
+});
+
+test('shared rules keep supported details without padding thin sources or unrelated events', () => {
+  const rules = getDailyReadabilityRules();
+  assert.match(rules, /机制、操作条件、具体数字、观察结果或使用限制/);
+  assert.match(rules, /素材只有一项可靠事实时可以短/);
+  assert.match(rules, /纯人物争议、影视消息/);
+  assert.match(rules, /只有提问、没有观察结果或测试细节/);
+  const draft = getSystemPromptSummarizationStepOne('2026-09-18');
+  assert.match(draft, /与 AI 没有直接关系的人物争议或影视消息/);
+  assert.match(draft, /这些条件只有在来源给出时才写/);
 });

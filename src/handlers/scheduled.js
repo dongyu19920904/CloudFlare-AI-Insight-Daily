@@ -107,7 +107,7 @@ import {
     sanitizeDuplicateDailySections,
 } from '../dailySectionSanitizer.js';
 import { ensureDailyMediaCoverage, repairDailyMediaReferences } from '../dailyMediaCoverage.js';
-import { quarantineDailySourceConflicts } from '../dailySourceBinding.js';
+import { quarantineDailySourceConflicts, restoreDailyCandidateSourceUrls } from '../dailySourceBinding.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -1413,7 +1413,12 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     }
 
     const checkSourceBindings = (markdown, stage) => {
-        const result = quarantineDailySourceConflicts(markdown, options.dailySourceCandidates);
+        const urls = restoreDailyCandidateSourceUrls(markdown, options.dailySourceCandidates);
+        debugInfo.dailySourceUrlCorrections ||= {};
+        debugInfo.dailySourceUrlCorrections[stage] = urls.corrected;
+        debugInfo.dailySourceUrlUnmatched ||= {};
+        debugInfo.dailySourceUrlUnmatched[stage] = urls.unmatched;
+        const result = quarantineDailySourceConflicts(urls.markdown, options.dailySourceCandidates);
         debugInfo.dailySourceBindingChecks ||= {};
         debugInfo.dailySourceBindingChecks[stage] = result.quarantined;
         debugInfo.dailyFactClaimCleanups ||= {};

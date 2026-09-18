@@ -22,6 +22,41 @@ function sourceKey(value) {
   }
 }
 
+export function restoreDailyCandidateSourceUrls(markdown, candidates = []) {
+  const candidateUrls = new Map();
+  for (const candidate of candidates || []) {
+    const key = sourceKey(candidate?.url);
+    if (!key) continue;
+    if (!candidateUrls.has(key)) candidateUrls.set(key, new Set());
+    candidateUrls.get(key).add(candidate.url);
+  }
+  const corrected = [];
+  let unmatched = 0;
+  const output = String(markdown || "").replace(
+    /(?<!!)(\[[^\]\r\n]+\]\()(https?:\/\/[^\s)]+)(\))/g,
+    (match, before, url, after) => {
+      try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.replace(/^www\./i, "");
+        const duplicateHost = new RegExp(`^/(?:www\\.)?${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`, "i");
+        if (!duplicateHost.test(parsed.pathname)) return match;
+        parsed.pathname = parsed.pathname.replace(duplicateHost, "/");
+        const matches = candidateUrls.get(sourceKey(parsed.href));
+        if (!matches || matches.size !== 1) {
+          unmatched += 1;
+          return match;
+        }
+        const originalUrl = [...matches][0];
+        corrected.push({ from: url, to: originalUrl });
+        return `${before}${originalUrl}${after}`;
+      } catch {
+        return match;
+      }
+    }
+  );
+  return { markdown: output, corrected, unmatched };
+}
+
 function visibleText(value) {
   return String(value || "")
     .replace(/!\[[^\]]*\]\([^\n]*?\)/g, "")

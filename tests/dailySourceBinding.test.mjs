@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { quarantineDailySourceConflicts } from "../src/dailySourceBinding.js";
+import { quarantineDailySourceConflicts, restoreDailyCandidateSourceUrls } from "../src/dailySourceBinding.js";
 import { buildDailyPromptSelection } from "../src/dailyPromptSelection.js";
 import { buildDailyGenerationPromptInput } from "../src/dailyGenerationPromptInput.js";
 import { ensureDailyMediaCoverage, repairDailyMediaReferences } from "../src/dailyMediaCoverage.js";
@@ -13,6 +13,20 @@ const codexSubscription = {
   url: 'https://www.v2ex.com/t/1241191#reply4',
   plainText: 'Tibo 发 X 证实 Codex $200 Pro plan 暂停供应。已开通用户暂时不会断供。',
 };
+
+test('repairs only an exact candidate-backed duplicated domain in a prose link', () => {
+  const original = 'https://www.36kr.com/p/3986995907853057';
+  const broken = 'https://www.36kr.com/36kr.com/p/3986995907853057';
+  const image = 'https://www.36kr.com/36kr.com/p/image.png';
+  const input = `### 行业消息\n\n[来源事实](${broken})。\n\n![原图](${image} "原图")`;
+  const result = restoreDailyCandidateSourceUrls(input, [{ url: original }]);
+  assert.match(result.markdown, new RegExp(`\\[来源事实\\]\\(${original}\\)`));
+  assert.ok(result.markdown.includes(`![原图](${image} "原图")`));
+  assert.deepEqual(result.corrected, [{ from: broken, to: original }]);
+  assert.equal(restoreDailyCandidateSourceUrls(result.markdown, [{ url: original }]).markdown, result.markdown);
+  assert.equal(restoreDailyCandidateSourceUrls(input, []).markdown, input);
+  assert.equal(restoreDailyCandidateSourceUrls(input, []).unmatched, 1);
+});
 const wrongCursor = `### 6. Cursor 高档订阅暂停供应
 
 **买不到 Pro 了。** Cursor 创始人 Tibo [确认 $200 Pro plan 暂停供应](${codexSubscription.url})。

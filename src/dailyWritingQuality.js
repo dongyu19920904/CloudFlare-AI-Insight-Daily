@@ -98,7 +98,7 @@ export function analyzeDailyPresentationQuality(pageMarkdown) {
     ) {
       overHighlightedItemCount += 1;
     }
-    if (visibleBodyLength < 40) {
+    if (visibleBodyLength < 55) {
       sparseItemCount += 1;
     }
   }
