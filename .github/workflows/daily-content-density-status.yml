@@ -38,6 +38,12 @@ jobs:
               'dailyPublished': debug.get('dailyPublished'),
               'dailyRepairAttempted': debug.get('dailyRepairAttempted'),
               'dailyRepairAdopted': debug.get('dailyRepairAdopted'),
+              'dailyPromptAllocation': debug.get('dailyPromptAllocation'),
+              'dailyTopicSectionTarget': debug.get('dailyTopicSectionTarget'),
+              'dailyValidationWarnings': debug.get('dailyValidationWarnings'),
+              'dailyRepairWarnings': debug.get('dailyRepairWarnings'),
+              'dailyRepairIssues': debug.get('dailyRepairIssues'),
+              'mediaCorrections': debug.get('mismatchedTopImagesRemoved'),
               'dailySourceUrlCorrections': debug.get('dailySourceUrlCorrections'),
           }, ensure_ascii=False, indent=2), encoding='utf8')
           print('Saved preview characters:', len(preview))

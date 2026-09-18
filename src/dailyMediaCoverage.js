@@ -102,10 +102,11 @@ export function countUsableDailyMedia(markdown) {
   return new Set(extractMediaUrls(markdown).map(normalizeSourceUrl)).size;
 }
 
-export function repairDailyMediaReferences(markdown, mediaCandidates) {
+export function repairDailyMediaReferences(markdown, mediaCandidates, sourceCandidates = []) {
   const content = String(markdown || "");
   const candidatesBySource = buildCandidateMap(mediaCandidates);
-  if (!content || candidatesBySource.size === 0) {
+  const knownSourceUrls = new Set((sourceCandidates || []).map((candidate) => normalizeSourceUrl(candidate?.url)).filter(Boolean));
+  if (!content || (candidatesBySource.size === 0 && knownSourceUrls.size === 0)) {
     return { markdown: content, correctedCount: 0, removedCount: 0 };
   }
 
@@ -114,7 +115,15 @@ export function repairDailyMediaReferences(markdown, mediaCandidates) {
   let removedCount = 0;
   const updated = content.replace(blockPattern, (block) => {
     const candidate = getMatchingCandidate(block, candidatesBySource);
-    if (!candidate) return block;
+    if (!candidate) {
+      const hasKnownSource = extractDailyMarkdownLinks(block)
+        .some((link) => knownSourceUrls.has(normalizeSourceUrl(link.url)));
+      if (!hasKnownSource) return block;
+      return block.replace(/!\[[^\]]*\]\(\s*https?:\/\/[^\r\n)]+(?:\s+"[^"]*")?\s*\)/g, () => {
+        removedCount += 1;
+        return "";
+      });
+    }
 
     const replacements = candidate.placeholders.map((placeholder) =>
       normalizePlaceholderCaption(placeholder, candidate)

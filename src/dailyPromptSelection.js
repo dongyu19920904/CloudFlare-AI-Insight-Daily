@@ -346,6 +346,26 @@ function isAiRelevantDailyPromptCandidate(candidate) {
   ].join(" ");
   const headline = candidate?.title || "";
 
+  if (/(?:永久激活|破解版|免激活|解锁付费功能)/.test(headline)) {
+    return false;
+  }
+
+  if (/(?:纪录片|电影|首映|导演)/.test(headline) && !hasStrongAiRelevanceSignal(headline)) {
+    return false;
+  }
+  const compactDescription = String(candidate?.description || "")
+    .replace(/\[图片:[^\]]+\]/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .trim();
+  if ((/[?？]\s*$/.test(headline.trim()) || /^(?:你能|能否|能不能).{0,30}(?:看出|识别|分辨)/.test(headline)) &&
+      compactDescription.length < 45) {
+    return false;
+  }
+  if (/^(?:AI日报|AI简报|每日(?:AI)?速览)[：:]/i.test(headline) &&
+      (headline.match(/[；;]/g) || []).length >= 2) {
+    return false;
+  }
+
   if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }

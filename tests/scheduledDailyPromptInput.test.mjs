@@ -106,6 +106,20 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
 });
 
+test('product reserve uses an actual feature update when news lacks one', () => {
+  const projects = [1, 2].map((i) => `Project Name: repo-${i}\nUrl: https://github.com/example/repo-${i}`);
+  const social = [
+    'socialMedia Post by A\nTitle: Arrow 模型发布 SVG 绘制功能\nUrl: https://x.com/a/status/1',
+    'socialMedia Post by B\nTitle: AI 研究讨论\nUrl: https://x.com/b/status/2',
+    'socialMedia Post by C\nTitle: AI 开发经验\nUrl: https://x.com/c/status/3',
+  ];
+  const news = Array.from({ length: 9 }, (_, i) => `News Title: AI 事件观察 ${i}\nUrl: https://example.com/news-${i}`);
+  const prompt = buildDailyGenerationPromptInput([...projects, ...social, ...news]);
+  const reserved = prompt.slice(prompt.indexOf('【产品与行业栏目专用候选素材】'));
+  assert.match(reserved, /Arrow 模型发布 SVG 绘制功能/);
+  assert.equal((prompt.match(/https:\/\/x\.com\/a\/status\/1/g) || []).length, 1);
+});
+
 test("daily prompt allocation keeps at most one GitHub project in a low-volume TOP", () => {
   const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
   const social = (index) => `socialMedia Post by user-${index}\nUrl: https://x.com/user/status/${index}`;

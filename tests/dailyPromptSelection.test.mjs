@@ -36,6 +36,18 @@ function buildProjectItem(index) {
   };
 }
 
+test('selection rejects unrelated film news, multi-event roundups and result-free image questions', () => {
+  const film = { ...buildNewsItem(91), title: '让马斯克破防的纪录片，究竟讲了什么？',
+    description: '电影在威尼斯首映，律师送达警告。文末还有 AI 产品推荐。' };
+  const roundup = { ...buildNewsItem(92), title: 'AI日报：抖音增加举报入口；Grok 发布记忆；豆包升级助手' };
+  const question = { ...buildNewsItem(93), title: '你能看出来，是 AI 生成的吗？',
+    description: '你能看出来，是 AI 生成的吗？ [图片: https://example.com/q.png]' };
+  const valid = { ...buildNewsItem(94), title: 'AI 模型公布新的使用限制' };
+  const pirated = { ...buildNewsItem(95), title: 'WPS 永久激活版本内置 AI 助手' };
+  const result = buildDailyPromptSelection({ news: [film, roundup, question, pirated, valid], project: [], paper: [], socialMedia: [] });
+  assert.deepEqual([...new Set(result.dailySourceCandidates.map((candidate) => candidate.url))], [valid.url]);
+});
+
 test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () => {
   const result = buildDailyPromptSelection(
     {

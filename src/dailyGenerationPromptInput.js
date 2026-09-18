@@ -12,6 +12,7 @@ export function getDailyReadabilityRules() {
     "标题写短而具体的事件，保留必要主体和条件；正文首句补充事实，不重复标题，不另写抽象口号式短结论。",
     "一条聚焦一个事件，默认一个自然段；短句不等于多分段。普通句子一次推进一个信息点，必要名称和条件可较长；不逐句卡死字数，不删事实来达标，不凑句数或字数。",
     "每条先写清发生了什么；如果该来源还给出机制、操作条件、具体数字、观察结果或使用限制，选最有用的事实补充说明，不只把标题换个说法。只说来源确实支持的细节；素材只有一项可靠事实时可以短，也可以换用信息更完整的合格候选，不能用背景口号凑长。",
+    "来源没有提到价格、额度或地区，不等于官方尚未公布；只能写‘这条来源未说明’，不能替全网下结论。账号、密码和安全能力要写清来源实际给出的授权与保管机制，不能把‘不用手动输入’推成绝对不会泄露。",
     "来源链接优先挂在约 5–12 字的完整事实或能力短语，必要时放宽；删除链接标记后句子也必须自然成立。保留真实 URL，不机械截字或截断英文名称，不写‘作者整理的技术细节’等来源标签。",
     "高亮选择来源支持的完整数字及单位、能力、条件或反差，通常 1–3 处即可，不强行凑数；没有适合的重点时可不加粗。不要高亮连接词、半截词、空泛评价或整段，链接不要同时加粗。",
     "聚合来源只选其中一个有充分证据的主事件，其余无关事件略去；同一 URL 不拆成多条。纯人物争议、影视消息不能仅因主角是科技人物进入 AI 行业栏目；只有提问、没有观察结果或测试细节的社媒也不要入选。此类候选以及只有参会、泛泛推荐或模糊趋势而没有具体 AI 进展的候选，优先用已有合格备用替换；没有合格素材时省略，不虚构补位。",
@@ -97,13 +98,25 @@ function allocateDailyPromptItems(items = []) {
   reserveOne("socialMedia", DAILY_SOCIAL_MIN);
   reserveOne("news", 2);
 
+  const hasProductUpdate = (item) => {
+    const headline = String(item || "").match(/^(?:News Title|Title):\s*(.+)$/im)?.[1] || "";
+    return /(?:发布|推出|上线|新增|改版|开放|接入|支持|升级|更新)/.test(headline);
+  };
+  const productCandidate = reserveCounts.news > 0
+    ? buckets.news.filter(hasProductUpdate).at(-1) || buckets.socialMedia.filter(hasProductUpdate).at(-1)
+    : null;
+  const reservedNews = productCandidate
+    ? [productCandidate, ...(reserveCounts.news > 1
+      ? buckets.news.filter((item) => item !== productCandidate).slice(-(reserveCounts.news - 1))
+      : [])]
+    : buckets.news.slice(-reserveCounts.news);
   const reserved = {
     project: reserveCounts.project >= buckets.project.length
       ? buckets.project
       : buckets.project.slice(1, reserveCounts.project + 1),
-    socialMedia: buckets.socialMedia.slice(0, reserveCounts.socialMedia),
+    socialMedia: buckets.socialMedia.filter((item) => item !== productCandidate).slice(0, reserveCounts.socialMedia),
     paper: buckets.paper.slice(0, reserveCounts.paper),
-    news: reserveCounts.news > 0 ? buckets.news.slice(-reserveCounts.news) : [],
+    news: reserveCounts.news > 0 ? reservedNews : [],
   };
   const reservedItems = new Set(Object.values(reserved).flat());
 
@@ -325,7 +338,8 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const { project: projectCount, socialMedia: socialCount, paper: paperCount, news: newsCount } = allocation.counts;
   const openSourceReserve = allocation.reserved.project.length;
   const socialReserve = socialSectionItems.length;
-  const socialTopLimit = Math.max(0, socialCount - allocation.reserved.socialMedia.length);
+  const socialTopLimit = Math.max(0, socialCount - allocation.reserved.socialMedia.length -
+    allocation.reserved.news.filter((item) => classifyDailyPromptItem(item) === "socialMedia").length);
   const sectionBudget = [
     "【栏目候选预算】",
     "【来源绑定】每个候选的标题、事实、Url 和 Media References 是一个整体。即使来自同一作者或同一平台，也绝不能把甲事件的正文配上乙事件的 URL 或图片。逐条核对产品、版本和事件再输出；链接只能证明其所在候选的事实。无法确认时换用已提供的合格备用素材，不猜测链接，不把转述升级为官方结论。",
@@ -334,7 +348,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
     `已从补位池提取 ${promotedTopBackupItems.length} 条，与原主候选组成 ${topCandidateItems.length} 条明确 TOP 候选；下面的 TOP 候选必须逐条使用，每条只生成一次。`,
     `另有 ${replacementTopBackupItems.length} 条去重替换素材，用于替换同源拆分、重复或事实证据不足的候选。`,
-    `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
+    `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条候选，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
     `TOP 候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重替换素材替换。明确 TOP 候选达到 ${DAILY_TOP_TARGET} 条时必须逐条写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有明确候选确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
     "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
@@ -410,7 +424,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (allocation.reserved.news.length > 0) {
     promptParts.push([
       "【产品与行业栏目专用候选素材】",
-      "下面新闻已从今日焦点候选中移出。按内容分别写进产品与功能更新或行业变化与个人影响，每条素材只能使用一次。",
+      "下面候选已从今日焦点候选中移出。按内容分别写进产品与功能更新或行业变化与个人影响，每条素材只能使用一次。",
       "",
       allocation.reserved.news
         .map((item, index) => [`栏目新闻候选 ${index + 1}:`, item].join("\n"))

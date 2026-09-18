@@ -103,6 +103,18 @@ test("repairDailyMediaReferences restores exact source images in non-TOP section
   assert.doesNotMatch(result.markdown, /wrong-id|\\u0026|#x26/);
 });
 
+test('source without media loses a borrowed image while a source-owned image keeps its URL', () => {
+  const source = 'https://github.com/alibaba/open-code-review';
+  const borrowed = 'https://opengraph.githubassets.com/hash/TencentCloud/Octop';
+  const own = 'https://cdn.example.com/own.png';
+  const markdown = `### 1. 阿里代码审查\n\n[行级注释](${source})。\n\n![错图](${borrowed} "错图")`;
+  const removed = repairDailyMediaReferences(markdown, [], [{ url: source }]);
+  assert.equal(removed.removedCount, 1);
+  assert.doesNotMatch(removed.markdown, /TencentCloud\/Octop/);
+  const correct = `### 1. 阿里代码审查\n\n[行级注释](${source})。\n\n![原图](${own} "原图")`;
+  assert.equal(repairDailyMediaReferences(correct, [{ url: source, title: '阿里代码审查', placeholders: [`![原图](${own})`] }], [{ url: source }]).markdown, correct);
+});
+
 test("ensureDailyMediaCoverage restores two source-backed social images after the global target is met", () => {
   const topItems = Array.from({ length: 6 }, (_, index) => `### ${index + 1}. TOP 新闻 ${index + 1}
 

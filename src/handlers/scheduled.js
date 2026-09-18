@@ -1458,7 +1458,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     outputOfCall2 = checkSourceBindings(outputOfCall2, 'initial');
     outputOfCall2 = screenFun(outputOfCall2, 'initial');
     debugInfo.outputHasMediaBeforeFallback = containsRenderedMedia(outputOfCall2);
-    const cleanedOutput = repairDailyMediaReferences(outputOfCall2, mediaCandidates);
+    const cleanedOutput = repairDailyMediaReferences(outputOfCall2, mediaCandidates, options.dailySourceCandidates);
     outputOfCall2 = cleanedOutput.markdown;
     debugInfo.mismatchedTopImagesRemoved += cleanedOutput.correctedCount + cleanedOutput.removedCount;
     const mediaCoverage = ensureDailyMediaCoverage(outputOfCall2, mediaCandidates);
@@ -1526,7 +1526,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         repairedOutputOfCall2 = normalizeMarkdownImageSyntax(repairedOutputOfCall2);
         repairedOutputOfCall2 = checkSourceBindings(repairedOutputOfCall2, 'repair');
         repairedOutputOfCall2 = screenFun(repairedOutputOfCall2, 'repair');
-        const cleanedRepairedOutput = repairDailyMediaReferences(repairedOutputOfCall2, mediaCandidates);
+        const cleanedRepairedOutput = repairDailyMediaReferences(repairedOutputOfCall2, mediaCandidates, options.dailySourceCandidates);
         repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
         debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.correctedCount + cleanedRepairedOutput.removedCount;
         const repairedMediaCoverage = ensureDailyMediaCoverage(repairedOutputOfCall2, mediaCandidates);
