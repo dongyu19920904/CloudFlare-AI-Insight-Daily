@@ -2867,6 +2867,10 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     debugInfo.dailyValidationIssues = validation.issues;
     debugInfo.dailyValidationWarnings = validation.warnings || [];
     if (!validation.ok) {
+        if (dryRun) {
+            debugInfo.dailyPreviewSummary = outputOfCall3;
+            debugInfo.dailyPreviewMarkdown = dailySummaryMarkdownContent;
+        }
         await reportScheduledProgress(options, 'daily', 'validation-failed', 100, {
             issueCount: validation.issues.length,
         });
