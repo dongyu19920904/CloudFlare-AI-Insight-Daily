@@ -51,9 +51,12 @@ test('shared rules keep supported details without padding thin sources or unrela
   const rules = getDailyReadabilityRules();
   assert.match(rules, /机制、操作条件、具体数字、观察结果或使用限制/);
   assert.match(rules, /素材只有一项可靠事实时可以短/);
+  assert.match(rules, /至少保留两项互不重复的有用事实/);
+  assert.match(rules, /不能把降本写成已证实的标题或摘要结论/);
   assert.match(rules, /纯人物争议、影视消息/);
   assert.match(rules, /只有提问、没有观察结果或测试细节/);
   const draft = getSystemPromptSummarizationStepOne('2026-09-18');
   assert.match(draft, /与 AI 没有直接关系的人物争议或影视消息/);
   assert.match(draft, /这些条件只有在来源给出时才写/);
+  assert.doesNotMatch(draft, /每条正文是否有 2-3 个/);
 });

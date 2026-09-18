@@ -11,7 +11,8 @@ export function getDailyReadabilityRules() {
     "【统一阅读规则：初稿与修复共用】",
     "标题写短而具体的事件，保留必要主体和条件；正文首句补充事实，不重复标题，不另写抽象口号式短结论。",
     "一条聚焦一个事件，默认一个自然段；短句不等于多分段。普通句子一次推进一个信息点，必要名称和条件可较长；不逐句卡死字数，不删事实来达标，不凑句数或字数。",
-    "每条先写清发生了什么；如果该来源还给出机制、操作条件、具体数字、观察结果或使用限制，选最有用的事实补充说明，不只把标题换个说法。只说来源确实支持的细节；素材只有一项可靠事实时可以短，也可以换用信息更完整的合格候选，不能用背景口号凑长。",
+    "每条先写清发生了什么；来源若还给出机制、操作条件、具体数字、观察结果或使用限制，至少保留两项互不重复的有用事实。素材充足的 TOP 正文通常约 90–130 个可见字符，以读完能复述事件、依据和边界为准，不逐条卡字数。素材只有一项可靠事实时可以短，也可以换用信息更完整的合格候选；不能用背景口号、重复标题或无来源推断凑长。",
+    "成本、速度和性能分别写清口径。个人帖子声称‘成本大幅降低’但没有价格、测量方法或官方资料时，不能把降本写成已证实的标题或摘要结论；正文最多归属为发帖人的说法，优先选择有更多独立事实的事件。",
     "来源没有提到价格、额度或地区，不等于官方尚未公布；只能写‘这条来源未说明’，不能替全网下结论。账号、密码和安全能力要写清来源实际给出的授权与保管机制，不能把‘不用手动输入’推成绝对不会泄露。",
     "来源链接优先挂在约 5–12 字的完整事实或能力短语，必要时放宽；删除链接标记后句子也必须自然成立。保留真实 URL，不机械截字或截断英文名称，不写‘作者整理的技术细节’等来源标签。",
     "高亮选择来源支持的完整数字及单位、能力、条件或反差，通常 1–3 处即可，不强行凑数；没有适合的重点时可不加粗。不要高亮连接词、半截词、空泛评价或整段，链接不要同时加粗。",
@@ -178,8 +179,11 @@ function getDailyPromptItemFingerprint(item) {
     .slice(0, 120);
 }
 
-function getDailyPromptItemEventKey(item) {
-  const text = String(item || "").toLowerCase();
+export function getDailyPromptItemEventKey(item) {
+  const raw = String(item || "");
+  const text = (raw.match(/^(?:Project Name|News Title|Papers Title|Content):\s*(.+)$/im)?.[1] || raw).toLowerCase();
+  if (/\bjev\b/i.test(text)) return "jev-model-launch";
+  if (/claude\s+code/i.test(text) && /projects?\b/i.test(text)) return "claude-code-projects";
   if (
     /(小米|xiaomi|玄戒)/i.test(text) &&
     /(q2|二季度|季度|财报|营收|净利润|出货量|aiot|汽车业务)/i.test(text)
@@ -204,6 +208,9 @@ function selectSupplementalDailySocialItems(
   const seenFingerprints = new Set(
     reservedSocialItems.map(getDailySocialFingerprint).filter(Boolean)
   );
+  const seenEventKeys = new Set(
+    [...(selectedContentItems || []), ...reservedSocialItems].map(getDailyPromptItemEventKey).filter(Boolean)
+  );
   const supplementalItems = [];
 
   for (const item of dailyFunContentItems || []) {
@@ -213,11 +220,14 @@ function selectSupplementalDailySocialItems(
 
     const url = getDailyPromptItemUrl(normalizedItem);
     const fingerprint = getDailySocialFingerprint(normalizedItem);
-    if ((url && seenUrls.has(url)) || (fingerprint && seenFingerprints.has(fingerprint))) continue;
+    const eventKey = getDailyPromptItemEventKey(normalizedItem);
+    if ((url && seenUrls.has(url)) || (fingerprint && seenFingerprints.has(fingerprint)) ||
+      (eventKey && seenEventKeys.has(eventKey))) continue;
 
     supplementalItems.push(normalizedItem);
     if (url) seenUrls.add(url);
     if (fingerprint) seenFingerprints.add(fingerprint);
+    if (eventKey) seenEventKeys.add(eventKey);
     if (supplementalItems.length >= needed) break;
   }
 

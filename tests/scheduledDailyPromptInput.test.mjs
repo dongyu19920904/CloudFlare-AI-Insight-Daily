@@ -264,6 +264,13 @@ test("buildDailyGenerationPromptInput does not reintroduce the same Xiaomi quart
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
 });
 
+test("social fallback cannot repeat a Claude Code Projects product update", () => {
+  const product = "News Title: Claude Code 上线 Projects 功能\nUrl: https://example.com/claude-products\nDescription: 多线程任务共享上下文。";
+  const social = "Content: Claude Code 的 Projects 改版借鉴 Slack Thread\nUrl: https://example.com/claude-social\nDescription: 多线程任务共享上下文。";
+  const prompt = buildDailyGenerationPromptInput([product], [social]);
+  assert.doesNotMatch(prompt, /https:\/\/example\.com\/claude-social/);
+});
+
 test("buildDailyGenerationPromptInput hides welfare items from daily generation", () => {
   const normalItem = [
     "News Title: Claude Code 更新计划模式",

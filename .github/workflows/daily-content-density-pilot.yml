@@ -1,4 +1,5 @@
 name: One-off daily content density pilot
+# Targeted replay after source-event deduplication and evidence-density corrections.
 on:
   push:
     branches: [codex/daily-content-density-20260918]

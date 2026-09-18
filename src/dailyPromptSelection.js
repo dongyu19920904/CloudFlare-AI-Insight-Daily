@@ -1,6 +1,7 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { hasDailyFunStorySignal, isDailyFunSolicitation } from "./dailyFunSection.js";
+import { getDailyPromptItemEventKey } from "./dailyGenerationPromptInput.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -573,10 +574,14 @@ function buildDailyPromptCandidate(item) {
 function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
   const candidateUrlKey = normalizeReplayUrl(candidate?.url);
   const candidateTitle = candidate?.title || "";
+  const candidateEventKey = getDailyPromptItemEventKey(candidateTitle);
 
   return selectedCandidates.some((existingCandidate) => {
     const existingUrlKey = normalizeReplayUrl(existingCandidate?.url);
     if (candidateUrlKey && existingUrlKey && candidateUrlKey === existingUrlKey) {
+      return true;
+    }
+    if (candidateEventKey && candidateEventKey === getDailyPromptItemEventKey(existingCandidate?.title)) {
       return true;
     }
 

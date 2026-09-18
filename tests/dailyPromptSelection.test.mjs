@@ -326,6 +326,17 @@ test("same-event title variants still collapse inside one prompt", () => {
   assert.equal(result.selectedContentItems.length, 1);
 });
 
+test("different headlines for the same Jev model event use one candidate", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      { ...buildNewsItem(81), title: "Jev 模型推出直觉推理路线", url: "https://example.com/jev-jike" },
+      { ...buildNewsItem(82), title: "Vercel AI Gateway 已支持调用 Jev", url: "https://example.com/jev-x" },
+    ],
+    project: [], socialMedia: [], paper: [],
+  }, { DAILY_PROMPT_MAX_ITEMS: 2, DAILY_PROMPT_NEWS_ITEMS: 2 });
+  assert.equal(result.selectedContentItems.length, 1);
+});
+
 test("buildDailyPromptSelection keeps one Xiaomi earnings story", () => {
   const result = buildDailyPromptSelection(
     {
