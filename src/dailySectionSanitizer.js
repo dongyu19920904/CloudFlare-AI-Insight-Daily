@@ -346,12 +346,12 @@ export function normalizeDailyOutputPresentation(markdown) {
   return removeDailyGenerationMetaNotes(
     ensureDailyTopHighlightDensity(
       normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
-        normalizeMisleadingDailySourceLabels(
+        normalizeIncompleteDailyLinkGrammar(normalizeMisleadingDailySourceLabels(
           removeVolatileDailyImages(markdown).replace(
             /https?:\/\/[^\s<>()]+/g,
             (url) => url.replace(/\*\*|`/g, "")
           )
-        )
+        ))
       ))
     )
   );
@@ -433,6 +433,13 @@ export function stripDailyHeadingCountSuffix(markdown) {
   return String(markdown || "").replace(
     /^(#{1,6}\s+(?:\*\*)?.*?)(?:\s*[\uFF08(]\s*\d+(?:\s*[-~\u2013\u2014]\s*\d+)?\s*\u6761\s*[\uFF09)]\s*)(\*\*)?(\s*)$/gm,
     (_, heading, boldClose = "", trailing = "") => `${heading.trimEnd()}${boldClose}${trailing}`
+  );
+}
+
+export function normalizeIncompleteDailyLinkGrammar(markdown) {
+  return String(markdown || "").replace(
+    /可直接在\s*(\[[^\]\r\n]+\]\(https?:\/\/[^\s)]+(?:\s+"[^"]*")?\))\s*([。！？])/g,
+    "可查看$1了解详情$2"
   );
 }
 

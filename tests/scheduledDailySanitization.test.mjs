@@ -11,6 +11,7 @@ import {
   isVolatileDailyMediaUrl,
   normalizeDailyChinesePunctuation,
   normalizeDailyFaqAivoraCta,
+  normalizeIncompleteDailyLinkGrammar,
   normalizeDailyOutputPresentation,
   normalizeDailyTopEvidenceLinkLabels,
   normalizeMisleadingDailySourceLabels,
@@ -599,6 +600,17 @@ test("daily output presentation corrects official wording on editorial links", (
 
   assert.match(normalized, /\[AIBase 对这项消息的报道\]\(https:\/\/www\.aibase\.com/);
   assert.match(normalized, /\[DeepSeek 官方说明\]\(https:\/\/api-docs\.deepseek\.com/);
+});
+
+test("daily output presentation completes a dangling link preposition", () => {
+  const malformed = "开发者可直接在[AIBase 对这项消息的报道](https://www.aibase.com/zh/news/31167)。";
+  const valid = "开发者可直接在[模型控制台](https://example.com/console)调用接口。";
+
+  assert.equal(
+    normalizeIncompleteDailyLinkGrammar(malformed),
+    "开发者可查看[AIBase 对这项消息的报道](https://www.aibase.com/zh/news/31167)了解详情。"
+  );
+  assert.equal(normalizeIncompleteDailyLinkGrammar(valid), valid);
 });
 
 test("daily output presentation removes volatile and low-value images", () => {
