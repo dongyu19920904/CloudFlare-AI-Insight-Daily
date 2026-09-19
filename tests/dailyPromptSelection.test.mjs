@@ -61,7 +61,7 @@ test("unrelated film coverage does not enter the AI daily", () => {
 test("executive attendance news does not enter the AI daily", () => {
   const attendance = {
     ...buildNewsItem(93),
-    title: "Sam Altman 与黄仁勋将出席白宫国宴",
+    title: "AI 公司 CEO Sam Altman 与黄仁勋将出席白宫国宴",
     description: "两位 AI 公司高管在嘉宾名单中。",
   };
   const result = buildDailyPromptSelection({ news: [attendance], project: [], paper: [], socialMedia: [] });

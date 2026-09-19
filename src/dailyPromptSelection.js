@@ -348,7 +348,7 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     return false;
   }
 
-  if (/(?:出席|参会|参加|国宴|嘉宾名单)/.test(headline) && !hasStrongAiRelevanceSignal(headline)) {
+  if (/(?:出席|参会|参加|国宴|嘉宾名单)/.test(headline)) {
     return false;
   }
 

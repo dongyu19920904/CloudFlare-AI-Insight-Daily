@@ -26,6 +26,7 @@
 - [试点 35414548400](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35414548400)：前两项问题已经消失，但 Jev 的媒体稿、即刻梳理和社媒实测仍跨候选通道重复。根因是事件键只检查标题首行，且社媒补位只按 URL 和文本指纹去重。修正为在完整素材中识别事件，并让新闻、TOP 备用、社媒预留和趣闻共用已占事件集合。
 - [试点 35414913434](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35414913434)：Jev 只保留一条，前述问题均未复发；继续发现 ChatGPT 提交 GitHub PR 以两种标题跨 TOP 和社媒重复，以及 FAQ 在没有官方输入时补写支付、地区、权限和额度。增加对应事件键，并要求 FAQ 缺少官方证据时改问其它可回答问题。
 - [试点 35415256057](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35415256057)：FAQ 不再补写套餐价格、支付方式和无限额度，Jev 保持一条；模型仍把 ChatGPT/GitHub PR 从一份素材复述到 TOP 和社媒。将同事件键接入现有成稿跨栏目去重器，在发布前确定性移除第二条；同时排除只报道高管出席/参会的候选。
+- [试点 35415617682](https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/35415617682)：发布前去重已移除第二条 ChatGPT/GitHub PR，FAQ 与 Jev 均合格；参会素材的原始标题含 AI 字样，仍绕过弱过滤进入 TOP。最终把出席、参会、国宴和嘉宾名单改为直接排除，不再由 AI 关键词救回。
 - 最后一轮只修正上述两个边界并继续使用相同 9 月 19 日缓存。自动稿须同时通过发布校验和人工事实、来源、图文、可读性检查，才进入生产部署。
 
 ## 测试与发布
