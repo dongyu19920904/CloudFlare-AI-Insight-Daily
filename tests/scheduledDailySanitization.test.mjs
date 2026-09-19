@@ -542,6 +542,19 @@ test("daily output presentation normalizes Chinese commas without changing URLs 
   assert.match(normalized, /items\.join\(','\)/);
 });
 
+test("daily output presentation removes accidental emphasis inside bare URLs", () => {
+  const markdown = `## **🔥 今日焦点 TOP 10**
+
+### 1. Claude 增加文档工具
+
+**入口已经开放。** 用户可访问 https://**claude**.ai/artifacts 查看。`;
+
+  const normalized = normalizeDailyOutputPresentation(markdown);
+
+  assert.match(normalized, /https:\/\/claude\.ai\/artifacts/);
+  assert.doesNotMatch(normalized, /https:\/\/\*\*claude\*\*/);
+});
+
 test("daily output presentation corrects official wording on editorial links", () => {
   const markdown = "[阿里千问官方公告](https://www.aibase.com/zh/news/30136)与[DeepSeek 官方说明](https://api-docs.deepseek.com/news)";
 

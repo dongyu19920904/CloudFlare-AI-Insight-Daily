@@ -169,7 +169,7 @@ function countDailyHighlightCharacters(value) {
 
 function collectDailyHighlightProtectedRanges(body) {
   return [...String(body || "").matchAll(
-    /\*\*[^*\r\n]+\*\*|!\[[^\]]*\]\([^\r\n]*?\)|\[[^\]]+\]\([^\r\n]*?\)|`[^`\r\n]+`|<[^>]+>/g
+    /\*\*[^*\r\n]+\*\*|!\[[^\]]*\]\([^\r\n]*?\)|\[[^\]]+\]\([^\r\n]*?\)|https?:\/\/[^\s<>()]+|`[^`\r\n]+`|<[^>]+>/g
   )].map((match) => ({
     start: match.index,
     end: match.index + match[0].length,
@@ -344,7 +344,10 @@ export function normalizeDailyOutputPresentation(markdown) {
     ensureDailyTopHighlightDensity(
       normalizeDailyTopEvidenceLinkLabels(normalizeDailyChinesePunctuation(
         normalizeMisleadingDailySourceLabels(
-          removeVolatileDailyImages(markdown)
+          removeVolatileDailyImages(markdown).replace(
+            /https?:\/\/[^\s<>()]+/g,
+            (url) => url.replace(/\*\*|`/g, "")
+          )
         )
       ))
     )

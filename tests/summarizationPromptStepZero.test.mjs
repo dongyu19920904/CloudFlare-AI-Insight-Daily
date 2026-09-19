@@ -119,6 +119,7 @@ test("daily prompt requires one search-like Aivora FAQ with accurate service bou
   assert.match(prompt, /https:\/\/www\.aivora\.cn\//);
   assert.match(prompt, /商品、价格与可用状态以官网实时页面为准/);
   assert.match(prompt, /官方公告、官方文档或官方价格页/);
+  assert.match(prompt, /不得补成“十分之一、一个数量级、翻倍”等数字/);
   assert.match(prompt, /正文最多出现 1 个主站链接/);
   assert.match(prompt, /不得添加 UTM 参数/);
   assert.match(prompt, /不得自行猜测商品或分类 URL/);
@@ -139,4 +140,5 @@ test("summary prompt asks for three progressive sentences instead of parallel he
   assert.match(prompt, /不要写成三条并列新闻/);
   assert.match(prompt, /每行 24-44 个中文字符/);
   assert.match(prompt, /只输出 3 行纯文本/);
+  assert.match(prompt, /不得补成“十分之一、一个数量级、翻倍”等数字/);
 });

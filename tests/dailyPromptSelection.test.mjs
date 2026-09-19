@@ -48,6 +48,16 @@ test("direct repository news cannot bypass the Trending Daily project source", (
   assert.ok(!result.selectedContentItems.some((item) => item.includes(repoNews.url)));
 });
 
+test("unrelated film coverage does not enter the AI daily", () => {
+  const film = {
+    ...buildNewsItem(95),
+    title: "让马斯克破防的纪录片，究竟讲了什么？",
+    description: "影片在威尼斯首映，导演收到律师函。正文末尾顺带提到 AI。",
+  };
+  const result = buildDailyPromptSelection({ news: [film], project: [], paper: [], socialMedia: [] });
+  assert.equal(result.selectedContentItems.length, 0);
+});
+
 test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () => {
   const result = buildDailyPromptSelection(
     {

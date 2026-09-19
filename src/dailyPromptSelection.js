@@ -343,6 +343,10 @@ function isAiRelevantDailyPromptCandidate(candidate) {
   ].join(" ");
   const headline = candidate?.title || "";
 
+  if (/(?:纪录片|电影|首映|导演)/.test(headline) && !hasStrongAiRelevanceSignal(headline)) {
+    return false;
+  }
+
   if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }
