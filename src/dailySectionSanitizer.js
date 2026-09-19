@@ -69,7 +69,8 @@ export function isLowValueDailyMediaUrl(url) {
 
     return (
       /(?:^|[-_])(?:avatar|logo|favicon|icon)(?:[-_.]|$)/i.test(basename) ||
-      /_normal(?:\.[a-z0-9]+)?$/i.test(basename)
+      /_normal(?:\.[a-z0-9]+)?$/i.test(basename) ||
+      /(?:^|[-_])(?:96|128)[x-](?:96|128)(?:[-_.]|$)/i.test(basename)
     );
   } catch {
     return false;

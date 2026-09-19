@@ -608,16 +608,19 @@ test("daily output presentation removes volatile and low-value images", () => {
 
 ![头像](https://pbs.twimg.com/profile_images/123/user_normal.jpg "头像")
 
+![低清图标](https://img.alicdn.com/imgextra/i4/example-2-tps-128-128.png "低清图标")
+
 ![稳定图](https://pbs.twimg.com/media/example.jpg "稳定图")`;
 
   assert.equal(isVolatileDailyMediaUrl("https://cdn5.telesco.pe/file/example.jpg"), true);
   assert.equal(isVolatileDailyMediaUrl("https://t.me/example"), false);
   assert.equal(isLowValueDailyMediaUrl("https://pbs.twimg.com/profile_images/123/user_normal.jpg"), true);
+  assert.equal(isLowValueDailyMediaUrl("https://img.alicdn.com/imgextra/i4/example-2-tps-128-128.png"), true);
   assert.equal(isLowValueDailyMediaUrl("https://pbs.twimg.com/media/example.jpg"), false);
 
   const normalized = removeVolatileDailyImages(markdown);
   assert.doesNotMatch(normalized, /telesco\.pe/);
-  assert.doesNotMatch(normalized, /profile_images|user_normal/);
+  assert.doesNotMatch(normalized, /profile_images|user_normal|128-128/);
   assert.match(normalized, /pbs\.twimg\.com/);
   assert.equal(normalizeDailyOutputPresentation(normalized), normalized);
 });
