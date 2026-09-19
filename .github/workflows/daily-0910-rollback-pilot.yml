@@ -1,5 +1,5 @@
 name: One-off September 9 backend rollback pilot
-# Historical backend code with final relevance and GitHub state boundaries; fixed September 19 source cache; no publication.
+# Historical backend code with unified event dedupe; fixed September 19 source cache; no publication.
 on:
   push:
     branches: [codex/rollback-0910-20260918]

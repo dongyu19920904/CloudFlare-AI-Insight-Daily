@@ -71,7 +71,12 @@ test("pure mobile framework migration does not enter the AI daily", () => {
 test("different headlines for the same Jev launch use one candidate", () => {
   const result = buildDailyPromptSelection({
     news: [
-      { ...buildNewsItem(81), title: "Jev 模型发布并开放候补名单", url: "https://example.com/jev-jike" },
+      {
+        ...buildNewsItem(81),
+        title: "TypeSafe AI 推出只做决策的新模型",
+        description: "Jev 模型发布并开放候补名单。",
+        url: "https://example.com/jev-jike",
+      },
       { ...buildNewsItem(82), title: "Vercel AI Gateway 已可调用 Jev", url: "https://example.com/jev-x" },
     ],
     project: [], socialMedia: [], paper: [],

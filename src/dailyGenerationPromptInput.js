@@ -100,20 +100,26 @@ function getDailyPromptItemUrl(item) {
 function dedupeDailyPromptItemsByUrl(items = []) {
   const seenUrls = new Set();
   const seenUnlinkedItems = new Set();
+  const seenEventKeys = new Set();
 
   return (items || []).filter((item) => {
     const normalizedItem = String(item || "").trim();
     if (!normalizedItem) return false;
 
+    const eventKey = getDailyPromptItemEventKey(normalizedItem);
+    if (eventKey && seenEventKeys.has(eventKey)) return false;
+
     const url = getDailyPromptItemUrl(normalizedItem);
     if (url) {
       if (seenUrls.has(url)) return false;
       seenUrls.add(url);
+      if (eventKey) seenEventKeys.add(eventKey);
       return true;
     }
 
     if (seenUnlinkedItems.has(normalizedItem)) return false;
     seenUnlinkedItems.add(normalizedItem);
+    if (eventKey) seenEventKeys.add(eventKey);
     return true;
   });
 }
@@ -141,7 +147,7 @@ function getDailyPromptItemFingerprint(item) {
 
 export function getDailyPromptItemEventKey(item) {
   const raw = String(item || "");
-  const text = (raw.match(/^(?:Project Name|News Title|Papers Title|Content):\s*(.+)$/im)?.[1] || raw).toLowerCase();
+  const text = raw.toLowerCase();
   if (/\bjev\b/i.test(text)) return "jev-model-launch";
   if (/claude\s+code/i.test(text) && /projects?\b/i.test(text)) return "claude-code-projects";
   if (
@@ -168,6 +174,11 @@ function selectSupplementalDailySocialItems(
   const seenFingerprints = new Set(
     reservedSocialItems.map(getDailySocialFingerprint).filter(Boolean)
   );
+  const seenEventKeys = new Set(
+    [...(selectedContentItems || []), ...reservedSocialItems]
+      .map(getDailyPromptItemEventKey)
+      .filter(Boolean)
+  );
   const supplementalItems = [];
 
   for (const item of dailyFunContentItems || []) {
@@ -177,11 +188,17 @@ function selectSupplementalDailySocialItems(
 
     const url = getDailyPromptItemUrl(normalizedItem);
     const fingerprint = getDailySocialFingerprint(normalizedItem);
-    if ((url && seenUrls.has(url)) || (fingerprint && seenFingerprints.has(fingerprint))) continue;
+    const eventKey = getDailyPromptItemEventKey(normalizedItem);
+    if (
+      (url && seenUrls.has(url)) ||
+      (fingerprint && seenFingerprints.has(fingerprint)) ||
+      (eventKey && seenEventKeys.has(eventKey))
+    ) continue;
 
     supplementalItems.push(normalizedItem);
     if (url) seenUrls.add(url);
     if (fingerprint) seenFingerprints.add(fingerprint);
+    if (eventKey) seenEventKeys.add(eventKey);
     if (supplementalItems.length >= needed) break;
   }
 

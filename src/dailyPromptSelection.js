@@ -559,14 +559,19 @@ function buildDailyPromptCandidate(item) {
 function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
   const candidateUrlKey = normalizeReplayUrl(candidate?.url);
   const candidateTitle = candidate?.title || "";
-  const candidateEventKey = getDailyPromptItemEventKey(candidateTitle);
+  const getCandidateEventKey = (value) => getDailyPromptItemEventKey([
+    value?.title || "",
+    value?.description || "",
+    value?.plainText || "",
+  ].join("\n"));
+  const candidateEventKey = getCandidateEventKey(candidate);
 
   return selectedCandidates.some((existingCandidate) => {
     const existingUrlKey = normalizeReplayUrl(existingCandidate?.url);
     if (candidateUrlKey && existingUrlKey && candidateUrlKey === existingUrlKey) {
       return true;
     }
-    if (candidateEventKey && candidateEventKey === getDailyPromptItemEventKey(existingCandidate?.title)) {
+    if (candidateEventKey && candidateEventKey === getCandidateEventKey(existingCandidate)) {
       return true;
     }
 

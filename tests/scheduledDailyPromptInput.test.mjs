@@ -218,6 +218,39 @@ test("buildDailyGenerationPromptInput removes duplicate source URLs and fills th
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, funItems), 10);
 });
 
+test("buildDailyGenerationPromptInput keeps one Jev event across news and social reserves", () => {
+  const selectedItems = [
+    [
+      "News Title: TypeSafe AI 推出只做决策的新模型",
+      "Url: https://example.com/typesafe-model",
+      "Content Summary: Jev 专注结构化决策，并开放候补名单。",
+    ].join("\n"),
+    [
+      "News Title: Vercel AI Gateway 接入新决策模型",
+      "Url: https://example.com/gateway-model",
+      "Content Summary: 开发者现在可以通过网关调用 Jev。",
+    ].join("\n"),
+  ];
+  const socialItems = [
+    [
+      "socialMedia Post by tester",
+      "Url: https://x.com/tester/status/jev",
+      "Content: 用户通过 Jev Waitlist，并用 Codex 调用成功。",
+    ].join("\n"),
+    ...Array.from({ length: 3 }, (_, index) => [
+      `socialMedia Post by tester${index}`,
+      `Url: https://x.com/tester/status/other-${index}`,
+      `Content: AI 工具独立实测 ${index}。`,
+    ].join("\n")),
+  ];
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, socialItems);
+
+  assert.match(promptInput, /typesafe-model/);
+  assert.doesNotMatch(promptInput, /gateway-model|status\/jev/);
+  assert.match(promptInput, /status\/other-0/);
+});
+
 test("buildDailyGenerationPromptInput does not reintroduce the same Xiaomi quarter from backups", () => {
   const news = (index) => [
     `News Title: 独立 AI 消息 ${index}`,
