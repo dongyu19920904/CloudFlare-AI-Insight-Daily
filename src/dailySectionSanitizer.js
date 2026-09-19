@@ -433,6 +433,22 @@ export function stripDailyHeadingCountSuffix(markdown) {
   );
 }
 
+function getDailySectionEventKey(text) {
+  const normalized = String(text || "").toLowerCase();
+  if (/\bjev\b/i.test(normalized)) return "jev-model-launch";
+  if (/claude\s+code/i.test(normalized) && /projects?\b/i.test(normalized)) {
+    return "claude-code-projects";
+  }
+  if (
+    /chatgpt/i.test(normalized) &&
+    /github/i.test(normalized) &&
+    /(?:\bpr\b|pull\s+request|提交|代码|仓库)/i.test(normalized)
+  ) {
+    return "chatgpt-github-pr";
+  }
+  return "";
+}
+
 export function sanitizeDuplicateDailySections(markdown) {
   const content = stripDailyHeadingCountSuffix(markdown);
   if (!content) return content;
@@ -440,10 +456,14 @@ export function sanitizeDuplicateDailySections(markdown) {
   const topMatch = content.match(/^##\s*\*\*.*TOP.*\*\*[\s\S]*?(?=\n##\s+|(?![\s\S]))/im);
   if (!topMatch) return content;
 
-  const topLinks = [...topMatch[0].matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)].map((match) => ({
-    title: match[1],
-    url: normalizeSectionUrl(match[2]),
-  }));
+  const topLinks = extractNumberedDailyItems(topMatch[0]).flatMap((item) => {
+    const links = extractDailyMarkdownLinks(item.block);
+    return links.map((link) => ({
+      title: link.text || item.title,
+      url: normalizeSectionUrl(link.url),
+      eventKey: getDailySectionEventKey(`${item.title}\n${item.body}`),
+    }));
+  });
 
   const seenStories = [...topLinks];
   const sectionPatterns = [
@@ -476,6 +496,7 @@ export function sanitizeDuplicateDailySections(markdown) {
           .map((match) => ({
             title: match[1],
             url: normalizeSectionUrl(match[2]),
+            eventKey: getDailySectionEventKey(chunk),
           }));
 
         if (links.length === 0) {
@@ -486,6 +507,7 @@ export function sanitizeDuplicateDailySections(markdown) {
         const duplicated = links.some((link) =>
           seenStories.some((story) => {
             if (story.url && link.url && story.url === link.url) return true;
+            if (story.eventKey && link.eventKey && story.eventKey === link.eventKey) return true;
             return isRepeatedSectionStory(story.title, link.title);
           })
         );

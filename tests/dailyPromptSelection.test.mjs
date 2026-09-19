@@ -58,6 +58,16 @@ test("unrelated film coverage does not enter the AI daily", () => {
   assert.equal(result.selectedContentItems.length, 0);
 });
 
+test("executive attendance news does not enter the AI daily", () => {
+  const attendance = {
+    ...buildNewsItem(93),
+    title: "Sam Altman 与黄仁勋将出席白宫国宴",
+    description: "两位 AI 公司高管在嘉宾名单中。",
+  };
+  const result = buildDailyPromptSelection({ news: [attendance], project: [], paper: [], socialMedia: [] });
+  assert.equal(result.selectedContentItems.length, 0);
+});
+
 test("pure mobile framework migration does not enter the AI daily", () => {
   const migration = {
     ...buildNewsItem(94),

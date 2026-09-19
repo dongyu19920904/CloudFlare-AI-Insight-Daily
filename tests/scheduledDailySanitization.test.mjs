@@ -366,6 +366,29 @@ test("sanitizeDuplicateDailySections removes repeated stories across V3 topic se
   assert.match(sanitized, /研究团队公布代理实验/);
 });
 
+test("sanitizeDuplicateDailySections removes repeated ChatGPT GitHub PR coverage", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. ChatGPT Pro 处理代码仓库
+
+宝玉展示 ChatGPT Pro 分析 GitHub 代码、写设计文档并提交 PR。[技术方案实践](https://x.com/author/status/plan)。
+
+## **◉ 社媒精选**
+
+### ChatGPT 网页端直接提交 GitHub PR
+
+用户连接 GitHub 后可以让 ChatGPT 修改代码并提交 PR。[网页端操作演示](https://x.com/author/status/web-pr)。
+
+### Figure 机器人进入家庭
+
+机器人完成三项家务。[家庭测试视频](https://x.com/author/status/robot)。`;
+
+  const sanitized = sanitizeDuplicateDailySections(markdown);
+
+  assert.doesNotMatch(sanitized, /网页端操作演示/);
+  assert.match(sanitized, /家庭测试视频/);
+});
+
 test("stripDailyHeadingCountSuffix removes stale item counts from daily headings", () => {
   const markdown = [
     "## **\uD83D\uDD25 TOP 1**",
