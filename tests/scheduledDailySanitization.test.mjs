@@ -225,6 +225,20 @@ test("ensureDailyTopHighlightDensity replaces social reactions with a dated limi
   assert.match(normalized, /\*\*现在估计不行了\*\*/);
 });
 
+test("ensureDailyTopHighlightDensity keeps identifiers and Chinese verbs intact", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. 小云雀完成一部 AI 短片
+**短片已经完成。** Telegram 频道 aigc**1024 分**享了一部短片。工具在**提高时**保持画面稳定，[全片由小云雀制作](https://example.com/video)，约 30 分钟即可完成初稿。`;
+
+  const normalized = ensureDailyTopHighlightDensity(markdown);
+
+  assert.match(normalized, /aigc1024 分享了一部短片/);
+  assert.doesNotMatch(normalized, /aigc\*\*1024 分\*\*享/);
+  assert.doesNotMatch(normalized, /\*\*提高时\*\*/);
+  assert.match(normalized, /\*\*约 30 分钟\*\*/);
+});
+
 test("ensureUniqueDailyTopSources replaces duplicate TOP sources with independent section items", () => {
   const markdown = `## **🔥 今日焦点 TOP 3**
 

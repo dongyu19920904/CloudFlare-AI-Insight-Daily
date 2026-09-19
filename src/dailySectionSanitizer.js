@@ -187,6 +187,8 @@ function isLowValueDailyHighlight(text) {
     .replace(/[\s。.!！?？、:：、“”‘’]+/g, "");
 
   return (
+    /^\d+(?:\.\d+)?分$/i.test(compact) ||
+    /^(?:提高|降低|开放|发布|上线)(?:时|后|前|中)$/i.test(compact) ||
     /^(?:宝玉|dotey|作者|博主|网友|开发者|官方|媒体|频道)$/i.test(compact) ||
     /^(?:网友神评|神评|热评|评论区热评|松了一口气|值得关注|值得注意|意义重大|未来可期|很有意思|太离谱了?|令人兴奋)$/i.test(compact)
   );
@@ -208,7 +210,7 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
         visibleLength < 2 ||
         visibleLength > 16 ||
         (
-          /(?:从|的|了|为|与|和|及|并|可|在|向|对|把|将)$/.test(text) &&
+          /(?:从|的|了|为|与|和|及|并|可|在|向|对|把|将|时|后|前|中)$/.test(text) &&
           !/(?:不行了|失效了)$/.test(text)
         ) ||
         seen.has(key) ||
@@ -222,7 +224,7 @@ function collectDailyHighlightCandidates(body, title, protectedRanges) {
   };
 
   addMatches(
-    /(?:约|近|超|超过|低于|高于|最高|至少|仅)?\s*\d+(?:\.\d+)?\s*(?:%|％|万|亿|千|百|GB|TB|MB|毫秒|秒|分钟|小时|个月|次|项|类|家|颗(?:星)?|Stars?|Star|吉瓦|GW|美元|元|倍|分|个)/gi,
+    /(?:约|近|超|超过|低于|高于|最高|至少|仅)?\s*\d+(?:\.\d+)?\s*(?:%|％|万|亿|千|百|GB|TB|MB|毫秒|秒|分钟|小时|个月|次|项|类|家|颗(?:星)?|Stars?|Star|吉瓦|GW|美元|元|倍|个)/gi,
     0
   );
   addMatches(/(?:MITRE\s+ATT&CK|NIST\s+CSF\s+\d(?:\.\d+)?)/gi, 1);
