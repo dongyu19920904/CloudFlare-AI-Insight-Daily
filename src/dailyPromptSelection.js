@@ -348,6 +348,10 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     return false;
   }
 
+  if (/\b(?:react\s+native|swift|kotlin)\b/i.test(titleAndDescription) && !hasStrongAiRelevanceSignal(headline)) {
+    return false;
+  }
+
   if (hasNonAiHeadlineNoise(titleAndDescription) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }

@@ -58,6 +58,16 @@ test("unrelated film coverage does not enter the AI daily", () => {
   assert.equal(result.selectedContentItems.length, 0);
 });
 
+test("pure mobile framework migration does not enter the AI daily", () => {
+  const migration = {
+    ...buildNewsItem(94),
+    title: "Shopify abandons React Native for Swift and Kotlin",
+    description: "The commerce platform is moving its mobile application back to native development.",
+  };
+  const result = buildDailyPromptSelection({ news: [migration], project: [], paper: [], socialMedia: [] });
+  assert.equal(result.selectedContentItems.length, 0);
+});
+
 test("different headlines for the same Jev launch use one candidate", () => {
   const result = buildDailyPromptSelection({
     news: [
