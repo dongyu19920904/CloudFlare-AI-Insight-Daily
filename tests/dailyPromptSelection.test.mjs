@@ -58,6 +58,17 @@ test("unrelated film coverage does not enter the AI daily", () => {
   assert.equal(result.selectedContentItems.length, 0);
 });
 
+test("different headlines for the same Jev launch use one candidate", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      { ...buildNewsItem(81), title: "Jev 模型发布并开放候补名单", url: "https://example.com/jev-jike" },
+      { ...buildNewsItem(82), title: "Vercel AI Gateway 已可调用 Jev", url: "https://example.com/jev-x" },
+    ],
+    project: [], socialMedia: [], paper: [],
+  }, { DAILY_PROMPT_MAX_ITEMS: 2, DAILY_PROMPT_NEWS_ITEMS: 2 });
+  assert.equal(result.selectedContentItems.length, 1);
+});
+
 test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () => {
   const result = buildDailyPromptSelection(
     {

@@ -1,5 +1,5 @@
 name: One-off September 9 backend rollback pilot
-# Historical backend code with factual and source boundaries; fixed September 18 source cache; no publication.
+# Historical backend code with factual and source boundaries; fixed September 19 source cache; no publication.
 on:
   push:
     branches: [codex/rollback-0910-20260918]
@@ -29,7 +29,7 @@ jobs:
           headers = {'Authorization': 'Bearer ' + os.environ['CLOUDFLARE_API_TOKEN']}
           manifest = {}
           for kind in ('news', 'project', 'paper', 'socialMedia'):
-              key = '2026-09-18-' + kind
+              key = '2026-09-19-' + kind
               url = base + '/storage/kv/namespaces/bd98e664917441a08118edc88790bf3f/values/' + key
               with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
                   raw = response.read()
@@ -41,7 +41,7 @@ jobs:
           PY
       - name: Upload isolated version without moving production traffic
         run: |
-          npx --yes wrangler@4.59.2 versions upload --preview-alias baseline-0910-20260918 --message 'September 10 backend baseline with September 18 cached sources; no production rollout' > pilot/version-upload.log 2>&1
+          npx --yes wrangler@4.59.2 versions upload --preview-alias baseline-0910-20260919 --message 'September 10 backend baseline with September 19 cached sources; no production rollout' > pilot/version-upload.log 2>&1
           python - <<'PY'
           import re
           from pathlib import Path
@@ -58,7 +58,7 @@ jobs:
           curl --fail-with-body --silent --show-error --max-time 600 --get \
             "${PREVIEW_URL}/testTriggerScheduledDaily" \
             --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
-            --data-urlencode 'date=2026-09-18' \
+            --data-urlencode 'date=2026-09-19' \
             --data-urlencode 'dryRun=1' \
             --data-urlencode 'stream=1' \
             --output pilot/result.ndjson
@@ -72,7 +72,7 @@ jobs:
           final = next((item for item in reversed(events) if item.get('state') in ('success', 'error')), {})
           if not final:
               base = Path('pilot/version-url.txt').read_text().strip()
-              query = urllib.parse.urlencode({'key': os.environ['TEST_TRIGGER_SECRET'], 'date': '2026-09-18', 'mode': 'daily'})
+              query = urllib.parse.urlencode({'key': os.environ['TEST_TRIGGER_SECRET'], 'date': '2026-09-19', 'mode': 'daily'})
               for attempt in range(20):
                   try:
                       with urllib.request.urlopen(base + '/testTriggerScheduledStatus?' + query, timeout=20) as response:
@@ -94,6 +94,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: daily-0910-rollback-pilot-20260918
+          name: daily-0910-rollback-pilot-20260919
           path: pilot/
           retention-days: 7

@@ -139,8 +139,11 @@ function getDailyPromptItemFingerprint(item) {
     .slice(0, 120);
 }
 
-function getDailyPromptItemEventKey(item) {
-  const text = String(item || "").toLowerCase();
+export function getDailyPromptItemEventKey(item) {
+  const raw = String(item || "");
+  const text = (raw.match(/^(?:Project Name|News Title|Papers Title|Content):\s*(.+)$/im)?.[1] || raw).toLowerCase();
+  if (/\bjev\b/i.test(text)) return "jev-model-launch";
+  if (/claude\s+code/i.test(text) && /projects?\b/i.test(text)) return "claude-code-projects";
   if (
     /(小米|xiaomi|玄戒)/i.test(text) &&
     /(q2|二季度|季度|财报|营收|净利润|出货量|aiot|汽车业务)/i.test(text)
