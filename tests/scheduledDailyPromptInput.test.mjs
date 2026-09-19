@@ -251,6 +251,24 @@ test("buildDailyGenerationPromptInput keeps one Jev event across news and social
   assert.match(promptInput, /status\/other-0/);
 });
 
+test("buildDailyGenerationPromptInput keeps one ChatGPT GitHub PR event", () => {
+  const selectedItems = [[
+    "socialMedia Post by author",
+    "Url: https://x.com/author/status/plan",
+    "Content: ChatGPT Pro 分析 GitHub 仓库、编写技术方案并提交 PR。",
+  ].join("\n")];
+  const socialItems = [[
+    "socialMedia Post by author",
+    "Url: https://x.com/author/status/web-pr",
+    "Content: ChatGPT 网页端粘贴 GitHub 链接后可修改代码并提交 PR。",
+  ].join("\n")];
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, socialItems);
+
+  assert.match(promptInput, /status\/plan/);
+  assert.doesNotMatch(promptInput, /status\/web-pr/);
+});
+
 test("buildDailyGenerationPromptInput does not reintroduce the same Xiaomi quarter from backups", () => {
   const news = (index) => [
     `News Title: 独立 AI 消息 ${index}`,

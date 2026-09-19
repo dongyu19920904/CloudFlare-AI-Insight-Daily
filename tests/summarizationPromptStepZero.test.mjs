@@ -127,6 +127,8 @@ test("daily prompt requires one search-like Aivora FAQ with accurate service bou
   assert.match(prompt, /不得自行猜测商品或分类 URL/);
   assert.match(prompt, /统一访问多个模型/);
   assert.match(prompt, /不得编造某个产品正在销售/);
+  assert.match(prompt, /套餐价格、支付方式、支持地区、模型权限、调用额度/);
+  assert.match(prompt, /输入没有这些官方事实时必须换一个有来源可回答的问题/);
   assert.match(prompt, /不要把 GPT-4o 当成默认主推模型/);
   assert.match(prompt, /不要输出“素材不足”“无法生成”“请补充素材”/);
   assert.match(prompt, /只输出最终 Markdown 正文/);

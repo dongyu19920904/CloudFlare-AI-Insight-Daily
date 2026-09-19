@@ -151,6 +151,13 @@ export function getDailyPromptItemEventKey(item) {
   if (/\bjev\b/i.test(text)) return "jev-model-launch";
   if (/claude\s+code/i.test(text) && /projects?\b/i.test(text)) return "claude-code-projects";
   if (
+    /chatgpt/i.test(text) &&
+    /github/i.test(text) &&
+    /(?:\bpr\b|pull\s+request|提交|代码|仓库)/i.test(text)
+  ) {
+    return "chatgpt-github-pr";
+  }
+  if (
     /(小米|xiaomi|玄戒)/i.test(text) &&
     /(q2|二季度|季度|财报|营收|净利润|出货量|aiot|汽车业务)/i.test(text)
   ) {
