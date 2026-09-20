@@ -336,7 +336,7 @@ test("normalizeDailyFaqAivoraCta does not hide a missing factual answer", () => 
   assert.doesNotMatch(normalized, /购买后的使用指导与售后支持/);
 });
 
-test("ensureDailyFaqSection adds a factual verification question when the model omits FAQ", () => {
+test("ensureDailyFaqSection leaves a complete daily body unchanged when FAQ is omitted", () => {
   const markdown = `## **🔥 今日焦点 TOP 1**
 
 ### 1. 官方模型更新
@@ -345,10 +345,9 @@ test("ensureDailyFaqSection adds a factual verification question when the model 
 
   const ensured = ensureDailyFaqSection(markdown);
 
-  assert.match(ensured, /^## \*\*❓ 相关问题\*\*$/m);
-  assert.match(ensured, /先打开正文中的原始来源/);
-  assert.match(ensured, /以对应官方页面的当前说明为准/);
-  assert.ok(ensured.includes(DAILY_AIVORA_FAQ_CTA));
+  assert.equal(ensured, markdown);
+  assert.doesNotMatch(ensured, /^## \*\*❓ 相关问题\*\*$/m);
+  assert.doesNotMatch(ensured, /aivora\.cn/);
 });
 
 test("sanitizeDuplicateDailySections removes repeated stories across V3 topic sections", () => {

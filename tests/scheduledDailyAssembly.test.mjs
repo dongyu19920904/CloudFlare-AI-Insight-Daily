@@ -62,9 +62,29 @@ test("daily assembly keeps a complete body publishable when the model omits FAQ"
 
   const markdown = assembleDailySummaryMarkdown(body, "今天有一项经过官方确认的模型更新。", env);
 
-  assert.match(markdown, /^## \*\*❓ 相关问题\*\*$/m);
-  assert.match(markdown, /如何判断今天的 AI 更新是否值得跟进/);
-  assert.match(markdown, /爱窝啦·AI账号店/);
+  assert.doesNotMatch(markdown, /^## \*\*❓ 相关问题\*\*$/m);
+  assert.doesNotMatch(markdown, /如何判断今天的 AI 更新是否值得跟进/);
+  assert.doesNotMatch(markdown, /aivora\.cn/);
+});
+
+test("daily assembly keeps a sourced FAQ without forcing an unrelated store link", () => {
+  const body = `## **🔥 今日焦点 TOP 1**
+
+### 1. 官方模型更新
+
+这是正文。
+
+## **❓ 相关问题**
+
+### 新模型支持哪些地区？
+
+[官方地区说明](https://example.com/regions)列出当前支持范围，未列出的地区暂时不要按已经开放处理。`;
+
+  const markdown = assembleDailySummaryMarkdown(body, "今天有一项经过官方确认的模型更新。", env);
+
+  assert.match(markdown, /新模型支持哪些地区/);
+  assert.match(markdown, /官方地区说明/);
+  assert.doesNotMatch(markdown, /aivora\.cn/);
 });
 
 test("daily assembly strips obsolete model-generated intros before the TOP section", () => {

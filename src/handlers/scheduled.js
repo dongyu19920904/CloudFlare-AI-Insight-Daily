@@ -24,7 +24,15 @@ import {
     inferOpportunityReplaySignals,
 } from "../opportunityScoring.js";
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
-import { buildDailyContentWithFrontMatter, getYearMonth, updateHomeIndexContent, buildMonthDirectoryIndex } from '../contentUtils.js';
+import {
+    buildDailyContentWithFrontMatter,
+    buildDailySeoTitle,
+    buildOpportunityMetaDescription,
+    buildOpportunitySeoTitle,
+    getYearMonth,
+    updateHomeIndexContent,
+    buildMonthDirectoryIndex,
+} from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
 import {
@@ -747,7 +755,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "",
         "请严格遵守以下规则：",
         `- 只输出从 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 开始的 Markdown 正文，不要生成今日摘要、快速导航、前言、备注、AI思考或规则说明`,
-        `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\` 和 \`## **❓ 相关问题**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条`,
+        `- 必须包含 \`## **🔥 今日焦点 TOP ${DAILY_TOP_TARGET}**\`；素材充足时今日焦点必须写满 ${DAILY_TOP_TARGET} 条。相关问题是可选栏目，只有官方或一手来源能直接回答真实问题时才输出`,
         "- 产品与功能更新 / 前沿研究 / 行业变化与个人影响 / 开源 TOP 项目 / 社媒精选中，至少输出三个有真实来源的栏目；没有素材的栏目直接省略，不能留空标题",
         `- 输入有 ${DAILY_OPEN_SOURCE_MIN} 个以上合格 GitHub 日榜项目或 ${DAILY_SOCIAL_MIN} 条以上合格社媒原帖时，对应栏目至少输出 ${DAILY_OPEN_SOURCE_MIN} 条；不能只挑 1 条敷衍`,
         `- 修复清单出现 below target 时，按“TOP 主候选 -> 去重备用”补足 ${DAILY_TOP_TARGET} 条；输入已做 AI 相关性筛选，主候选和备用合计达到 ${DAILY_TOP_TARGET} 条时不得自行减为 6-9 条；专用区素材不得挪回今日焦点`,
@@ -763,7 +771,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
         "- 今日焦点最多 1 个 GitHub 项目；今日焦点和开源 TOP 中只要出现 GitHub 仓库链接，都必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint，媒体或社媒顺手提到的非日榜仓库不能使用",
-        "- FAQ 每天必须有 1 条；问题要像真实搜索问句。涉及模型价格、额度或可用性时必须有输入中的官方来源，第一段先直接回答并可用三行以内对比表说明限制；第二段固定写：需要进一步比较当前公开的 AI 账号或订阅服务时，可查看 [**爱窝啦·AI账号店**](https://www.aivora.cn/)；商品、价格与可用状态以官网实时页面为准。正文只允许这 1 个主站链接，不得加 UTM、猜测商品 URL，也不得写成直接体验、统一访问、省去逐个注册、工具导航、官方入口或免注册聚合站",
+        "- FAQ 是可选栏目。只有官方公告、官方文档或产品原始页面能直接回答一个真实搜索问题时才输出；证据不足就省略，不能补通用问答。只有问题与 AI 账号、订阅或开发工具入口直接相关时，才可加入一次 [**爱窝啦·AI账号店**](https://www.aivora.cn/) 链接；不得加 UTM、猜测商品 URL，也不得写成直接体验、统一访问、省去逐个注册、工具导航、官方入口或免注册聚合站",
         "- 允许从最近 2 天内补位，但不要解释日期过滤、候选编号、候选数量、淘汰原因或为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“今日合格素材共几条”“TOP 候选几属于非 AI”“实际只能输出几条”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
         "- 直接输出可发布成稿，不要输出任何元话术",
@@ -983,13 +991,21 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         const monthDirectoryIndexPath = `content/cn/${yearMonth}/_index.md`;
         const homePath = 'content/cn/_index.md';
 
-        const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+        const dailyHomeTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+        const dailyPageTitle = buildDailySeoTitle(dateStr, dailySummaryMarkdownContent, dailyHomeTitle);
         const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, { title: dailyPageTitle });
         const opportunityTitleBase = env.DAILY_TITLE.includes('日报')
             ? env.DAILY_TITLE.replace('日报', '商机')
             : `${env.DAILY_TITLE} 商机`;
-        const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
-        const opportunityDescription = DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION;
+        const opportunityPageTitle = buildOpportunitySeoTitle(
+            dateStr,
+            opportunityMarkdownContent,
+            `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`,
+        );
+        const opportunityDescription = buildOpportunityMetaDescription(
+            opportunityMarkdownContent,
+            DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
+        );
         const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
             title: opportunityPageTitle,
             description: opportunityDescription,
@@ -1058,7 +1074,7 @@ export async function handleScheduledCombined(event, env, ctx, specifiedDate = n
         } catch (error) {
             console.warn(`[Scheduled] Home page not found, will create a new one.`);
         }
-        const homeTitle = dailyPageTitle;
+        const homeTitle = dailyHomeTitle;
         const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr, { title: homeTitle });
         const existingHomeSha = await getGitHubFileSha(env, homePath);
         const homeCommitMessage = `${existingHomeSha ? 'Update' : 'Create'} home page for ${dateStr} (Scheduled)`;
@@ -2376,7 +2392,8 @@ async function commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent) {
     const dailyPagePath = `content/cn/${yearMonth}/${dateStr}.md`;
     const monthDirectoryIndexPath = `content/cn/${yearMonth}/_index.md`;
     const homePath = 'content/cn/_index.md';
-    const dailyPageTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+    const dailyHomeTitle = `${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}`;
+    const dailyPageTitle = buildDailySeoTitle(dateStr, dailySummaryMarkdownContent, dailyHomeTitle);
     const dailyPageContent = buildDailyContentWithFrontMatter(dateStr, dailySummaryMarkdownContent, {
         title: dailyPageTitle,
     });
@@ -2417,7 +2434,7 @@ async function commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent) {
     }
 
     const homeContent = updateHomeIndexContent(existingHomeContent, dailySummaryMarkdownContent, dateStr, {
-        title: dailyPageTitle,
+        title: dailyHomeTitle,
     });
     const existingHomeSha = await getGitHubFileSha(env, homePath);
     await createOrUpdateGitHubFile(
@@ -2433,8 +2450,15 @@ async function commitOpportunityOutputs(env, dateStr, opportunityPaths, opportun
     const opportunityTitleBase = env.DAILY_TITLE.includes('日报')
         ? env.DAILY_TITLE.replace('日报', '商机')
         : `${env.DAILY_TITLE} 商机`;
-    const opportunityPageTitle = `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`;
-    const opportunityDescription = DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION;
+    const opportunityPageTitle = buildOpportunitySeoTitle(
+        dateStr,
+        opportunityMarkdownContent,
+        `${opportunityTitleBase} ${formatDateToChinese(dateStr)}`,
+    );
+    const opportunityDescription = buildOpportunityMetaDescription(
+        opportunityMarkdownContent,
+        DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
+    );
     const opportunityPageContent = buildDailyContentWithFrontMatter(dateStr, opportunityMarkdownContent, {
         title: opportunityPageTitle,
         description: opportunityDescription,

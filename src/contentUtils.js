@@ -10,6 +10,68 @@ function truncateText(value, maxLength) {
     return `${characters.slice(0, maxLength - 1).join('').trimEnd()}…`;
 }
 
+function cleanSeoText(value) {
+    return String(value || '')
+        .replace(/!?\[([^\]]+)\]\([^\s)]+(?:\s+["'][^"']*["'])?\)/g, '$1')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/[*_`>#]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/:/g, '：')
+        .trim();
+}
+
+function formatSeoDate(dateStr) {
+    const match = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return String(dateStr || '').trim();
+    return `${match[1]}/${Number(match[2])}/${Number(match[3])}`;
+}
+
+function extractNumberedDailyTitles(content) {
+    const markdown = stripFrontMatter(content);
+    return [...markdown.matchAll(/^###\s+\d+[.)]\s+(.+)$/gm)]
+        .map((match) => cleanSeoText(match[1]))
+        .filter(Boolean);
+}
+
+export function buildDailySeoTitle(dateStr, content, fallbackTitle = '') {
+    const topics = extractNumberedDailyTitles(content).slice(0, 2);
+    if (topics.length === 0) return fallbackTitle || `AI 日报 ${formatSeoDate(dateStr)}`;
+    const prefix = `AI 日报 ${formatSeoDate(dateStr)}：`;
+    const firstTopicTitle = `${prefix}${topics[0]}`;
+    const twoTopicTitle = topics[1] ? `${firstTopicTitle}、${topics[1]}` : firstTopicTitle;
+    return Array.from(twoTopicTitle).length <= 64
+        ? twoTopicTitle
+        : truncateText(firstTopicTitle, 64);
+}
+
+export function buildOpportunitySeoTitle(dateStr, content, fallbackTitle = '') {
+    const markdown = stripFrontMatter(content);
+    const mainSection = markdown.match(
+        /^##\s+\*{0,2}(?:🎯\s*)?今日主推\*{0,2}\s*$([\s\S]*?)(?=^##\s+|(?![\s\S]))/im,
+    );
+    const heading = mainSection?.[1]?.match(/^###\s+(.+)$/m)?.[1];
+    const topic = cleanSeoText(heading);
+    if (!topic) return fallbackTitle || `AI 商机 ${formatSeoDate(dateStr)}`;
+    return truncateText(`AI 商机 ${formatSeoDate(dateStr)}：${topic}`, 62);
+}
+
+export function buildOpportunityMetaDescription(content, fallbackDescription = '') {
+    const markdown = stripFrontMatter(content);
+    const conclusion = markdown.match(
+        /^##\s+\*{0,2}(?:🧭\s*)?直接结论\*{0,2}\s*$([\s\S]*?)(?=^##\s+|(?![\s\S]))/im,
+    );
+    if (!conclusion) return fallbackDescription;
+
+    const answer = conclusion[1]
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^\s*[-*]\s*/, '').trim())
+        .filter(Boolean)
+        .map((line) => cleanSeoText(line))
+        .filter(Boolean)
+        .join(' ');
+    return answer.length >= 30 ? truncateText(answer, 150) : fallbackDescription;
+}
+
 export function buildDailyMetaDescription(content) {
     const markdown = stripFrontMatter(content);
     const summaryMatch = markdown.match(

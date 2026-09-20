@@ -68,7 +68,7 @@ test("daily prompt adapts human-writing principles without replacing the digest 
   assert.match(prompt, /严格区分已经开放、邀请测试、预告即将提供、长期愿景、媒体转述和行业猜测/);
   assert.match(prompt, /标题只能写到素材能够直接证明的位置/);
   assert.match(prompt, /不得补成作者或用户已经注册、付款、部署、成功运行/);
-  assert.match(prompt, /保留现有短标题、编号、Markdown 链接、图片、列表、表格和 FAQ 结构/);
+  assert.match(prompt, /保留现有短标题、编号、Markdown 链接、图片、列表、表格和已有 FAQ 结构/);
   assert.match(prompt, /少用“这意味着”“值得关注”“意义重大”代替具体判断/);
   assert.doesNotMatch(prompt, /成稿正文严禁冒号/);
 });
@@ -112,10 +112,12 @@ test("AI fun remains source-driven and optional without blocking the daily", () 
   assert.match(prompt, /不靠“离谱、笑死、太抽象”充当笑点/);
 });
 
-test("daily prompt requires one search-like Aivora FAQ with accurate service boundaries", () => {
+test("daily prompt keeps FAQ optional, sourced, and commercially relevant", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
-  assert.match(prompt, /每天必须输出 1 条/);
+  assert.match(prompt, /这是可选栏目/);
+  assert.match(prompt, /证据不够时省略整个栏目/);
+  assert.match(prompt, /只有问题与 AI 账号、订阅或开发工具入口直接相关时/);
   assert.match(prompt, /用户会真实搜索的具体问题/);
   assert.match(prompt, /爱窝啦·AI账号店/);
   assert.match(prompt, /https:\/\/www\.aivora\.cn\//);

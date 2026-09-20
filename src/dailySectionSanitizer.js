@@ -394,6 +394,7 @@ function removeAivoraSentences(paragraph) {
 
 export function normalizeDailyFaqAivoraCta(markdown) {
   return String(markdown || "").replace(DAILY_FAQ_SECTION_PATTERN, (section) => {
+    const hadAivoraMention = AIVORA_MENTION_PATTERN.test(section);
     const cleaned = section
       .trim()
       .split(/\n{2,}/)
@@ -409,24 +410,13 @@ export function normalizeDailyFaqAivoraCta(markdown) {
       .replace(/\s+/g, "")
       .trim();
 
-    if (answerText.length < 30) return cleanedSection;
+    if (!hadAivoraMention || answerText.length < 30) return cleanedSection;
     return `${cleanedSection}\n\n${DAILY_AIVORA_FAQ_CTA}`;
   });
 }
 
 export function ensureDailyFaqSection(markdown) {
-  const content = String(markdown || "").trim();
-  if (!content || DAILY_FAQ_SECTION_PATTERN.test(content)) return content;
-
-  return `${content}
-
-## **❓ 相关问题**
-
-### 如何判断今天的 AI 更新是否值得跟进？
-
-先打开正文中的原始来源，确认产品状态、适用范围和限制，再用一个真实小任务做小范围验证。涉及价格、额度、功能或政策时，以对应官方页面的当前说明为准。
-
-${DAILY_AIVORA_FAQ_CTA}`;
+  return String(markdown || "").trim();
 }
 
 export function stripDailyHeadingCountSuffix(markdown) {

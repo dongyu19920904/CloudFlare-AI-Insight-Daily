@@ -414,10 +414,6 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     /^##\s*\*{0,2}.*(?:今日焦点|重磅).*TOP.*\*{0,2}\s*$/im,
   );
 
-  if (!faqHeadingPattern.test(String(pageMarkdown || ""))) {
-    issues.push("日报页面缺少必需片段: ## **❓ 相关问题**");
-  }
-
   if (!topSection) {
     issues.push("日报页面缺少 TOP 栏目");
     return issues;
@@ -620,9 +616,6 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     const faqBody = getSectionBody(faqSection);
     if (normalizeText(faqBody).length < 50) {
       issues.push("Daily FAQ section must not be empty");
-    }
-    if (!/aivora\.cn/i.test(faqSection)) {
-      issues.push("Daily FAQ section must include an Aivora link");
     }
   }
   if (/\bGPT-4o\b/i.test(faqSection) && !/\bGPT-4o\b/i.test(topSection)) {

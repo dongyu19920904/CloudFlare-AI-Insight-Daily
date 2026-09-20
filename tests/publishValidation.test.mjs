@@ -752,7 +752,7 @@ test("validateDailyPublication keeps welfare items out of TOP and limits them in
   assert.match(result.issues.join("\n"), /at most one welfare\/freebie item/i);
 });
 
-test("validateDailyPublication rejects meta commentary and missing FAQ section", () => {
+test("validateDailyPublication rejects meta commentary but allows an omitted FAQ section", () => {
   const result = validateDailyPublication({
     summaryText: "谷歌发了新模型，开源工具也不少。",
     pageMarkdown: `## **今日摘要**
@@ -785,7 +785,7 @@ test("validateDailyPublication rejects meta commentary and missing FAQ section",
 
   assert.equal(result.ok, false);
   assert.match(result.issues.join("\n"), /包含禁止模式|元话术|AI思考/);
-  assert.match(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题\*\*/);
+  assert.doesNotMatch(result.issues.join("\n"), /缺少必需片段: ## \*\*❓ 相关问题\*\*/);
 });
 
 test("validateDailyPublication rejects unnumbered Top items", () => {
