@@ -234,6 +234,8 @@ export function resolveMerchantCostReference(product) {
 function profitCalculatorUrl(product, referencePrice) {
   try {
     const url = new URL(product.profitCalculatorUrl);
+    if (product.reportDate && product.verifiedSpecLabel) url.searchParams.set("spec", product.verifiedSpecLabel);
+    if (product.reportDate) url.searchParams.set("report", product.reportDate);
     if (positiveMoney(referencePrice) !== null) {
       url.searchParams.set("cost", Number(referencePrice).toFixed(2));
     } else {
@@ -436,6 +438,7 @@ function eligibleNewSellerProducts(snapshot) {
       verifiedSourceCount(product) >= 2 &&
       verifiedOfferCount(product) >= 2 &&
       cleanArticleText(product.verifiedSpecLabel, 120) &&
+      !/^标准商品(?:\s|·|$)/.test(product.verifiedSpecLabel) &&
       product.productUrl &&
       product.profitCalculatorUrl;
   });
@@ -900,7 +903,13 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
   const products = snapshotProducts(snapshot);
   const coreProducts = selectMerchantCoreProducts(snapshot, 4);
   const starterDecision = selectNewSellerDecision(snapshot, { recentDailyMemory });
-  const lead = starterDecision.product;
+  const lead = starterDecision.product ? { ...starterDecision.product, reportDate: dateStr } : null;
+  if (lead?.verifiedSpecLabel) {
+    const url = new URL(lead.productUrl);
+    url.searchParams.set("spec", lead.verifiedSpecLabel);
+    url.searchParams.set("report", dateStr);
+    lead.productUrl = url.toString();
+  }
   const anomalousProducts = selectAnomalousPriceProducts(snapshot, 1);
   const pausedProducts = selectPausedProducts(snapshot, 3 - anomalousProducts.length);
   const selectedSignals = selectDailySupplySignals(snapshot, 3, { recentDailyMemory });
@@ -999,7 +1008,7 @@ export function buildSupplyDrivenAccountOpportunityMarkdown({
   const allowedSupplyUrls = [...new Set([
     snapshot.source,
     FIRST_SALE_GUIDE_URL,
-    ...(lead ? [profitCalculatorUrl(lead, leadCost.referencePrice)] : []),
+    ...(lead ? [lead.productUrl, profitCalculatorUrl(lead, leadCost.referencePrice), profitCalculatorUrl({ ...lead, reportDate: null }, leadCost.referencePrice)] : []),
     ...products.flatMap((product) => [
       product.productUrl,
       product.profitCalculatorUrl,
