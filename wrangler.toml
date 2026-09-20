@@ -12,12 +12,14 @@ kv_namespaces = [
 # Fixed non-secret defaults live in src/workerConfig.js; explicit vars override them.
 
 USE_MODEL_PLATFORM = "ANTHROPIC"
-ANTHROPIC_API_URL = "https://business.newcli.com"
+ANTHROPIC_API_URL = "https://www.runtoken.ai"
+ANTHROPIC_BASE_URL = "https://www.runtoken.ai"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
-DEFAULT_ANTHROPIC_BACKUP_MODEL = "claude-opus-4-7"
+DEFAULT_ANTHROPIC_BACKUP_MODEL = "claude-opus-4-8"
 
 OPENAI_BASE_URL = "https://business.newcli.com"
 OPENAI_API_URL = "https://business.newcli.com"
+OPENAI_FALLBACK_ENABLED = "false"
 DEFAULT_OPEN_MODEL = "gpt-5.6-sol"
 
 GEMINI_API_URL = "https://code.newcli.com/gemini"
@@ -48,7 +50,7 @@ ACCOUNT_OPPORTUNITY_GITHUB_BRANCH = "main"
 ACCOUNT_MERCHANT_EDITORIAL_ENABLED = "true"
 ACCOUNT_MERCHANT_FACT_COMPILER_ENABLED = "true"
 ACCOUNT_MERCHANT_MULTIPLATFORM_ENABLED = "true"
-ACCOUNT_MERCHANT_EDITORIAL_MODEL = "claude-opus-4-7"
+ACCOUNT_MERCHANT_EDITORIAL_MODEL = "claude-sonnet-5"
 
 LOGIN_USERNAME = "qqee1133"
 

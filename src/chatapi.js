@@ -224,6 +224,7 @@ function canUseAnthropicBackupModel(env) {
 }
 
 function canUseOpenAIFallback(env) {
+    if (["0", "false", "no", "off"].includes(String(env.OPENAI_FALLBACK_ENABLED ?? "true").trim().toLowerCase())) return false;
     return Boolean(getOpenAIBaseUrl(env) && env.OPENAI_API_KEY);
 }
 

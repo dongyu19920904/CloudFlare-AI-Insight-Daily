@@ -1,5 +1,6 @@
 // src/index.js
 import { withWorkerConfigDefaults } from './workerConfig.js';
+import { handleModelConnectionProbe } from './modelConnectionProbe.js';
 import { handleWriteData } from './handlers/writeData.js';
 import { handleGetContent } from './handlers/getContent.js';
 import { handleGetContentHtml } from './handlers/getContentHtml.js';
@@ -340,6 +341,8 @@ export default {
             return await handleWriteRssData(request, env);
         } else if (path === '/generateRssContent' && request.method === 'GET') {
             return await handleGenerateRssContent(request, env);
+        } else if (path === '/testModelConnection') {
+            return await handleModelConnectionProbe(request, env);
         } else if (path === '/testFoloCookie' && (request.method === 'GET' || request.method === 'POST')) {
             const authError = validateTestTriggerSecret(url, env);
             if (authError) return authError;
