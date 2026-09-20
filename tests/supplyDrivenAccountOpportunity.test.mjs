@@ -141,6 +141,27 @@ const snapshot = {
   ],
 };
 
+test('lead navigation carries one specification and report date without changing snapshot input', () => {
+  const before = JSON.stringify(snapshot);
+  const result = buildSupplyDrivenAccountOpportunityMarkdown({ dateStr: '2026-09-20', snapshot });
+  const metadata = JSON.parse(result.markdown.match(/<!-- opportunity-replay: (.+) -->/)[1]);
+  const productUrl = new URL(metadata.productUrl);
+  const calculatorUrl = new URL(metadata.calculatorUrl);
+  assert.equal(productUrl.searchParams.get('spec'), metadata.verifiedSpecLabel);
+  assert.equal(productUrl.searchParams.get('report'), '2026-09-20');
+  assert.equal(calculatorUrl.searchParams.get('spec'), metadata.verifiedSpecLabel);
+  assert.equal(calculatorUrl.searchParams.get('report'), '2026-09-20');
+  assert.equal(Number(calculatorUrl.searchParams.get('cost')), metadata.referenceCost);
+  assert.ok(result.allowedSupplyUrls.includes(productUrl.toString()));
+  assert.ok(result.markdown.includes(productUrl.toString()));
+  assert.equal(JSON.stringify(snapshot), before);
+});
+
+test('an unspecified fulfilment group cannot become a new-seller recommendation', () => {
+  const unknown = { ...snapshot.products[0], verifiedSpecLabel: '标准商品 · 1个月 · 菲律宾' };
+  assert.equal(selectNewSellerProduct({ ...snapshot, products: [unknown], signals: [] }), null);
+});
+
 test("selects a popular opportunity and a risk instead of the first three source rows", () => {
   const selected = selectDailySupplySignals(snapshot);
   assert.equal(selected[0].product.slug, "chatgpt-plus");
