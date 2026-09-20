@@ -61,7 +61,15 @@ jobs:
           TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
         run: node .github/scripts/probe-model-line.mjs worker
 
-      - name: Patch BioAI Anthropic bindings without uploading code
+      - name: Checkout BioAI Worker
+        if: github.event_name == 'workflow_dispatch' && inputs.sync_bioai
+        uses: actions/checkout@v6
+        with:
+          repository: dongyu19920904/CloudFlare-BioAI-Daily
+          ref: main
+          path: bioai-worker
+
+      - name: Deploy BioAI with compact bindings and enterprise Claude secrets
         if: github.event_name == 'workflow_dispatch' && inputs.sync_bioai
         shell: bash
         env:
@@ -71,57 +79,15 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          settings_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/cloudflare-bioai-daily/settings"
-          current_file="$RUNNER_TEMP/bioai-current-settings.json"
-          patch_file="$RUNNER_TEMP/bioai-settings-patch.json"
-          result_file="$RUNNER_TEMP/bioai-settings-result.json"
-          trap 'rm -f "$current_file" "$patch_file" "$result_file"' EXIT
+          grep -q '^ANTHROPIC_API_BASE_URL = "https://www.runtoken.ai"$' bioai-worker/wrangler.toml
+          grep -q '^DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"$' bioai-worker/wrangler.toml
+          grep -q '^DEFAULT_ANTHROPIC_BACKUP_MODEL = "claude-opus-4-8"$' bioai-worker/wrangler.toml
 
-          curl --fail --silent --show-error \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "$settings_url" > "$current_file"
-          jq -e '.success == true and (.result.bindings | type == "array")' "$current_file" >/dev/null
-
-          jq '{
-            bindings: (
-              [.result.bindings[] | select(
-                .name != "ANTHROPIC_API_URL" and
-                .name != "ANTHROPIC_BASE_URL"
-              )] as $current
-              | [
-                  {name:"ANTHROPIC_API_KEY",type:"secret_text",text:env.AI_PROVIDER_API_KEY},
-                  {name:"ANTHROPIC_BACKUP_API_KEY",type:"secret_text",text:env.AI_PROVIDER_API_KEY},
-                  {name:"ANTHROPIC_API_BASE_URL",type:"plain_text",text:"https://www.runtoken.ai"},
-                  {name:"ANTHROPIC_BACKUP_API_BASE_URL",type:"plain_text",text:"https://www.runtoken.ai"},
-                  {name:"DEFAULT_ANTHROPIC_MODEL",type:"plain_text",text:"claude-sonnet-5"},
-                  {name:"DEFAULT_ANTHROPIC_BACKUP_MODEL",type:"plain_text",text:"claude-opus-4-8"}
-                ] as $updates
-              | reduce $updates[] as $update ($current;
-                  if any(.[]; .name == $update.name)
-                  then map(if .name == $update.name then $update else . end)
-                  else . + [$update]
-                  end
-                )
-            )
-          }' "$current_file" > "$patch_file"
-
-          current_count="$(jq '.result.bindings | length' "$current_file")"
-          patched_count="$(jq '.bindings | length' "$patch_file")"
-          if (( patched_count > current_count )); then
-            echo "Refusing to increase BioAI binding count (${current_count} -> ${patched_count})."
-            exit 1
-          fi
-          echo "BioAI binding count: ${current_count} -> ${patched_count}"
-
-          status_code="$(curl --silent --show-error -o "$result_file" -w '%{http_code}' -X PATCH \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -F "settings=@${patch_file};type=application/json" \
-            "$settings_url")"
-          if [[ ! "$status_code" =~ ^2[0-9][0-9]$ ]] || ! jq -e '.success == true' "$result_file" >/dev/null; then
-            jq -c '{errors, messages}' "$result_file" >&2 || true
-            exit 1
-          fi
-          echo "BioAI Anthropic bindings updated in place."
+          secrets_file="$RUNNER_TEMP/bioai-worker-ai-secrets.json"
+          trap 'rm -f "$secrets_file"' EXIT
+          jq -n '{ANTHROPIC_API_KEY:env.AI_PROVIDER_API_KEY,ANTHROPIC_BACKUP_API_KEY:env.AI_PROVIDER_API_KEY}' > "$secrets_file"
+          cd bioai-worker
+          npx --yes wrangler@4.127.1 deploy --secrets-file "$secrets_file"
 
       - name: Verify BioAI deployed model path without publishing a daily
         if: github.event_name == 'workflow_dispatch' && inputs.sync_bioai
