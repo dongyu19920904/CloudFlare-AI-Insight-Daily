@@ -84,14 +84,15 @@ jobs:
 
           jq '{
             bindings: (
-              .result.bindings as $current
+              [.result.bindings[] | select(
+                .name != "ANTHROPIC_API_URL" and
+                .name != "ANTHROPIC_BASE_URL"
+              )] as $current
               | [
                   {name:"ANTHROPIC_API_KEY",type:"secret_text",text:env.AI_PROVIDER_API_KEY},
                   {name:"ANTHROPIC_BACKUP_API_KEY",type:"secret_text",text:env.AI_PROVIDER_API_KEY},
                   {name:"ANTHROPIC_API_BASE_URL",type:"plain_text",text:"https://www.runtoken.ai"},
                   {name:"ANTHROPIC_BACKUP_API_BASE_URL",type:"plain_text",text:"https://www.runtoken.ai"},
-                  {name:"ANTHROPIC_API_URL",type:"plain_text",text:"https://www.runtoken.ai"},
-                  {name:"ANTHROPIC_BASE_URL",type:"plain_text",text:"https://www.runtoken.ai"},
                   {name:"DEFAULT_ANTHROPIC_MODEL",type:"plain_text",text:"claude-sonnet-5"},
                   {name:"DEFAULT_ANTHROPIC_BACKUP_MODEL",type:"plain_text",text:"claude-opus-4-8"}
                 ] as $updates
@@ -104,12 +105,22 @@ jobs:
             )
           }' "$current_file" > "$patch_file"
 
-          jq -e '.bindings | length <= 64' "$patch_file" >/dev/null
-          curl --fail --silent --show-error -X PATCH \
+          current_count="$(jq '.result.bindings | length' "$current_file")"
+          patched_count="$(jq '.bindings | length' "$patch_file")"
+          if (( patched_count > current_count )); then
+            echo "Refusing to increase BioAI binding count (${current_count} -> ${patched_count})."
+            exit 1
+          fi
+          echo "BioAI binding count: ${current_count} -> ${patched_count}"
+
+          status_code="$(curl --silent --show-error -o "$result_file" -w '%{http_code}' -X PATCH \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -F "settings=@${patch_file};type=application/json" \
-            "$settings_url" > "$result_file"
-          jq -e '.success == true' "$result_file" >/dev/null
+            "$settings_url")"
+          if [[ ! "$status_code" =~ ^2[0-9][0-9]$ ]] || ! jq -e '.success == true' "$result_file" >/dev/null; then
+            jq -c '{errors, messages}' "$result_file" >&2 || true
+            exit 1
+          fi
           echo "BioAI Anthropic bindings updated in place."
 
       - name: Verify BioAI deployed model path without publishing a daily
