@@ -15,7 +15,7 @@
 
 密钥只放在 GitHub Actions 的 `RUNTOKEN_API_KEY` Secret 和 Cloudflare Worker Secrets。两个 Worker 只更新 `ANTHROPIC_API_KEY` 与 `ANTHROPIC_BACKUP_API_KEY`；已有 OpenAI/Gemini Secret 保持原状且不会参与本次验证。
 
-沿用 AI 日报的 `deploy-worker.yml`：先用项目客户端进行四个微型探测，再用 Wrangler `--secrets-file` 部署 AI 日报并更新两个 Anthropic Secret。BioAI 线上旧版本仍有 126 个历史绑定，无法在 Cloudflare Free 的 64 个绑定上限下原位 PATCH；BioAI 代码已把固定默认值迁入 `workerConfig.js`，因此手动勾选 `sync_bioai` 时检出 BioAI 最新 `main`，核对端点与模型后用精简的 `wrangler.toml` 和同一 Secrets 文件完整部署一次。部署后调用 AI Worker 的四个鉴权探测，再用 BioAI 的现有项目方案接口确认实际走了模型而不是服务端兜底。其他 Worker Secrets 保持原状；临时文件在执行结束后删除，仓库中不包含真实密钥。
+沿用 AI 日报的 `deploy-worker.yml`：先用项目客户端进行四个微型探测，再用 Wrangler `--secrets-file` 部署 AI 日报并更新两个 Anthropic Secret。BioAI 线上旧版本仍有 126 个历史绑定，无法在 Cloudflare Free 的 64 个绑定上限下原位 PATCH；BioAI 代码已把固定默认值迁入 `workerConfig.js`，因此手动勾选 `sync_bioai` 时检出 BioAI 最新 `main`，核对端点与模型后用精简的 `wrangler.toml` 和同一 Secrets 文件完整部署一次。部署后调用 AI Worker 的四个鉴权探测，再调用 BioAI 受 `TEST_TRIGGER_SECRET` 保护的主、备模型轻量探针。探针只要求固定 `OK` 响应，不抓取数据、不写 KV、不生成日报。其他 Worker Secrets 保持原状；临时文件在执行结束后删除，仓库中不包含真实密钥。
 
 ## 验证标准
 
@@ -24,7 +24,7 @@
 3. 探测只接受固定请求和预定义路由，每次最多 256 输出 token，禁止备用模型掩盖被测模型故障。
 4. `/testModelConnection` 只接受 POST 和 `x-test-trigger-secret`，未授权不调用模型；不读取货源，不写 KV，不提交文章。
 5. 全部 Node 测试、`git diff --check`、Wrangler 打包 dry-run 通过。
-6. GitHub Actions 部署后 AI Worker 四路调用通过，BioAI 接口返回 `model` 或 `backup-model`。探测成功仅证明接口可用，不代表完成整篇日报生成或内容质量验收。
+6. GitHub Actions 部署后 AI Worker 四路调用通过，BioAI 主、备模型探针分别返回预期模型名。探测成功仅证明接口可用，不代表完成整篇日报生成或内容质量验收。
 
 普通 AI 日报部署会增加八个小型模型请求（部署前、后各四个）；手动勾选 `sync_bioai` 时再增加一个 BioAI 验证请求。平常 Cron 不增加额外调用。实际收费与分组需以供应商账单为准；本次不触发生产日报生成。
 
