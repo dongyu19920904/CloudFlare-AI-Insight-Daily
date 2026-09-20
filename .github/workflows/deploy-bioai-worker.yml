@@ -1,0 +1,27 @@
+name: Deploy BioAI Cloudflare Worker
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-bioai-cloudflare-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy-worker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout BioAI worker source
+        uses: actions/checkout@v6
+        with:
+          repository: dongyu19920904/CloudFlare-BioAI-Daily
+          ref: main
+
+      - name: Deploy BioAI worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.59.2 deploy
