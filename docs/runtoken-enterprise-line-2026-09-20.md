@@ -15,7 +15,7 @@
 
 密钥只放在 GitHub Actions 的 `RUNTOKEN_API_KEY` Secret 和 Cloudflare Worker Secrets。两个 Worker 只更新 `ANTHROPIC_API_KEY` 与 `ANTHROPIC_BACKUP_API_KEY`；已有 OpenAI/Gemini Secret 保持原状且不会参与本次验证。
 
-沿用 AI 日报的 `deploy-worker.yml`：先用项目客户端进行四个微型探测，再用 Wrangler `--secrets-file` 部署 AI 日报并更新两个 Anthropic Secret。BioAI 当前配置有 124 个变量，超过 Cloudflare Free 的 64 个绑定上限，因此手动勾选 `sync_bioai` 时只用 `secret bulk` 原位更新现有 Worker 的 Anthropic 端点、模型和 Key，不上传 Worker 代码。部署后调用 AI Worker 的四个鉴权探测，再用 BioAI 的现有项目方案接口确认实际走了模型而不是服务端兜底。其他 Worker Secrets 保持原状；临时文件在执行结束后删除，仓库中不包含真实密钥。
+沿用 AI 日报的 `deploy-worker.yml`：先用项目客户端进行四个微型探测，再用 Wrangler `--secrets-file` 部署 AI 日报并更新两个 Anthropic Secret。BioAI 当前配置有 124 个变量，超过 Cloudflare Free 的 64 个绑定上限，因此手动勾选 `sync_bioai` 时通过 Cloudflare Script Settings API 读取线上当前绑定，只原位替换 Anthropic 端点、模型和 Key，不上传 Worker 代码。更新前会验证保留后的绑定总数仍在免费额度内。部署后调用 AI Worker 的四个鉴权探测，再用 BioAI 的现有项目方案接口确认实际走了模型而不是服务端兜底。其他 Worker Secrets 保持原状；临时文件在执行结束后删除，仓库中不包含真实密钥。
 
 ## 验证标准
 
