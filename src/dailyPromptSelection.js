@@ -1,6 +1,7 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
 import {
   getDailyPromptItemEventKey,
   isFirstPartyDailyModelLaunch,
@@ -633,6 +634,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const preferredSourceOrder = ["project", "news", "socialMedia", "paper"];
   const buckets = new Map();
   const mediaCandidates = [];
+  const telegramImageCandidates = [];
   let itemsWithMedia = 0;
   let itemsWithoutMedia = 0;
   let rejectedNonAiCount = 0;
@@ -647,6 +649,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
         rejectedNonAiCount += 1;
         continue;
       }
+      const telegramImage = extractTelegramDailyImageCandidate(item);
+      if (telegramImage) telegramImageCandidates.push(telegramImage);
       candidate.score = scoreDailyPromptCandidate(candidate);
 
       if (!buckets.has(candidate.sourceType)) {
@@ -849,6 +853,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     allowedTopGithubProjectUrls,
     dailyFunContentItems: dailyFunCandidates.map((candidate) => candidate.itemText),
     mediaCandidates,
+    telegramImageCandidates,
     itemsWithMedia,
     itemsWithoutMedia,
     totalCandidateCount,

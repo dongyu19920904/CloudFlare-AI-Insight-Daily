@@ -113,6 +113,7 @@ import {
     sanitizeDuplicateDailySections,
 } from '../dailySectionSanitizer.js';
 import { ensureDailyMediaCoverage, repairDailyMediaReferences } from '../dailyMediaCoverage.js';
+import { archiveDailyTelegramImages } from '../dailyTelegramImageArchive.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -2747,6 +2748,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedContentItems,
         dailyFunContentItems,
         mediaCandidates,
+        telegramImageCandidates,
         totalCandidateCount,
         selectedCounts,
         selectionDiagnostics,
@@ -2757,6 +2759,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         skipSourceCacheWrite: dryRun,
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
+    debugInfo.telegramImageCandidateCount = telegramImageCandidates.length;
     debugInfo.dailyFunCandidateItems = Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0;
     debugInfo.promptTotalCandidateCount = totalCandidateCount || 0;
     debugInfo.promptSelectedCounts = selectedCounts || {};
@@ -2858,8 +2861,34 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     }
 
     await reportScheduledProgress(options, 'daily', 'publishing', 88);
-    await commitDailyOutputs(env, dateStr, dailySummaryMarkdownContent);
-    await storePublishedDailyGithubTopProjects(env, dateStr, dailySummaryMarkdownContent, debugInfo);
+    let publicationMarkdown = dailySummaryMarkdownContent;
+    try {
+        const archived = await archiveDailyTelegramImages(
+            publicationMarkdown, telegramImageCandidates, dateStr, env
+        );
+        debugInfo.telegramImagesArchived = archived.archivedCount;
+        if (archived.archivedCount > 0) {
+            const archivedValidation = validateDailyPublication({
+                summaryText: outputOfCall3,
+                pageMarkdown: archived.markdown,
+                minimumTopItems,
+                hardMinimumTopItems,
+                minimumOpenSourceItems,
+                minimumSocialItems,
+                minimumResearchItems,
+                minimumIndustryItems,
+                minimumTopicSections,
+                allowedTopGithubProjectUrls,
+                enforceTopGithubProjectAllowlist: true,
+            });
+            if (archivedValidation.ok) publicationMarkdown = archived.markdown;
+            else console.warn(`[Scheduled][Daily] Archived media failed validation; publishing the original daily.`);
+        }
+    } catch (error) {
+        console.warn(`[Scheduled][Daily] Telegram image archive skipped: ${error.message}`);
+    }
+    await commitDailyOutputs(env, dateStr, publicationMarkdown);
+    await storePublishedDailyGithubTopProjects(env, dateStr, publicationMarkdown, debugInfo);
     debugInfo.dailyPublished = true;
     await reportScheduledProgress(options, 'daily', 'published', 98);
     return debugInfo;
