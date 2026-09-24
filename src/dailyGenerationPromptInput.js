@@ -32,6 +32,73 @@ function classifyDailyPromptItem(item) {
   return "other";
 }
 
+function getDailyPromptHeadline(item) {
+  const raw = String(item || "");
+  return raw.match(/^(?:News Title|Title|Project Name|Papers Title):\s*(.+)$/im)?.[1]
+    || raw.match(/^Content:\s*(.+)$/im)?.[1]?.slice(0, 160)
+    || (raw.includes("\n") ? "" : raw);
+}
+
+function getDailyModelReleaseEventKey(item) {
+  const headline = getDailyPromptHeadline(item).normalize("NFKC")
+    .replace(/[\u2010-\u2015\u2212]/g, "-").toLowerCase();
+  if (/政策|条款|漏洞|故障|下线|停用|封禁|限额|配额|enterprise policy|security policy|outage/i.test(headline)) return "";
+
+  const gpt = headline.match(/\bgpt[\s-]*(\d+(?:\.\d+)?)[\s-]*(sol|luna|astra)\b/i);
+  const opus = headline.match(/\b(?:claude[\s-]*)?opus[\s-]*(\d+(?:\.\d+)?)\b/i);
+  const gemini = headline.match(/\bgemini[\s-]*(\d+(?:\.\d+)?)[\s-]*(pro|flash|ultra|lite)\b/i);
+  if ([gpt, opus, gemini].filter(Boolean).length !== 1) return "";
+
+  if (gpt) {
+    const variant = /\b(?:sol|luna)\s*(?:and|&|与|和|及|、|,|\+|\/)\s*(?:luna|sol)\b/i.test(headline)
+      || /\bgpt[\s-]*\d+(?:\.\d+)?[\s-]*luna\b/i.test(headline) && /\bgpt[\s-]*\d+(?:\.\d+)?[\s-]*sol\b/i.test(headline)
+      ? "sol-luna"
+      : gpt[2].toLowerCase();
+    return `model-release:openai:gpt-${gpt[1]}-${variant}`;
+  }
+  if (opus) return `model-release:anthropic:opus-${opus[1]}`;
+  return `model-release:google:gemini-${gemini[1]}-${gemini[2].toLowerCase()}`;
+}
+
+export function isOfficialDailyModelLaunch(item) {
+  const raw = String(item || "");
+  const eventKey = getDailyModelReleaseEventKey(raw);
+  const headline = getDailyPromptHeadline(raw);
+  if (!eventKey || !/(?:发布|推出|上线|正式开放|可用|available|launch|release|introduc|announc)/i.test(headline)) return false;
+
+  const url = raw.match(/^Url:\s*(https?:\/\/\S+)/im)?.[1];
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const account = parsed.pathname.split("/")[1]?.toLowerCase();
+    if (eventKey.includes(":openai:")) {
+      return host === "openai.com" || host === "developers.openai.com"
+        || (host === "x.com" && account === "openai");
+    }
+    if (eventKey.includes(":anthropic:")) {
+      return host === "anthropic.com" || host === "docs.anthropic.com"
+        || (host === "x.com" && account === "anthropicai");
+    }
+    return ["blog.google", "deepmind.google", "ai.google.dev", "developers.googleblog.com"].includes(host)
+      || (host === "x.com" && ["googleai", "googledeepmind"].includes(account));
+  } catch {
+    return false;
+  }
+}
+
+export function isFirstPartyDailyModelLaunch(item) {
+  const raw = String(item || "");
+  if (!getDailyModelReleaseEventKey(raw).startsWith("model-release:openai:")) return false;
+  const url = raw.match(/^Url:\s*(https?:\/\/\S+)/im)?.[1];
+  if (!url || !/^https?:\/\/(?:www\.)?x\.com\/sama\/status\/\d+/i.test(url)) return false;
+  return /\bOpenAI:\s*(?:Please welcome|Introducing|Announcing)\b/i.test(raw);
+}
+
+function isPriorityDailyModelLaunch(item) {
+  return isOfficialDailyModelLaunch(item) || isFirstPartyDailyModelLaunch(item);
+}
+
 function allocateDailyPromptItems(items = []) {
   const primaryItems = (items || []).filter(Boolean);
   const buckets = {
@@ -40,6 +107,8 @@ function allocateDailyPromptItems(items = []) {
     paper: primaryItems.filter((item) => classifyDailyPromptItem(item) === "paper"),
     news: primaryItems.filter((item) => classifyDailyPromptItem(item) === "news"),
   };
+  const reservableSocialItems = buckets.socialMedia.filter((item) => !isPriorityDailyModelLaunch(item));
+  const reservableNewsItems = buckets.news.filter((item) => !isPriorityDailyModelLaunch(item));
   const forcedProjectReserveCount = Math.max(0, buckets.project.length - 1);
   let reserveBudget = Math.max(
     0,
@@ -52,7 +121,9 @@ function allocateDailyPromptItems(items = []) {
     news: 0,
   };
   const reserveOne = (sourceType, limit) => {
-    if (reserveBudget <= 0 || reserveCounts[sourceType] >= Math.min(buckets[sourceType].length, limit)) {
+    const reservableCount = sourceType === "socialMedia" ? reservableSocialItems.length
+      : sourceType === "news" ? reservableNewsItems.length : buckets[sourceType].length;
+    if (reserveBudget <= 0 || reserveCounts[sourceType] >= Math.min(reservableCount, limit)) {
       return;
     }
     reserveCounts[sourceType] += 1;
@@ -75,9 +146,9 @@ function allocateDailyPromptItems(items = []) {
     project: reserveCounts.project >= buckets.project.length
       ? buckets.project
       : buckets.project.slice(1, reserveCounts.project + 1),
-    socialMedia: buckets.socialMedia.slice(0, reserveCounts.socialMedia),
+    socialMedia: reservableSocialItems.slice(0, reserveCounts.socialMedia),
     paper: buckets.paper.slice(0, reserveCounts.paper),
-    news: reserveCounts.news > 0 ? buckets.news.slice(-reserveCounts.news) : [],
+    news: reserveCounts.news > 0 ? reservableNewsItems.slice(-reserveCounts.news) : [],
   };
   const reservedItems = new Set(Object.values(reserved).flat());
 
@@ -101,12 +172,21 @@ function dedupeDailyPromptItemsByUrl(items = []) {
   const seenUrls = new Set();
   const seenUnlinkedItems = new Set();
   const seenEventKeys = new Set();
+  const officialEvents = new Set(
+    (items || []).filter(isOfficialDailyModelLaunch).map(getDailyPromptItemEventKey).filter(Boolean)
+  );
+  const firstPartyEvents = new Set(
+    (items || []).filter(isFirstPartyDailyModelLaunch).map(getDailyPromptItemEventKey).filter(Boolean)
+  );
 
   return (items || []).filter((item) => {
     const normalizedItem = String(item || "").trim();
     if (!normalizedItem) return false;
 
     const eventKey = getDailyPromptItemEventKey(normalizedItem);
+    if (eventKey && officialEvents.has(eventKey) && !isOfficialDailyModelLaunch(normalizedItem)) return false;
+    if (eventKey && firstPartyEvents.has(eventKey) &&
+      !isOfficialDailyModelLaunch(normalizedItem) && !isFirstPartyDailyModelLaunch(normalizedItem)) return false;
     if (eventKey && seenEventKeys.has(eventKey)) return false;
 
     const url = getDailyPromptItemUrl(normalizedItem);
@@ -148,6 +228,8 @@ function getDailyPromptItemFingerprint(item) {
 export function getDailyPromptItemEventKey(item) {
   const raw = String(item || "");
   const text = raw.toLowerCase();
+  const modelEventKey = getDailyModelReleaseEventKey(raw);
+  if (modelEventKey) return modelEventKey;
   if (/\bjev\b/i.test(text)) return "jev-model-launch";
   if (/claude\s+code/i.test(text) && /projects?\b/i.test(text)) return "claude-code-projects";
   if (

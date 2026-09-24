@@ -293,6 +293,125 @@ test("buildDailyPromptSelection keeps one major AI vendor from flooding the prom
   assert.equal(selectedAnthropicItems.length, 1);
 });
 
+test("official frontier model releases outrank image-backed routine news and merge same-event observations", () => {
+  const openaiRelease = {
+    ...buildNewsItem(101),
+    title: "OpenAI 推出 GPT-6 Sol 与 GPT-6 Luna",
+    url: "https://openai.com/index/introducing-gpt-6-sol-and-luna/",
+    details: { content_html: "<p>GPT-6 Sol 与 Luna 已在 Codex 和 API 开放。</p>" },
+  };
+  const anthropicRelease = {
+    ...buildNewsItem(102),
+    title: "Anthropic 发布 Claude Opus 5.5",
+    url: "https://www.anthropic.com/claude-opus-5-5",
+    details: { content_html: "<p>Claude Opus 5.5 发布，官方公布基准与价格。</p>" },
+  };
+  const imageNews = {
+    ...buildNewsItem(103),
+    title: "AI agent dashboard receives a small visual update",
+    url: "https://example.com/dashboard-update",
+    details: {
+      content_html: '<p>AI agent dashboard update.</p><img src="https://example.com/dashboard.png">',
+    },
+  };
+  const result = buildDailyPromptSelection({
+    news: [imageNews, openaiRelease, anthropicRelease, {
+      ...buildNewsItem(104),
+      title: "Codex 已经可以用 GPT-6 Sol 和 Luna",
+      url: "https://www.v2ex.com/t/1244096",
+    }],
+    socialMedia: [{
+      type: "socialMedia",
+      title: "向阳乔木分享 Claude Opus 5.5 基准与体验",
+      authors: "向阳乔木",
+      url: "https://x.com/vista8/status/2102445889503760482",
+      published_date: "2026-09-23",
+      details: {
+        content_html: '<p>分享 Claude Opus 5.5 基准，并展示生成图片。</p><img src="https://pbs.twimg.com/media/HS1iv5paYAEnRVx.jpg">',
+      },
+    }],
+    project: [], paper: [],
+  });
+
+  const selected = result.selectedContentItems;
+  assert.match(selected[0], /openai\.com\/index\/introducing-gpt-6-sol-and-luna/);
+  assert.match(selected[1], /anthropic\.com\/claude-opus-5-5/);
+  assert.equal(selected.filter((item) => /GPT-6 Sol/i.test(item)).length, 1);
+  assert.equal(selected.filter((item) => /Claude Opus 5\.5/i.test(item)).length, 1);
+  assert.match(selected[1], /x\.com\/vista8\/status\/2102445889503760482/);
+  assert.match(selected[1], /HS1iv5paYAEnRVx\.jpg/);
+});
+
+test("model launch priority requires a direct official source and does not merge a later policy story", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      {
+        ...buildNewsItem(110),
+        title: "网友猜测 Gemini 4 Pro 已发布",
+        url: "https://example.com/gemini-rumor",
+      },
+      {
+        ...buildNewsItem(111),
+        title: "OpenAI 发布 GPT-6 Sol 与 Luna",
+        url: "https://openai.com/index/introducing-gpt-6-sol-and-luna/",
+      },
+      {
+        ...buildNewsItem(112),
+        title: "OpenAI 更新 GPT-6 Sol 企业数据政策",
+        url: "https://openai.com/index/gpt-6-sol-enterprise-policy/",
+      },
+      {
+        ...buildNewsItem(113),
+        title: "独立 AI 编辑器发布新版界面",
+        url: "https://example.com/ai-editor-update",
+        details: { content_html: '<p>AI 编辑器界面更新。</p><img src="https://example.com/editor.png">' },
+      },
+    ], project: [], socialMedia: [], paper: [],
+  }, { DAILY_PROMPT_ENTITY_HARD_CAP: 2 });
+
+  assert.match(result.selectedContentItems[0], /OpenAI 发布 GPT-6 Sol 与 Luna/);
+  assert.match(result.selectedContentItems[1], /独立 AI 编辑器发布新版界面/);
+  assert.match(result.selectedContentItems.join("\n"), /OpenAI 更新 GPT-6 Sol 企业数据政策/);
+  assert.ok(result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
+});
+
+test("September 23 cached-style Anthropic post and OpenAI reshare outrank a V2EX screenshot", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      {
+        ...buildNewsItem(120),
+        title: "Claude Opus 5.5 is available today.",
+        url: "https://x.com/AnthropicAI/status/2102435703535939725",
+        details: { content_html: "<p>Claude Opus 5.5 is available today. Introducing Claude Opus 5.5.</p>" },
+      },
+      {
+        ...buildNewsItem(121),
+        title: "GPT-6 Sol and Luna are great models but also these characters are so cute",
+        url: "https://x.com/sama/status/2102464201335984392",
+        details: { content_html: "<p>OpenAI: Please welcome GPT-6 Sol and GPT-6 Luna to the GPT-6 universe.</p>" },
+      },
+      {
+        ...buildNewsItem(122),
+        title: "GPT-6 Sol 已在 Codex 可用，还有 GPT-6 Luna",
+        url: "https://www.v2ex.com/t/1244096#reply2",
+        details: { content_html: '<p>用户截图。</p><img src="https://i.imgur.com/KxxSUcd.png">' },
+      },
+      {
+        ...buildNewsItem(123),
+        title: "AI agent dashboard 发布新按钮",
+        details: { content_html: '<p>界面更新。</p><img src="https://example.com/dashboard.png">' },
+      },
+    ], project: [], socialMedia: [], paper: [],
+  });
+
+  assert.match(result.selectedContentItems[0], /x\.com\/AnthropicAI\/status/);
+  assert.match(result.selectedContentItems[1], /x\.com\/sama\/status/);
+  assert.equal(result.selectedContentItems.filter((item) => /Title: GPT-6 Sol/i.test(item)).length, 1);
+  assert.match(result.selectedContentItems[1], /KxxSUcd\.png/);
+  assert.equal(result.selectionDiagnostics.officialMajorModelLaunchesSelected, 1);
+  assert.equal(result.selectionDiagnostics.firstPartyMajorModelLaunchesSelected, 1);
+});
+
 test("project and welfare reserves do not crowd out a vendor's substantive news", () => {
   const anthropicProject = buildProjectItem(1);
   anthropicProject.title = "Anthropic security skills";

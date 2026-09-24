@@ -4,8 +4,52 @@ import assert from "node:assert/strict";
 import {
   buildDailyGenerationPromptInput,
   countDailyTopEligiblePromptItems,
+  getDailyPromptItemEventKey,
   getDailyPromptAllocationStats,
+  isFirstPartyDailyModelLaunch,
+  isOfficialDailyModelLaunch,
 } from "../src/dailyGenerationPromptInput.js";
+
+test("daily event keys group a model launch across official and user headlines, not later policy", () => {
+  const official = "News Title: OpenAI 推出 GPT-6 Sol 与 GPT-6 Luna\nUrl: https://openai.com/index/introducing-gpt-6-sol-and-luna/";
+  const user = "News Title: Codex 已经可以用 GPT-6 Sol 和 Luna\nUrl: https://www.v2ex.com/t/1244096";
+  const policy = "News Title: OpenAI 更新 GPT-6 Sol 企业数据政策\nUrl: https://openai.com/index/gpt-6-sol-enterprise-policy/";
+  assert.equal(getDailyPromptItemEventKey(official), getDailyPromptItemEventKey(user));
+  assert.notEqual(getDailyPromptItemEventKey(official), "");
+  assert.notEqual(getDailyPromptItemEventKey(official), getDailyPromptItemEventKey(policy));
+});
+
+test("official availability and first-party reshares are distinct from ordinary reactions", () => {
+  const openai = "News Title: Introducing GPT‑6 Sol and Luna\nUrl: https://openai.com/index/introducing-gpt-6-sol-and-luna/";
+  const anthropic = "News Title: Claude Opus 5.5 is available today.\nUrl: https://x.com/AnthropicAI/status/2102435703535939725";
+  const reshare = "News Title: GPT-6 Sol and Luna are great models\nUrl: https://x.com/sama/status/2102464201335984392\nContent Summary: OpenAI: Please welcome GPT-6 Sol and GPT-6 Luna";
+  const reaction = "News Title: GPT-6 Sol and Luna are great models\nUrl: https://x.com/sama/status/2102464201335984392\nContent Summary: I like the characters.";
+  assert.equal(isOfficialDailyModelLaunch(openai), true);
+  assert.equal(isOfficialDailyModelLaunch(anthropic), true);
+  assert.equal(isOfficialDailyModelLaunch(reshare), false);
+  assert.equal(isFirstPartyDailyModelLaunch(reshare), true);
+  assert.equal(isFirstPartyDailyModelLaunch(reaction), false);
+});
+
+test("an official model announcement from social sources remains eligible for TOP", () => {
+  const official = [
+    "socialMedia Post by Anthropic",
+    "Title: Anthropic 发布 Claude Opus 5.5",
+    "Url: https://x.com/AnthropicAI/status/2102435703535939725",
+    "Content: Claude Opus 5.5 正式发布。",
+    "Placement Hint: Verified major model launch. Keep in TOP competition.",
+  ].join("\n");
+  const news = Array.from({ length: 10 }, (_, index) => [
+    `News Title: 独立 AI 事件 ${index + 1}`,
+    `Url: https://example.com/ai-${index + 1}`,
+    "Content Summary: 一件独立的 AI 产品事件。",
+  ].join("\n"));
+
+  const prompt = buildDailyGenerationPromptInput([official, ...news]);
+  assert.match(prompt, /TOP 候选 \d+:[\s\S]*Anthropic 发布 Claude Opus 5\.5/);
+  assert.doesNotMatch(prompt, /社媒精选专用候选素材[\s\S]*Anthropic 发布 Claude Opus 5\.5/);
+  assert.equal(countDailyTopEligiblePromptItems([official, ...news]), 10);
+});
 
 test("buildDailyGenerationPromptInput includes AI fun candidates in the main generation prompt", () => {
   const primaryItems = [

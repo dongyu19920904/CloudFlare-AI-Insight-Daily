@@ -1,7 +1,11 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
-import { getDailyPromptItemEventKey } from "./dailyGenerationPromptInput.js";
+import {
+  getDailyPromptItemEventKey,
+  isFirstPartyDailyModelLaunch,
+  isOfficialDailyModelLaunch,
+} from "./dailyGenerationPromptInput.js";
 import {
   LOW_EVIDENCE_AI_WORKFLOW_HINT,
 } from "./sourcePolicies.js";
@@ -186,6 +190,8 @@ function scoreDailyPromptCandidate(candidate) {
   if (sourceType === "paper") score += 12;
 
   if (candidate?.itemHasMedia) score += 14;
+  if (candidate?.isOfficialMajorModelLaunch) score += 80;
+  if (candidate?.isFirstPartyMajorModelLaunch) score += 55;
   if (candidate?.isWelfare) score += 10;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
 
@@ -268,7 +274,10 @@ function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
       candidate,
       funScore: scoreDailyFunCandidate(candidate),
     }))
-    .filter(({ candidate, funScore }) => candidate.sourceType !== "paper" && funScore >= 55)
+    .filter(({ candidate, funScore }) =>
+      candidate.sourceType !== "paper" && !candidate.isOfficialMajorModelLaunch &&
+      !candidate.isFirstPartyMajorModelLaunch && funScore >= 55
+    )
     .sort((left, right) => right.funScore - left.funScore)
     .slice(0, limit)
     .map(({ candidate }) => candidate);
@@ -394,8 +403,7 @@ function isWelfareCandidateText(text) {
 }
 
 function getDailyPromptEntityKey(candidate) {
-  const text = [
-    candidate?.title || "",
+  const fallbackText = [
     candidate?.description || "",
     candidate?.source || "",
     candidate?.url || "",
@@ -414,7 +422,9 @@ function getDailyPromptEntityKey(candidate) {
     ["xiaomi", /\bxiaomi\b|小米|玄戒/i],
   ];
 
-  return majorEntities.find(([, pattern]) => pattern.test(text))?.[0] || "";
+  return majorEntities.find(([, pattern]) => pattern.test(candidate?.title || ""))?.[0]
+    || majorEntities.find(([, pattern]) => pattern.test(fallbackText))?.[0]
+    || "";
 }
 
 function getDailyPromptEntityCountKey(candidate) {
@@ -501,7 +511,7 @@ function buildDailyPromptCandidate(item) {
       itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
       break;
     case "socialMedia":
-      itemText = `socialMedia Post by ${item.authors}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
+      itemText = `socialMedia Post by ${item.authors}\nTitle: ${item.title || ""}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
       break;
     default:
       itemText = `Type: ${item.type}\nTitle: ${item.title || "N/A"}\nDescription: ${truncatePromptText(item.description || "N/A")}\nURL: ${item.url || "N/A"}`;
@@ -533,6 +543,13 @@ function buildDailyPromptCandidate(item) {
   if (isLowEvidenceWorkflowPitch) {
     itemText += `\n${LOW_EVIDENCE_AI_WORKFLOW_HINT}`;
   }
+  const isOfficialMajorModelLaunch = isOfficialDailyModelLaunch(itemText);
+  const isFirstPartyMajorModelLaunch = !isOfficialMajorModelLaunch && isFirstPartyDailyModelLaunch(itemText);
+  if (isOfficialMajorModelLaunch) {
+    itemText += "\nPlacement Hint: Verified major model launch. Keep in TOP competition; treat other posts as secondary observations, not official benchmark evidence.";
+  } else if (isFirstPartyMajorModelLaunch) {
+    itemText += "\nPlacement Hint: First-party reshare quoting the company announcement, not a direct official source. Keep in TOP competition; verify detailed claims against an official link before stating them as fact.";
+  }
 
   return {
     sourceType,
@@ -546,6 +563,8 @@ function buildDailyPromptCandidate(item) {
     placeholders: mediaPlaceholders,
     isWelfare,
     isLowEvidenceAiWorkflowPitch: isLowEvidenceWorkflowPitch,
+    isOfficialMajorModelLaunch,
+    isFirstPartyMajorModelLaunch,
     isDailyTrendingProject:
       sourceType === "project" &&
       (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) &&
@@ -564,7 +583,7 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
   const candidateUrlKey = normalizeReplayUrl(candidate?.url);
   const candidateTitle = candidate?.title || "";
   const getCandidateEventKey = (value) => getDailyPromptItemEventKey([
-    value?.title || "",
+    `Title: ${value?.title || ""}`,
     value?.description || "",
     value?.plainText || "",
   ].join("\n"));
@@ -578,6 +597,14 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
     if (candidateEventKey && candidateEventKey === getCandidateEventKey(existingCandidate)) {
       return true;
     }
+
+    const existingEventKey = getCandidateEventKey(existingCandidate);
+    if (
+      (candidateEventKey.startsWith("model-release:") || existingEventKey.startsWith("model-release:")) &&
+      /政策|条款|漏洞|故障|下线|停用|封禁|限额|配额|enterprise policy|security policy|outage/i.test(
+        `${candidateTitle} ${existingCandidate.title || ""}`
+      )
+    ) return false;
 
     if (!candidateTitle || !existingCandidate?.title) {
       return false;
@@ -691,17 +718,34 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     return true;
   };
 
+  const priorityLaunches = [...buckets.values()]
+    .flat()
+    .filter((candidate) => candidate.isOfficialMajorModelLaunch || candidate.isFirstPartyMajorModelLaunch)
+    .sort((left, right) => right.score - left.score);
+  let selectedPriorityLaunches = 0;
+  for (const candidate of priorityLaunches) {
+    if (selectedPriorityLaunches >= 3) break;
+    if (tryAddCandidate(candidate)) selectedPriorityLaunches += 1;
+  }
+
   for (const sourceType of orderedSourceTypes) {
     const bucket = buckets.get(sourceType) || [];
     const sortedBucket = [...bucket].sort((left, right) => right.score - left.score);
-    const withMedia = sortedBucket.filter((candidate) => candidate.itemHasMedia);
-    const withoutMedia = sortedBucket.filter((candidate) => !candidate.itemHasMedia);
+    const priority = sortedBucket.filter((candidate) =>
+      candidate.isOfficialMajorModelLaunch || candidate.isFirstPartyMajorModelLaunch
+    );
+    const withMedia = sortedBucket.filter((candidate) =>
+      !candidate.isOfficialMajorModelLaunch && !candidate.isFirstPartyMajorModelLaunch && candidate.itemHasMedia
+    );
+    const withoutMedia = sortedBucket.filter((candidate) =>
+      !candidate.isOfficialMajorModelLaunch && !candidate.isFirstPartyMajorModelLaunch && !candidate.itemHasMedia
+    );
     const quota = quotas[sourceType] || 0;
 
     if (quota <= 0) continue;
 
-    let added = 0;
-    for (const candidate of [...withMedia, ...withoutMedia]) {
+    let added = selectedCandidates.filter((candidate) => candidate.sourceType === sourceType).length;
+    for (const candidate of [...priority, ...withMedia, ...withoutMedia]) {
       if (added >= quota || selectedCandidates.length >= maxItems) break;
       if (tryAddCandidate(candidate)) added += 1;
     }
@@ -771,6 +815,25 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   }, {});
   const totalCandidateCount = Object.values(candidateCounts).reduce((count, sourceCount) => count + sourceCount, 0);
   const orderedSelectedCandidates = orderSelectedDailyPromptCandidates(selectedCandidates);
+  for (const candidate of orderedSelectedCandidates.filter((item) =>
+    item.isOfficialMajorModelLaunch || item.isFirstPartyMajorModelLaunch
+  )) {
+    const eventKey = getDailyPromptItemEventKey(candidate.itemText);
+    const relatedObservation = [...buckets.values()].flat()
+      .filter((item) => item !== candidate && item.url && item.url !== candidate.url
+        && getDailyPromptItemEventKey(item.itemText) === eventKey)
+      .sort((left, right) => Number(right.itemHasMedia) - Number(left.itemHasMedia))[0];
+    if (!relatedObservation) continue;
+    candidate.itemText += `\nSecondary observation (not official evidence): ${relatedObservation.url}`;
+    if (relatedObservation.plainText) {
+      candidate.itemText += `\nSecondary observation summary: ${truncatePromptText(relatedObservation.plainText, 240)}`;
+    }
+    if (relatedObservation.placeholders.length > 0) {
+      candidate.itemText += `\nSecondary media: ${relatedObservation.placeholders[0]}`;
+      candidate.itemHasMedia = true;
+      candidate.placeholders.push(relatedObservation.placeholders[0]);
+    }
+  }
   const selectedMediaCount = orderedSelectedCandidates.filter((candidate) => candidate.itemHasMedia).length;
   const allowedTopGithubProjectUrls = orderedSelectedCandidates
     .filter((candidate) => isDailyTrendingProjectCandidate(candidate))
@@ -809,6 +872,12 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       dailyFunCandidateSamples,
       rejectedNonAiCount,
       selectedProjectLikeCount,
+      officialMajorModelLaunchesSelected: orderedSelectedCandidates.filter(
+        (candidate) => candidate.isOfficialMajorModelLaunch
+      ).length,
+      firstPartyMajorModelLaunchesSelected: orderedSelectedCandidates.filter(
+        (candidate) => candidate.isFirstPartyMajorModelLaunch
+      ).length,
     },
   };
 }
