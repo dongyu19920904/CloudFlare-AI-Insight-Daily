@@ -218,6 +218,17 @@ test("validateDailyPublication accepts the V3 topic structure", () => {
   });
 
   assert.equal(result.ok, true, result.issues.join("\n"));
+
+  const unrelatedDaily = pageMarkdown.split("## **❓ 相关问题**")[0];
+  assert.doesNotMatch(unrelatedDaily, /aivora\.cn/);
+  const unrelatedResult = validateDailyPublication({
+    summaryText: "今天最重要的模型更新已经落地。产品与开源工具开始围绕真实工作流竞争，读者可以先看焦点，再挑一个工具小范围试用。",
+    pageMarkdown: unrelatedDaily,
+    minimumTopItems: 2,
+    allowedTopGithubProjectUrls: ["https://github.com/example/agent-kit"],
+    enforceTopGithubProjectAllowlist: true,
+  });
+  assert.equal(unrelatedResult.ok, true, unrelatedResult.issues.join("\n"));
 });
 
 test("validateDailyPublication accepts plain TOP headings with source links in item bodies", () => {

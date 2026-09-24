@@ -683,7 +683,6 @@ export function validateDailyPublication({
     ...collectMarkdownIssues(pageMarkdown, {
       label: "日报页面",
       minChars: 300,
-      requiredPhrases: ["aivora.cn"],
       forbiddenPatterns: [
         ...DAILY_META_PATTERNS,
         ...MODEL_MANIPULATION_PATTERNS,
