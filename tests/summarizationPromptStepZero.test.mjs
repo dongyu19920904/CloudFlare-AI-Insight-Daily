@@ -100,6 +100,16 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.doesNotMatch(prompt, /### 1\. \[模型降价让开发者调用成本再松一截\]/);
 });
 
+test("daily prompt uses optional semantic emoji only in sourced news body text", () => {
+  const prompt = getSystemPromptSummarizationStepOne("2026-09-26");
+
+  assert.match(prompt, /每条资讯正文，默认只放 1 个与来源事实直接对应的 emoji/);
+  assert.match(prompt, /找不到自然对应物，或涉及伤亡、未经核实的消息时可以省略/);
+  assert.match(prompt, /不要放进三级标题、来源链接文字、黄色加粗、图片说明或 FAQ/);
+  assert.match(prompt, /Emoji 只是扫读标记，不替代事实与链接，不增加原定句数和字数/);
+  assert.match(prompt, /不要用 🚀、📈、💰 暗示素材未证明的发布、增长或盈利/);
+});
+
 test("AI fun remains source-driven and optional without blocking the daily", () => {
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
