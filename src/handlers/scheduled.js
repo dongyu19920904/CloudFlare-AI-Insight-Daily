@@ -24,6 +24,7 @@ import {
     inferOpportunityReplaySignals,
 } from "../opportunityScoring.js";
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
+import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext } from '../dailyShopFaq.js';
 import {
     buildDailyContentWithFrontMatter,
     buildDailySeoTitle,
@@ -772,7 +773,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
         "- 今日焦点最多 1 个 GitHub 项目；今日焦点和开源 TOP 中只要出现 GitHub 仓库链接，都必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint，媒体或社媒顺手提到的非日榜仓库不能使用",
-        "- FAQ 是可选栏目。只有官方公告、官方文档或产品原始页面能直接回答一个真实搜索问题时才输出；证据不足就省略，不能补通用问答。只有问题与 AI 账号、订阅或开发工具入口直接相关时，才可加入一次 [**爱窝啦·AI账号店**](https://www.aivora.cn/) 链接；不得加 UTM、猜测商品 URL，也不得写成直接体验、统一访问、省去逐个注册、工具导航、官方入口或免注册聚合站",
+        "- FAQ 是可选栏目。有经核实的主站商品目录上下文、当天正文涉及同一工具，且输入原始来源能直接回答真实买家问题时，优先写 1 条；证据不足就省略，不能补通用问答。商品目录只证明公开展示的类别，不证明库存或新闻功能属于某套餐。主站链接只用输入中经核实的目录 URL，最多 1 个；不得猜测商品 URL 或价格",
         "- 允许从最近 2 天内补位，但不要解释日期过滤、候选编号、候选数量、淘汰原因或为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“今日合格素材共几条”“TOP 候选几属于非 AI”“实际只能输出几条”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",
         "- 直接输出可发布成稿，不要输出任何元话术",
@@ -1427,12 +1428,18 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
         10
     ) || null;
+    const dailyShopContext = await loadDailyShopContext(selectedContentItems);
+    debugInfo.dailyShopCatalogVerified = Boolean(dailyShopContext.catalogUrl);
+    debugInfo.dailyShopRelevantTopics = dailyShopContext.topics;
+    if (dailyShopContext.error) console.warn(`[Scheduled][Daily] Shop catalog unavailable: ${dailyShopContext.error}`);
     console.log(`[Scheduled][Daily] Generating content...`);
     const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);
-    const outputOfCall2User = buildDailyGenerationPromptInput(
+    const sourcePrompt = buildDailyGenerationPromptInput(
         selectedContentItems,
         options.dailyFunContentItems
     );
+    const shopPrompt = formatDailyShopPromptContext(dailyShopContext);
+    const outputOfCall2User = shopPrompt ? `${sourcePrompt}\n\n${shopPrompt}` : sourcePrompt;
 
     let outputOfCall2 = await generateContentWithTransportFallback(
         dailyBodyGenerationEnv,
@@ -1459,7 +1466,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     let outputOfCall3 = await generateContentWithTransportFallback(env, outputOfCall2, getSystemPromptSummarizationStepThree());
     outputOfCall3 = removeMarkdownCodeBlock(outputOfCall3);
 
-    let dailySummaryMarkdownContent = assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env);
+    let dailySummaryMarkdownContent = finalizeDailyShopFaq(
+        assembleDailySummaryMarkdown(outputOfCall2, outputOfCall3, env),
+        dailyShopContext
+    );
     dailySummaryMarkdownContent = sanitizeDuplicateDailySections(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = ensureUniqueDailyTopSources(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = enforceDailyTopGithubLimit(dailySummaryMarkdownContent);
@@ -1529,10 +1539,9 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         );
         repairedOutputOfCall3 = removeMarkdownCodeBlock(repairedOutputOfCall3);
 
-        let repairedDailySummaryMarkdownContent = assembleDailySummaryMarkdown(
-            repairedOutputOfCall2,
-            repairedOutputOfCall3,
-            env
+        let repairedDailySummaryMarkdownContent = finalizeDailyShopFaq(
+            assembleDailySummaryMarkdown(repairedOutputOfCall2, repairedOutputOfCall3, env),
+            dailyShopContext
         );
         repairedDailySummaryMarkdownContent = sanitizeDuplicateDailySections(repairedDailySummaryMarkdownContent);
         repairedDailySummaryMarkdownContent = ensureUniqueDailyTopSources(repairedDailySummaryMarkdownContent);

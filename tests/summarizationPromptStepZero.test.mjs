@@ -126,12 +126,13 @@ test("daily prompt keeps FAQ optional, sourced, and commercially relevant", () =
   const prompt = getSystemPromptSummarizationStepOne("2026-08-01");
 
   assert.match(prompt, /这是可选栏目/);
+  assert.match(prompt, /优先输出 1 条/);
   assert.match(prompt, /证据不够时省略整个栏目/);
-  assert.match(prompt, /只有问题与 AI 账号、订阅或开发工具入口直接相关时/);
+  assert.match(prompt, /只有问题与当前目录中同一工具的账号、订阅、额度或开发工具入口直接相关时/);
   assert.match(prompt, /用户会真实搜索的具体问题/);
   assert.match(prompt, /爱窝啦·AI账号店/);
-  assert.match(prompt, /https:\/\/www\.aivora\.cn\//);
-  assert.match(prompt, /商品、价格与可用状态以官网实时页面为准/);
+  assert.match(prompt, /已核实目录 URL/);
+  assert.match(prompt, /商品目录只能证明店内公开展示某类服务/);
   assert.match(prompt, /官方公告、官方文档或官方价格页/);
   assert.match(prompt, /不得补成“十分之一、一个数量级、翻倍”等数字/);
   assert.match(prompt, /正文最多出现 1 个主站链接/);
