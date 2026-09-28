@@ -26,6 +26,11 @@ import {
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext } from '../dailyShopFaq.js';
 import {
+    buildStandaloneDailyFaqPromptInput,
+    insertStandaloneDailyFaq,
+    normalizeStandaloneDailyFaqSection,
+} from '../dailyStandaloneFaq.js';
+import {
     buildDailyContentWithFrontMatter,
     buildDailySeoTitle,
     buildOpportunityMetaDescription,
@@ -727,6 +732,10 @@ function getStandaloneDailyFunSystemPrompt() {
         "不要编造新闻，不要写兜底内容，不要解释生成过程。",
         "输出必须是 Markdown；如果写不出合格栏目，就输出空字符串。",
     ].join('\n');
+}
+
+function getStandaloneDailyFaqSystemPrompt() {
+    return '你是 AI 日报的事实核查编辑。只根据给定的一手来源写一条简短相关问题；无法从素材回答时输出空字符串，不编造价格、额度、可用性或商店承诺。';
 }
 
 function getDuplicateDailyTopSourceUrls(markdown) {
@@ -1626,6 +1635,51 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             } catch (error) {
                 console.warn(`[Scheduled][Daily] Standalone AI fun generation failed: ${error.message}`);
                 debugInfo.dailyFunSeparateGenerationError = error.message;
+            }
+        }
+    }
+
+    if (validation.ok) {
+        const faqInput = buildStandaloneDailyFaqPromptInput(
+            dateStr,
+            dailySummaryMarkdownContent,
+            selectedContentItems,
+            dailyShopContext
+        );
+        debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
+        if (faqInput) {
+            try {
+                const rawFaq = await generateContentWithTransportFallback(
+                    {
+                        ...env,
+                        ANTHROPIC_MAX_TOKENS: '700',
+                        OPENAI_MAX_COMPLETION_TOKENS: '700',
+                    },
+                    faqInput.prompt,
+                    getStandaloneDailyFaqSystemPrompt()
+                );
+                const faqSection = normalizeStandaloneDailyFaqSection(
+                    removeMarkdownCodeBlock(rawFaq),
+                    faqInput.sourceUrl,
+                    faqInput.sourceText
+                );
+                if (faqSection) {
+                    const withFaq = finalizeDailyShopFaq(
+                        insertStandaloneDailyFaq(dailySummaryMarkdownContent, faqSection),
+                        dailyShopContext
+                    );
+                    const faqValidation = validateGeneratedDaily(outputOfCall3, withFaq);
+                    if (faqValidation.ok) {
+                        dailySummaryMarkdownContent = withFaq;
+                        validation = faqValidation;
+                        debugInfo.dailyFaqSeparateGenerationInserted = true;
+                    } else {
+                        debugInfo.dailyFaqSeparateGenerationRejectedIssues = faqValidation.issues;
+                    }
+                }
+            } catch (error) {
+                console.warn(`[Scheduled][Daily] Standalone FAQ generation failed: ${error.message}`);
+                debugInfo.dailyFaqSeparateGenerationError = error.message;
             }
         }
     }

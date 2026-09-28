@@ -106,6 +106,26 @@ function normalizeReplayUrl(url) {
   }
 }
 
+export function getDailyPublisherKey(item) {
+  try {
+    const parsed = new URL(String(item?.url || '').trim());
+    let host = parsed.hostname.toLowerCase().replace(/^(?:www|m|mobile)\./, '');
+    const parts = parsed.pathname.toLowerCase().split('/').filter(Boolean);
+    if (host === 'telegram.me') host = 't.me';
+    if (host === 'twitter.com') host = 'x.com';
+    if (host === 't.me' && parts[0] === 's') parts.shift();
+    if (host === 't.me' || host === 'x.com' || host === 'threads.net') {
+      return parts[0] ? `${host}/${parts[0]}` : host;
+    }
+    if (host === 'github.com') {
+      return parts.length >= 2 ? `${host}/${parts[0]}/${parts[1]}` : host;
+    }
+    return host;
+  } catch {
+    return String(item?.source || '').trim().toLowerCase();
+  }
+}
+
 function normalizeReplayTitle(title) {
   return String(title || "")
     .normalize("NFKC")
@@ -280,8 +300,13 @@ function selectDailyFunCandidates(buckets, orderedSourceTypes, limit) {
       !candidate.isFirstPartyMajorModelLaunch && funScore >= 55
     )
     .sort((left, right) => right.funScore - left.funScore)
-    .slice(0, limit)
-    .map(({ candidate }) => candidate);
+    .reduce((selected, { candidate }) => {
+      const publisherKey = candidate.publisherKey;
+      if (selected.length < limit && !selected.some((item) => item.publisherKey === publisherKey)) {
+        selected.push(candidate);
+      }
+      return selected;
+    }, []);
 }
 
 function summarizeDailyFunCandidate(candidate, selectedCandidates, reservedDailyFunCandidate) {
@@ -498,7 +523,7 @@ function buildDailyPromptCandidate(item) {
 
   switch (sourceType) {
     case "news":
-      itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
+      itemText = `News Title: ${item.title}\nSource: ${item.source || 'Unknown'}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${plainTextContent}`;
       break;
     case "project":
       itemText = `Project Name: ${item.title}\nSource: ${item.source || "Unknown"}\nPublished: ${item.published_date}\nUrl: ${item.url}\nOwner: ${item.details?.owner || "Unknown"}\nLanguage: ${item.details?.language || "Unknown"}\nStars Today: ${item.details?.starsToday || "Unknown"}\nTotal Stars: ${item.details?.totalStars || "Unknown"}\nDescription: ${truncatePromptText(item.description)}`;
@@ -512,7 +537,7 @@ function buildDailyPromptCandidate(item) {
       itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
       break;
     case "socialMedia":
-      itemText = `socialMedia Post by ${item.authors}\nTitle: ${item.title || ""}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
+      itemText = `socialMedia Post by ${item.authors}\nTitle: ${item.title || ""}\nSource: ${item.source || 'Unknown'}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
       break;
     default:
       itemText = `Type: ${item.type}\nTitle: ${item.title || "N/A"}\nDescription: ${truncatePromptText(item.description || "N/A")}\nURL: ${item.url || "N/A"}`;
@@ -560,6 +585,7 @@ function buildDailyPromptCandidate(item) {
     description: item.description,
     source: item.source,
     url: item.url,
+    publisherKey: getDailyPublisherKey(item),
     plainText: plainTextContent,
     placeholders: mediaPlaceholders,
     isWelfare,
@@ -682,6 +708,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   ];
   const selectedCandidates = [];
   const selectedEntityCounts = new Map();
+  const selectedPublisherKeys = new Set();
   let selectedProjectLikeCount = 0;
 
   const updateSelectedEntityCount = (candidate, delta) => {
@@ -693,6 +720,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const removeSelectedCandidateAt = (index) => {
     const [removedCandidate] = selectedCandidates.splice(index, 1);
     updateSelectedEntityCount(removedCandidate, -1);
+    selectedPublisherKeys.delete(removedCandidate.publisherKey);
     if (isProjectLikeDailyPromptCandidate(removedCandidate)) {
       selectedProjectLikeCount = Math.max(0, selectedProjectLikeCount - 1);
     }
@@ -700,6 +728,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   const tryAddCandidate = (candidate) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
+    if (selectedPublisherKeys.has(candidate.publisherKey)) return false;
     const hardCap = hardCaps[candidate.sourceType];
     if (
       hardCap > 0 &&
@@ -717,6 +746,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     }
     if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates)) return false;
     selectedCandidates.push(candidate);
+    selectedPublisherKeys.add(candidate.publisherKey);
     updateSelectedEntityCount(candidate, 1);
     if (isProjectLike) selectedProjectLikeCount += 1;
     return true;
@@ -734,22 +764,21 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   for (const sourceType of orderedSourceTypes) {
     const bucket = buckets.get(sourceType) || [];
-    const sortedBucket = [...bucket].sort((left, right) => right.score - left.score);
+    const sortedBucket = [...bucket].sort(
+      (left, right) => scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left)
+    );
     const priority = sortedBucket.filter((candidate) =>
       candidate.isOfficialMajorModelLaunch || candidate.isFirstPartyMajorModelLaunch
     );
-    const withMedia = sortedBucket.filter((candidate) =>
-      !candidate.isOfficialMajorModelLaunch && !candidate.isFirstPartyMajorModelLaunch && candidate.itemHasMedia
-    );
-    const withoutMedia = sortedBucket.filter((candidate) =>
-      !candidate.isOfficialMajorModelLaunch && !candidate.isFirstPartyMajorModelLaunch && !candidate.itemHasMedia
+    const ordinary = sortedBucket.filter((candidate) =>
+      !candidate.isOfficialMajorModelLaunch && !candidate.isFirstPartyMajorModelLaunch
     );
     const quota = quotas[sourceType] || 0;
 
     if (quota <= 0) continue;
 
     let added = selectedCandidates.filter((candidate) => candidate.sourceType === sourceType).length;
-    for (const candidate of [...priority, ...withMedia, ...withoutMedia]) {
+    for (const candidate of [...priority, ...ordinary]) {
       if (added >= quota || selectedCandidates.length >= maxItems) break;
       if (tryAddCandidate(candidate)) added += 1;
     }
@@ -760,7 +789,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     .filter((candidate) => candidate.isWelfare)
     .sort((left, right) => right.score - left.score)[0];
 
-  if (welfareCandidate && !isDuplicateDailyPromptCandidate(welfareCandidate, selectedCandidates)) {
+  if (welfareCandidate && !selectedPublisherKeys.has(welfareCandidate.publisherKey)
+    && !isDuplicateDailyPromptCandidate(welfareCandidate, selectedCandidates)) {
     if (selectedCandidates.length >= maxItems) {
       const replacementIndex = selectedCandidates.findIndex(
         (candidate) => !candidate.isWelfare && candidate.sourceType !== "project"
@@ -774,11 +804,10 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   if (selectedCandidates.length < maxItems) {
     const remainingCandidates = orderedSourceTypes.flatMap((sourceType) => {
-      const bucket = [...(buckets.get(sourceType) || [])].sort((left, right) => right.score - left.score);
-      return [
-        ...bucket.filter((candidate) => candidate.itemHasMedia),
-        ...bucket.filter((candidate) => !candidate.itemHasMedia),
-      ];
+      const bucket = [...(buckets.get(sourceType) || [])].sort(
+        (left, right) => scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left)
+      );
+      return bucket;
     });
 
     for (const candidate of remainingCandidates) {
@@ -788,19 +817,18 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   }
 
   const dailyFunCandidateLimit = parsePositiveInt(env.DAILY_FUN_FALLBACK_CANDIDATES, 12);
-  const dailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
+  const rankedDailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
   let reservedDailyFunCandidate = null;
-  const selectedItemTextsBeforeFunReserve = new Set(selectedCandidates.map((candidate) => candidate.itemText));
-  const hasFunCandidateOutsidePrimary = dailyFunCandidates.some(
-    (candidate) => !selectedItemTextsBeforeFunReserve.has(candidate.itemText)
+  const hasFunCandidateOutsidePrimary = rankedDailyFunCandidates.some(
+    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey)
   );
 
-  if (!hasFunCandidateOutsidePrimary && dailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
+  if (!hasFunCandidateOutsidePrimary && rankedDailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
     const reserveCandidate =
-      dailyFunCandidates.find(
+      rankedDailyFunCandidates.find(
         (candidate) => selectedCandidates.includes(candidate) && candidate.sourceType !== "project" && !candidate.isWelfare
       ) ||
-      dailyFunCandidates.find((candidate) => selectedCandidates.includes(candidate));
+      rankedDailyFunCandidates.find((candidate) => selectedCandidates.includes(candidate));
     const reserveIndex = selectedCandidates.indexOf(reserveCandidate);
 
     if (reserveIndex >= 0) {
@@ -808,6 +836,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       reservedDailyFunCandidate = reserveCandidate;
     }
   }
+  let dailyFunCandidates = rankedDailyFunCandidates.filter(
+    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey)
+  );
 
   const candidateCounts = orderedSourceTypes.reduce((acc, sourceType) => {
     acc[sourceType] = (buckets.get(sourceType) || []).length;
@@ -819,15 +850,21 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   }, {});
   const totalCandidateCount = Object.values(candidateCounts).reduce((count, sourceCount) => count + sourceCount, 0);
   const orderedSelectedCandidates = orderSelectedDailyPromptCandidates(selectedCandidates);
+  const usedPublisherKeys = new Set([
+    ...selectedPublisherKeys,
+    ...(reservedDailyFunCandidate ? [reservedDailyFunCandidate.publisherKey] : []),
+  ]);
   for (const candidate of orderedSelectedCandidates.filter((item) =>
     item.isOfficialMajorModelLaunch || item.isFirstPartyMajorModelLaunch
   )) {
     const eventKey = getDailyPromptItemEventKey(candidate.itemText);
     const relatedObservation = [...buckets.values()].flat()
       .filter((item) => item !== candidate && item.url && item.url !== candidate.url
+        && !usedPublisherKeys.has(item.publisherKey)
         && getDailyPromptItemEventKey(item.itemText) === eventKey)
       .sort((left, right) => Number(right.itemHasMedia) - Number(left.itemHasMedia))[0];
     if (!relatedObservation) continue;
+    usedPublisherKeys.add(relatedObservation.publisherKey);
     candidate.itemText += `\nSecondary observation (not official evidence): ${relatedObservation.url}`;
     if (relatedObservation.plainText) {
       candidate.itemText += `\nSecondary observation summary: ${truncatePromptText(relatedObservation.plainText, 240)}`;
@@ -838,6 +875,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       candidate.placeholders.push(relatedObservation.placeholders[0]);
     }
   }
+  dailyFunCandidates = dailyFunCandidates.filter(
+    (candidate) => !usedPublisherKeys.has(candidate.publisherKey) || candidate === reservedDailyFunCandidate
+  );
   const selectedMediaCount = orderedSelectedCandidates.filter((candidate) => candidate.itemHasMedia).length;
   const allowedTopGithubProjectUrls = orderedSelectedCandidates
     .filter((candidate) => isDailyTrendingProjectCandidate(candidate))
@@ -876,6 +916,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
       dailyFunReservedFromPrimary: Boolean(reservedDailyFunCandidate),
       dailyFunCandidateSamples,
       rejectedNonAiCount,
+      publisherCandidatesDropped: totalCandidateCount - new Set(
+        [...buckets.values()].flat().map((candidate) => candidate.publisherKey)
+      ).size,
       selectedProjectLikeCount,
       officialMajorModelLaunchesSelected: orderedSelectedCandidates.filter(
         (candidate) => candidate.isOfficialMajorModelLaunch

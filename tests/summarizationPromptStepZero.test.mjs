@@ -89,8 +89,8 @@ test("daily prompt gives plain yellow conclusions and contextual cyan source lin
   assert.match(prompt, /通常恰好保留 3 处黄色/);
   assert.match(prompt, /作者名、媒体名、情绪反应、空泛评价和来源标签不能染黄/);
   assert.match(prompt, /链接文案控制在 8-24 个显示字符/);
-  assert.match(prompt, /宝玉在推文中介绍/);
-  assert.match(prompt, /禁止把“宝玉整理的技术细节”/);
+  assert.match(prompt, /不要把“频道整理显示、频道介绍称、频道提到、有人发帖”当固定句首/);
+  assert.match(prompt, /禁止把“某某整理的技术细节”/);
   assert.match(prompt, /不能只写“实测推文”/);
   assert.match(prompt, /媒体链接只能写成“报道\/整理”/);
   assert.match(prompt, /使用 4-5 个完整短句/);

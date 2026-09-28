@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDailyPromptSelection } from "../src/dailyPromptSelection.js";
+import { buildDailyPromptSelection, getDailyPublisherKey } from "../src/dailyPromptSelection.js";
 
 function buildNewsItem(index) {
   return {
@@ -9,7 +9,7 @@ function buildNewsItem(index) {
     title: `News ${index}`,
     description: `AI model news description ${index}`,
     source: "AI Base",
-    url: `https://example.com/news-${index}`,
+    url: `https://publisher-${index}.example.com/news-${index}`,
     published_date: "2026-04-06",
     details: {
       content_html: `<p>News ${index} content about AI tools and agents.</p>`,
@@ -252,25 +252,25 @@ test("buildDailyPromptSelection keeps one major AI vendor from flooding the prom
           ...buildNewsItem(1),
           title: "Anthropic explains Claude interpretability breakthrough",
           description: "Claude can translate internal activations into natural language.",
-          url: "https://example.com/anthropic-1",
+          url: "https://anthropic-news.example.com/anthropic-1",
         },
         {
           ...buildNewsItem(2),
           title: "Claude refuses a shutdown blackmail scenario",
           description: "Anthropic safety test reveals hidden model reasoning.",
-          url: "https://example.com/anthropic-2",
+          url: "https://anthropic-news.example.com/anthropic-2",
         },
         {
           ...buildNewsItem(3),
           title: "OpenAI releases realtime voice models",
           description: "ChatGPT voice and realtime transcription get dedicated models.",
-          url: "https://example.com/openai-voice",
+          url: "https://openai-news.example.com/openai-voice",
         },
         {
           ...buildNewsItem(4),
           title: "Google ships Gemini low latency model",
           description: "Gemini Flash-Lite focuses on cheaper inference.",
-          url: "https://example.com/google-gemini",
+          url: "https://google-news.example.com/google-gemini",
         },
       ],
       project: [],
@@ -342,13 +342,13 @@ test("official frontier model releases outrank image-backed routine news and mer
   assert.match(selected[1], /HS1iv5paYAEnRVx\.jpg/);
 });
 
-test("model launch priority requires a direct official source and does not merge a later policy story", () => {
+test("model launch priority keeps the top official item when one publisher posts two stories", () => {
   const result = buildDailyPromptSelection({
     news: [
       {
         ...buildNewsItem(110),
         title: "网友猜测 Gemini 4 Pro 已发布",
-        url: "https://example.com/gemini-rumor",
+        url: "https://rumors.example.com/gemini-rumor",
       },
       {
         ...buildNewsItem(111),
@@ -371,7 +371,7 @@ test("model launch priority requires a direct official source and does not merge
 
   assert.match(result.selectedContentItems[0], /OpenAI 发布 GPT-6 Sol 与 Luna/);
   assert.match(result.selectedContentItems[1], /独立 AI 编辑器发布新版界面/);
-  assert.match(result.selectedContentItems.join("\n"), /OpenAI 更新 GPT-6 Sol 企业数据政策/);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /OpenAI 更新 GPT-6 Sol 企业数据政策/);
   assert.ok(result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
 });
 
@@ -424,19 +424,19 @@ test("project and welfare reserves do not crowd out a vendor's substantive news"
           ...buildNewsItem(1),
           title: "Google offers a free Gemini SAT practice test",
           description: "Students can take a free practice test in Gemini.",
-          url: "https://example.com/google-free-sat",
+          url: "https://google-free.example.com/google-free-sat",
         },
         {
           ...buildNewsItem(2),
           title: "Google expands Gemini university plans globally",
           description: "Gemini adds higher limits and storage for university students.",
-          url: "https://example.com/google-student-plan",
+          url: "https://google-plan.example.com/google-student-plan",
         },
         {
           ...buildNewsItem(3),
           title: "Anthropic updates Claude developer tools",
           description: "Claude adds a new coding workflow for developers.",
-          url: "https://example.com/anthropic-tools",
+          url: "https://anthropic-news.example.com/anthropic-tools",
         },
       ],
       project: [anthropicProject],
@@ -511,7 +511,7 @@ test("buildDailyPromptSelection keeps one Xiaomi earnings story", () => {
           ...buildNewsItem(3),
           title: "OpenAI releases a new realtime model",
           description: "The official release adds low-latency AI voice support.",
-          url: "https://example.com/openai-realtime",
+          url: "https://openai-news.example.com/openai-realtime",
         },
       ],
       project: [],
@@ -816,9 +816,9 @@ test("buildDailyPromptSelection keeps a human-facing fun candidate pool outside 
       news: [
         {
           ...buildNewsItem(1),
-          title: "OpenAI updates enterprise admin controls",
+          title: "OpenAI officially releases GPT-6 Sol",
           description: "Important but dry AI product governance update.",
-          url: "https://example.com/admin-controls",
+          url: "https://openai.com/index/introducing-gpt-6-sol/",
         },
         {
           type: "news",
@@ -886,7 +886,7 @@ test("buildDailyPromptSelection reserves one strong fun candidate when primary p
     title: topic,
     description: "开发者在即刻分享 AI 编程实测，工具接管浏览器和终端，结果把小任务办得过分认真。",
     source: "即刻",
-    url: `https://m.okjike.com/originalPosts/fun-${index + 1}`,
+    url: `https://creator-${index + 1}.example.com/originalPosts/fun-${index + 1}`,
     published_date: "2026-05-29",
     details: {
       content_html:
@@ -953,4 +953,38 @@ test("buildDailyPromptSelection returns diagnostics for status reporting", () =>
   });
   assert.equal(result.selectionDiagnostics.maxItems, 4);
   assert.equal(result.selectionDiagnostics.quotas.news, 3);
+});
+
+test("one Telegram channel contributes only its strongest image-backed item across sections", () => {
+  const channelItem = (id, title, image = '') => ({
+    ...buildNewsItem(id),
+    title,
+    source: 'Folo AI 探索',
+    url: `https://t.me/aigc1024/${id}`,
+    details: { content_html: `<p>${title}，AI 工具现场演示。</p>${image}` },
+  });
+  const result = buildDailyPromptSelection({
+    news: [
+      channelItem(25117, 'AI PPT 版式介绍'),
+      channelItem(25112, 'AI 视频 Agent 现场演示', '<img src="https://example.com/video-agent.png">'),
+      { ...channelItem(25120, '另一个频道的 AI 产品更新'), url: 'https://t.me/other_ai/25120' },
+    ],
+    project: [], socialMedia: [], paper: [],
+  });
+  const primary = result.selectedContentItems.join('\n');
+  assert.match(primary, /aigc1024\/25112/);
+  assert.doesNotMatch(primary, /aigc1024\/25117/);
+  assert.match(primary, /other_ai\/25120/);
+  assert.match(primary, /Source: Folo AI 探索/);
+  assert.doesNotMatch(result.dailyFunContentItems.join('\n'), /aigc1024\/25117/);
+  assert.ok(result.selectionDiagnostics.publisherCandidatesDropped >= 1);
+});
+
+test('publisher keys distinguish channels, social accounts and GitHub repositories', () => {
+  assert.equal(getDailyPublisherKey({ url: 'https://t.me/s/aigc1024/25117' }), 't.me/aigc1024');
+  assert.equal(getDailyPublisherKey({ url: 'https://t.me/aigc1024/25112' }), 't.me/aigc1024');
+  assert.equal(getDailyPublisherKey({ url: 'https://twitter.com/dotey/status/1' }), 'x.com/dotey');
+  assert.equal(getDailyPublisherKey({ url: 'https://x.com/dotey/status/2' }), 'x.com/dotey');
+  assert.notEqual(getDailyPublisherKey({ url: 'https://github.com/a/one' }),
+    getDailyPublisherKey({ url: 'https://github.com/a/two' }));
 });
