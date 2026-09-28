@@ -42,6 +42,7 @@ import {
 } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
+import { selectAlternateDailySources } from '../dailyAlternateSelection.js';
 import {
     buildOpportunityPaths,
     DEFAULT_OPPORTUNITY_PAGE_DESCRIPTION,
@@ -1448,7 +1449,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         options.dailyFunContentItems
     );
     const shopPrompt = formatDailyShopPromptContext(dailyShopContext);
-    const outputOfCall2User = shopPrompt ? `${sourcePrompt}\n\n${shopPrompt}` : sourcePrompt;
+    const retryInstruction = options.sourceReselection
+        ? '\n\n本轮已从当天素材池换入新来源。今日焦点必须写满 10 条，每条使用不同的原始来源 URL；新来源用于补足重复或缺失的条目。'
+        : '';
+    const outputOfCall2User = `${sourcePrompt}${shopPrompt ? `\n\n${shopPrompt}` : ''}${retryInstruction}`;
 
     let outputOfCall2 = await generateContentWithTransportFallback(
         dailyBodyGenerationEnv,
@@ -2816,6 +2820,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedCounts,
         selectionDiagnostics,
         allowedTopGithubProjectUrls,
+        allUnifiedData,
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: options.preferCachedData !== false,
         applyGithubTopProjectDedupe: true,
@@ -2865,7 +2870,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedItems: selectedContentItems.length,
         funCandidates: Array.isArray(dailyFunContentItems) ? dailyFunContentItems.length : 0,
     });
-    const { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
+    let { outputOfCall3, dailySummaryMarkdownContent, validation: generatedValidation } = await generateDailyMarkdown(
         env,
         dateStr,
         selectedContentItems,
@@ -2885,7 +2890,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     );
 
     await reportScheduledProgress(options, 'daily', 'validating', 78);
-    const validation = generatedValidation || validateDailyPublication({
+    let publicationAllowedTopGithubProjectUrls = allowedTopGithubProjectUrls;
+    let validation = generatedValidation || validateDailyPublication({
         summaryText: outputOfCall3,
         pageMarkdown: dailySummaryMarkdownContent,
         minimumTopItems,
@@ -2898,6 +2904,72 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         allowedTopGithubProjectUrls,
         enforceTopGithubProjectAllowlist: true,
     });
+    if (!validation.ok && validation.issues.some((issue) =>
+        /Daily (?:top items are insufficient|TOP reuses|primary sections reuse)/i.test(issue)
+    )) {
+        const alternate = selectAlternateDailySources(allUnifiedData, env, selectedContentItems, {
+            minimumTopItems,
+            minimumOpenSourceItems,
+            minimumSocialItems,
+            minimumResearchItems,
+            minimumIndustryItems,
+            minimumTopicSections,
+        });
+        debugInfo.dailyAlternateSourcesFound = Boolean(alternate);
+        if (alternate) {
+            debugInfo.dailyInitialValidationIssues = validation.issues;
+            debugInfo.dailyAlternateSourceUrls = alternate.addedSourceUrls;
+            await reportScheduledProgress(options, 'daily', 'reselecting-sources', 79, {
+                addedSources: alternate.addedSourceUrls.length,
+            });
+            try {
+                const retry = await generateDailyMarkdown(
+                    env,
+                    dateStr,
+                    alternate.selectedContentItems,
+                    alternate.mediaCandidates,
+                    debugInfo,
+                    {
+                        minimumTopItems,
+                        hardMinimumTopItems,
+                        minimumOpenSourceItems,
+                        minimumSocialItems,
+                        minimumResearchItems,
+                        minimumIndustryItems,
+                        minimumTopicSections,
+                        dailyFunContentItems: alternate.dailyFunContentItems,
+                        allowedTopGithubProjectUrls: alternate.allowedTopGithubProjectUrls,
+                        sourceReselection: true,
+                    }
+                );
+                const retryValidation = retry.validation || validateDailyPublication({
+                    summaryText: retry.outputOfCall3,
+                    pageMarkdown: retry.dailySummaryMarkdownContent,
+                    minimumTopItems,
+                    hardMinimumTopItems,
+                    minimumOpenSourceItems,
+                    minimumSocialItems,
+                    minimumResearchItems,
+                    minimumIndustryItems,
+                    minimumTopicSections,
+                    allowedTopGithubProjectUrls: alternate.allowedTopGithubProjectUrls,
+                    enforceTopGithubProjectAllowlist: true,
+                });
+                outputOfCall3 = retry.outputOfCall3;
+                dailySummaryMarkdownContent = retry.dailySummaryMarkdownContent;
+                validation = retryValidation;
+                if (retryValidation.ok) {
+                    publicationAllowedTopGithubProjectUrls = alternate.allowedTopGithubProjectUrls;
+                    debugInfo.dailyRecoveredWithAlternateSources = true;
+                } else {
+                    debugInfo.dailyAlternateValidationIssues = retryValidation.issues;
+                }
+            } catch (error) {
+                debugInfo.dailyAlternateGenerationError = error.message;
+                console.warn(`[Scheduled][Daily] Alternate-source generation failed: ${error.message}`);
+            }
+        }
+    }
     debugInfo.dailyValidationPassed = validation.ok;
     debugInfo.dailyValidationIssues = validation.issues;
     debugInfo.dailyValidationWarnings = validation.warnings || [];
@@ -2941,7 +3013,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
                 minimumResearchItems,
                 minimumIndustryItems,
                 minimumTopicSections,
-                allowedTopGithubProjectUrls,
+                allowedTopGithubProjectUrls: publicationAllowedTopGithubProjectUrls,
                 enforceTopGithubProjectAllowlist: true,
             });
             if (archivedValidation.ok) publicationMarkdown = archived.markdown;

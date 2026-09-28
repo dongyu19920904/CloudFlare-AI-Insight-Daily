@@ -652,7 +652,10 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
   });
 }
 
-export function buildDailyPromptSelection(allUnifiedData, env = {}) {
+export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}) {
+  const excludedSourceUrls = new Set(
+    (options.excludedSourceUrls || []).map(normalizeReplayUrl).filter(Boolean)
+  );
   const maxItems = parsePositiveInt(env.DAILY_PROMPT_MAX_ITEMS, 24);
   const entityHardCap = parsePositiveInt(env.DAILY_PROMPT_ENTITY_HARD_CAP, 1);
   const quotas = {
@@ -680,6 +683,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     for (const item of items || []) {
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
+      if (excludedSourceUrls.has(normalizeReplayUrl(candidate.url))) continue;
       if (candidate.sourceType === "project" && !candidate.isDailyTrendingProject) continue;
       if (candidate.sourceType !== "project" && normalizeGithubProjectUrl(candidate.url)) continue;
       if (!isAiRelevantDailyPromptCandidate(candidate)) {
