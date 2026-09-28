@@ -29,6 +29,7 @@ import {
     buildStandaloneDailyFaqPromptInput,
     insertStandaloneDailyFaq,
     normalizeStandaloneDailyFaqSection,
+    withDailyFaqDeadline,
 } from '../dailyStandaloneFaq.js';
 import {
     buildDailyContentWithFrontMatter,
@@ -1649,7 +1650,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
         if (faqInput) {
             try {
-                const rawFaq = await generateContentWithTransportFallback(
+                const rawFaq = await withDailyFaqDeadline(() => generateContentWithTransportFallback(
                     {
                         ...env,
                         ANTHROPIC_MAX_TOKENS: '700',
@@ -1657,7 +1658,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     },
                     faqInput.prompt,
                     getStandaloneDailyFaqSystemPrompt()
-                );
+                ));
                 const faqSection = normalizeStandaloneDailyFaqSection(
                     removeMarkdownCodeBlock(rawFaq),
                     faqInput.sourceUrl,

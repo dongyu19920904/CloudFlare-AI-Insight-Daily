@@ -5,6 +5,7 @@ import {
   buildStandaloneDailyFaqPromptInput,
   insertStandaloneDailyFaq,
   normalizeStandaloneDailyFaqSection,
+  withDailyFaqDeadline,
 } from '../src/dailyStandaloneFaq.js';
 
 const sourceUrl = 'https://github.com/mvschwarz/openrig';
@@ -30,4 +31,12 @@ test('FAQ skips social reposts and rejects unsupported links or sales claims', (
   const wrongLink = `## **❓ 相关问题**\n\n### openrig 适合拿来做什么？\n\n先读[另一个项目的说明](https://github.com/other/repo)，再核对自己的需求和仓库中的实际代码。`;
   assert.equal(normalizeStandaloneDailyFaqSection(wrongLink, sourceUrl, sourceText), '');
   assert.equal(normalizeStandaloneDailyFaqSection(wrongLink.replace('先读', '售价 99 元，先读').replace('https://github.com/other/repo', sourceUrl), sourceUrl, sourceText), '');
+});
+
+test('optional FAQ timeout leaves the main article path free to continue', async () => {
+  await assert.rejects(
+    withDailyFaqDeadline(() => new Promise(() => {}), 5),
+    /Optional FAQ generation timed out/
+  );
+  assert.equal(await withDailyFaqDeadline(() => Promise.resolve('ready'), 50), 'ready');
 });

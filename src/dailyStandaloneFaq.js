@@ -65,3 +65,17 @@ export function insertStandaloneDailyFaq(markdown, section) {
   if (!footer) return `${content}\n\n${section.trim()}\n`;
   return `${content.slice(0, footer.index).trimEnd()}\n\n${section.trim()}\n${content.slice(footer.index)}`;
 }
+
+export async function withDailyFaqDeadline(task, timeoutMs = 20000) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Optional FAQ generation timed out')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
