@@ -6,6 +6,10 @@ on:
       date:
         description: "Date to preview (YYYY-MM-DD)"
         required: true
+      refresh_sources:
+        description: "Refresh today's cached source categories before preview"
+        type: boolean
+        default: false
 
 jobs:
   preview:
@@ -17,6 +21,26 @@ jobs:
       TARGET_DATE: ${{ inputs.date }}
       TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
     steps:
+      - name: Refresh source categories
+        if: ${{ inputs.refresh_sources }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for category in news project paper socialMedia; do
+            curl --fail --silent --show-error -G "${WORKER_BASE_URL}/testFetchCategory" \
+              --data-urlencode "key=${TEST_TRIGGER_SECRET}" \
+              --data-urlencode "date=${TARGET_DATE}" \
+              --data-urlencode "category=${category}" \
+              -o "prefetch-${category}.json"
+            python - "$category" <<'PY'
+          import json
+          import sys
+          with open(f'prefetch-{sys.argv[1]}.json', encoding='utf-8') as handle:
+              result = json.load(handle)
+          if not result.get('success'):
+              raise SystemExit(f'{sys.argv[1]} source refresh failed: {result}')
+          print(f'{sys.argv[1]} refreshed')
+          PY
       - name: Generate a dry-run preview
         shell: bash
         run: |

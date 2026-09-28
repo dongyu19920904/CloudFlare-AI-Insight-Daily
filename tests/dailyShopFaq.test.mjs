@@ -95,3 +95,12 @@ test('missing, unrelated or unsupported FAQ does not add a shop link', async () 
   );
   assert.doesNotMatch(finalizeDailyShopFaq(unrelatedFaq, { ...context, catalogUrl: '' }), /aivora\.cn/);
 });
+
+test('an open-source tool FAQ is not turned into an account shop pitch', () => {
+  const repoUrl = 'https://github.com/mvschwarz/openrig';
+  const body = `## **🔥 今日焦点 TOP 1**\n\n### 1. Claude 工具开源\n\n[项目仓库](${repoUrl})。\n\n## **❓ 相关问题**\n\n### Claude 工具如何开始测试？\n\n[项目仓库](${repoUrl}) 提供使用说明。`;
+  const result = finalizeDailyShopFaq(body, {
+    catalogUrl, topics: ['Claude'], sourceText: `Url: ${repoUrl}`,
+  });
+  assert.doesNotMatch(result, /aivora\.cn/);
+});

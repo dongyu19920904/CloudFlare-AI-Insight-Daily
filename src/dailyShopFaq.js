@@ -92,11 +92,13 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
   const hasInputSource = sourceLinks.some((url) => inputUrls.has(url) && article.includes(url));
   const visibleFaq = faq[0].replace(/\]\(https?:\/\/[^)]+\)/g, ']');
   const visibleArticle = article.replace(/\]\(https?:\/\/[^)]+\)/g, ']');
+  const faqQuestion = visibleFaq.match(/^###\s+([^\r\n]+)/m)?.[1] || '';
+  const buyerQuestion = /(?:购买|选购|订阅|充值|账号|额度|套餐|付费|支付|代配置|售后)/i.test(faqQuestion);
   const hasSameTopic = context.topics.some((name) => {
     const topic = TOPICS.find((item) => item.name === name);
     return topic && topic.pattern.test(visibleFaq) && topic.pattern.test(visibleArticle);
   });
-  if (!hasInputSource || !hasSameTopic) return cleaned;
+  if (!hasInputSource || !hasSameTopic || !buyerQuestion) return cleaned;
 
   const cta = `准备比较当前公开的账号、订阅或额度服务时，可查看 [**爱窝啦·AI账号店**](${context.catalogUrl}) 的商品目录；是否支持新闻中的新功能，以产品官方说明和商品页为准。`;
   return cleaned.replace(faq[0], `${faq[0].trimEnd()}\n\n${cta}\n`);

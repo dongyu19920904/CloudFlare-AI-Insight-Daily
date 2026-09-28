@@ -988,3 +988,27 @@ test('publisher keys distinguish channels, social accounts and GitHub repositori
   assert.notEqual(getDailyPublisherKey({ url: 'https://github.com/a/one' }),
     getDailyPublisherKey({ url: 'https://github.com/a/two' }));
 });
+
+test('an off-topic day away from AI and a sensational repost cannot enter the daily', () => {
+  const fishing = {
+    ...buildNewsItem(201),
+    title: '不玩AI的一天，天津海边岸钓。',
+    description: '不玩AI的一天，鱼口不好，路亚看天气。',
+    details: { content_html: '<p>海边岸钓鲈鱼。</p>' },
+  };
+  const repost = {
+    ...buildNewsItem(202),
+    title: '现在，它第三次震惊到我！！',
+    description: '我以为 AI 视频只是小打小闹，原帖冲到 200 万。',
+    source: 'AI探索指南 - Telegram Channel',
+  };
+  const tool = {
+    ...buildNewsItem(203),
+    title: 'AI 音频工具发布本地工作台',
+    description: '可在 Windows 运行多项 AI 音频功能。',
+  };
+  const result = buildDailyPromptSelection({ news: [fishing, repost, tool], project: [], socialMedia: [], paper: [] });
+  const selected = result.selectedContentItems.join('\n');
+  assert.doesNotMatch(selected, /岸钓|第三次震惊/);
+  assert.match(selected, /AI 音频工具/);
+});

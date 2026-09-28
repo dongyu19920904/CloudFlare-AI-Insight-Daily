@@ -379,6 +379,17 @@ function isAiRelevantDailyPromptCandidate(candidate) {
   ].join(" ");
   const headline = candidate?.title || "";
 
+  if (/^(?:[🖼🎬🔁\s]*)?(?:现在[，,]?它|太强了|叹为观止)/.test(headline) &&
+      /(?:震惊|太强了|叹为观止)/.test(headline) &&
+      /Telegram/i.test(String(candidate?.source || ""))) {
+    return false;
+  }
+
+  if (/不(?:玩|用|碰|聊)\s*AI|没有\s*AI|非\s*AI/i.test(headline) &&
+      !hasAiRelevanceSignal(String(candidate?.description || "").replace(/不(?:玩|用|碰|聊)\s*AI|没有\s*AI|非\s*AI/gi, ""))) {
+    return false;
+  }
+
   if (/(?:纪录片|电影|首映|导演)/.test(headline) && !hasStrongAiRelevanceSignal(headline)) {
     return false;
   }
