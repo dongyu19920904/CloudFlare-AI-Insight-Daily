@@ -41,6 +41,7 @@ jobs:
               raise SystemExit(f'{sys.argv[1]} source refresh failed: {result}')
           print(f'{sys.argv[1]} refreshed')
           PY
+          done
       - name: Generate a dry-run preview
         shell: bash
         run: |
