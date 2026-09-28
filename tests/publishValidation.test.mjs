@@ -654,7 +654,7 @@ test("validateDailyPublication rejects GitHub flooding and merge-note placeholde
 
   assert.equal(result.ok, false);
   assert.match(result.warnings.join("\n"), /at most one GitHub\/open-source project item/i);
-  assert.match(result.warnings.join("\n"), /same source URL/i);
+  assert.match(result.issues.join("\n"), /same source URL/i);
   assert.match(result.issues.join("\n"), /merge-note placeholders/i);
 });
 

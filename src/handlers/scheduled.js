@@ -130,7 +130,6 @@ import {
 import {
     DAILY_OPEN_SOURCE_MIN,
     DAILY_SOCIAL_MIN,
-    DAILY_TOP_EMERGENCY_MIN,
     DAILY_TOP_TARGET,
 } from '../dailyContentRules.js';
 import { shouldAdoptDailyRepair } from '../dailyRepairPolicy.js';
@@ -2833,8 +2832,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedContentItems,
         dailyFunContentItems
     );
-    const minimumTopItems = Math.min(dailyTopEligiblePromptItems, DAILY_TOP_TARGET);
-    const hardMinimumTopItems = Math.min(minimumTopItems, DAILY_TOP_EMERGENCY_MIN);
+    const minimumTopItems = DAILY_TOP_TARGET;
+    const hardMinimumTopItems = DAILY_TOP_TARGET;
     const minimumOpenSourceItems = Math.min(
         dailyPromptAllocation.reservedProjectItems,
         DAILY_OPEN_SOURCE_MIN

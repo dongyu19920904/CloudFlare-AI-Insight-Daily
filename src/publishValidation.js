@@ -649,7 +649,6 @@ function collectDailyBriefingIssues(pageMarkdown) {
 
 function isSoftDailyPublicationIssue(issue) {
   return (
-    issue === "Daily TOP reuses the same source URL" ||
     issue === "Daily TOP must contain at most one GitHub/open-source project item" ||
     issue === "Daily page must contain a watch section heading or V3 topic sections" ||
     issue === "Daily V3 should contain at least two topic sections" ||
