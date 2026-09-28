@@ -719,6 +719,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   ];
   const selectedCandidates = [];
   const selectedEntityCounts = new Map();
+  const selectedPublisherCounts = new Map();
   const selectedPublisherKeys = new Set();
   let selectedProjectLikeCount = 0;
 
@@ -731,7 +732,13 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
   const removeSelectedCandidateAt = (index) => {
     const [removedCandidate] = selectedCandidates.splice(index, 1);
     updateSelectedEntityCount(removedCandidate, -1);
-    selectedPublisherKeys.delete(removedCandidate.publisherKey);
+    const publisherCount = (selectedPublisherCounts.get(removedCandidate.publisherKey) || 0) - 1;
+    if (publisherCount > 0) {
+      selectedPublisherCounts.set(removedCandidate.publisherKey, publisherCount);
+    } else {
+      selectedPublisherCounts.delete(removedCandidate.publisherKey);
+      selectedPublisherKeys.delete(removedCandidate.publisherKey);
+    }
     if (isProjectLikeDailyPromptCandidate(removedCandidate)) {
       selectedProjectLikeCount = Math.max(0, selectedProjectLikeCount - 1);
     }
@@ -739,7 +746,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
 
   const tryAddCandidate = (candidate) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
-    if (selectedPublisherKeys.has(candidate.publisherKey)) return false;
+    if ((selectedPublisherCounts.get(candidate.publisherKey) || 0) >= 3) return false;
     const hardCap = hardCaps[candidate.sourceType];
     if (
       hardCap > 0 &&
@@ -758,6 +765,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}) {
     if (isDuplicateDailyPromptCandidate(candidate, selectedCandidates)) return false;
     selectedCandidates.push(candidate);
     selectedPublisherKeys.add(candidate.publisherKey);
+    selectedPublisherCounts.set(candidate.publisherKey, (selectedPublisherCounts.get(candidate.publisherKey) || 0) + 1);
     updateSelectedEntityCount(candidate, 1);
     if (isProjectLike) selectedProjectLikeCount += 1;
     return true;
