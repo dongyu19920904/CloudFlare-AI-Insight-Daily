@@ -965,6 +965,15 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       dailyFunCandidateSamples,
       rejectedNonAiCount,
       rejectedUnverifiedQuotaCount,
+      candidateAudit: [...buckets.values()].flat()
+        .sort((left, right) => scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left))
+        .map((candidate) => ({
+          title: candidate.title,
+          sourceType: candidate.sourceType,
+          publisher: candidate.publisherKey,
+          score: scoreDailyPromptPresentation(candidate),
+          selected: orderedSelectedCandidates.includes(candidate),
+        })),
       publisherCandidatesDropped: totalCandidateCount - new Set(
         [...buckets.values()].flat().map((candidate) => candidate.publisherKey)
       ).size,

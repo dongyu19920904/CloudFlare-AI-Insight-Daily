@@ -998,6 +998,8 @@ test("buildDailyPromptSelection returns diagnostics for status reporting", () =>
   });
   assert.equal(result.selectionDiagnostics.maxItems, 4);
   assert.equal(result.selectionDiagnostics.quotas.news, 3);
+  assert.equal(result.selectionDiagnostics.candidateAudit.length, 4);
+  assert.ok(result.selectionDiagnostics.candidateAudit.every((item) => item.selected));
 });
 
 test("one Telegram channel contributes only its strongest item", () => {
