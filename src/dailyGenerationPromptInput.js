@@ -20,8 +20,7 @@ function isDailyWatchOnlyPromptItem(item) {
 }
 
 function isDailyPromptHiddenItem(item) {
-  return isDailyWelfarePromptItem(item) || isDailyLowEvidenceWorkflowPromptItem(item)
-    || /Placement Hint:\s*Reserved for AI fun only/i.test(String(item || ""));
+  return isDailyWelfarePromptItem(item) || isDailyLowEvidenceWorkflowPromptItem(item);
 }
 
 function classifyDailyPromptItem(item) {
