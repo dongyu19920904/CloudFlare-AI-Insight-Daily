@@ -1,0 +1,5 @@
+# AI Daily Delivery Rule
+
+For any change affecting the AI Daily, do not stop after tests, a successful workflow, or a list of preview defects. Generate a complete dry-run edition from the final code and read the full Markdown. Inspect TOP 10 relevance and source diversity, cross-section event duplication, linked factual claims, images/video, AI fun, FAQ and Aivora link relevance, and readability against a recent good edition. Trace every defect to the responsible stage, make the smallest safe correction, rerun focused tests, and regenerate. Repeat until the edition passes editorial review; never publish a weak draft just to satisfy a count.
+
+Keep dry-runs separate from production publication. Do not overwrite a good published article without a reviewed improvement. Protect the main daily schedule from optional-section failures. If an external API, source, or permission prevents an honest pass, preserve or restore the known-good production state and report the exact unmet check; a passing CI job alone is not completion. Report the final preview link and the observed content, not just commands run.
