@@ -376,6 +376,35 @@ test("model launch wins the publisher's single slot over a separate policy story
   assert.ok(result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
 });
 
+test("unverified subscription quota claims do not enter the daily source pool", () => {
+  const rumor = {
+    ...buildNewsItem(300),
+    title: "Codex 200美元会员额度明天起减半",
+    description: "社交用户称订阅额度将被削减，尚无官方公告。",
+    url: "https://m.okjike.com/originalPosts/quota-rumor",
+  };
+  const official = {
+    ...buildNewsItem(301),
+    title: "OpenAI 官方宣布 Codex 会员额度调整",
+    description: "官方说明订阅额度调整的适用范围。",
+    url: "https://openai.com/index/codex-quota-update/",
+  };
+  const ordinary = {
+    ...buildNewsItem(302),
+    title: "开发者分享 Codex 自动整理项目文件",
+    url: "https://developer.example.com/codex-files",
+  };
+
+  const result = buildDailyPromptSelection({
+    news: [rumor, official, ordinary], project: [], socialMedia: [], paper: [],
+  });
+
+  assert.equal(result.selectionDiagnostics.rejectedUnverifiedQuotaCount, 1);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /quota-rumor/);
+  assert.match(result.selectedContentItems.join("\n"), /codex-quota-update/);
+  assert.match(result.selectedContentItems.join("\n"), /codex-files/);
+});
+
 test("twelve distinct publishers can supply ten TOP candidates", () => {
   const news = Array.from({ length: 12 }, (_, index) => ({
     ...buildNewsItem(index + 1),

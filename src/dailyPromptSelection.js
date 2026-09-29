@@ -1,6 +1,7 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
 import {
   getDailyPromptItemEventKey,
@@ -445,6 +446,19 @@ function isWelfareCandidateText(text) {
   );
 }
 
+function isUnverifiedProviderQuotaChange(candidate) {
+  const headline = `${candidate?.title || ""} ${candidate?.description || ""}`;
+  if (!/\b(?:codex|chatgpt|openai|claude|anthropic|gemini|cursor)\b/i.test(headline) ||
+      !/(?:额度|配额|限额|价格|套餐|订阅|会员|quota|pricing|subscription)/i.test(headline) ||
+      !/(?:减半|缩水|削减|涨价|降价|上调|下调|调整|减(?:少|低)|cut|halve|increase|decrease)/i.test(headline)) {
+    return false;
+  }
+  if (isOfficialAccountOpportunityUrl(candidate?.url)) return false;
+  return !/^https?:\/\/(?:www\.)?x\.com\/(?:openai|anthropicai|geminiapp|cursor_ai)\//i.test(
+    String(candidate?.url || "")
+  );
+}
+
 function getDailyPromptEntityKey(candidate) {
   const fallbackText = [
     candidate?.description || "",
@@ -684,6 +698,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
   let itemsWithMedia = 0;
   let itemsWithoutMedia = 0;
   let rejectedNonAiCount = 0;
+  let rejectedUnverifiedQuotaCount = 0;
 
   for (const items of Object.values(allUnifiedData || {})) {
     for (const item of items || []) {
@@ -694,6 +709,10 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       if (candidate.sourceType !== "project" && normalizeGithubProjectUrl(candidate.url)) continue;
       if (!isAiRelevantDailyPromptCandidate(candidate)) {
         rejectedNonAiCount += 1;
+        continue;
+      }
+      if (isUnverifiedProviderQuotaChange(candidate)) {
+        rejectedUnverifiedQuotaCount += 1;
         continue;
       }
       const telegramImage = extractTelegramDailyImageCandidate(item);
@@ -945,6 +964,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       dailyFunReservedFromPrimary: Boolean(reservedDailyFunCandidate),
       dailyFunCandidateSamples,
       rejectedNonAiCount,
+      rejectedUnverifiedQuotaCount,
       publisherCandidatesDropped: totalCandidateCount - new Set(
         [...buckets.values()].flat().map((candidate) => candidate.publisherKey)
       ).size,
