@@ -273,6 +273,14 @@ function scoreDailyFunCandidate(candidate) {
   if (/降智|变笨|离谱|不行了|只能\s*Claude|Gemini\s*水平|关闭续费|取消续费|耗半小时|Pro\s*20x/i.test(text)) {
     score -= 60;
   }
+  if (/砍价|讨价还价|订酒店|订票|请假|买菜|误会|乌龙|社死|反转|没想到/i.test(text)) {
+    score += 55;
+  }
+  if (/求助|卡片消失|显示异常|功能异常|无法使用/i.test(
+    `${candidate?.title || ""} ${candidate?.description || ""}`
+  )) {
+    score -= 55;
+  }
   if (candidate?.isWelfare) score -= 20;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
 
@@ -852,17 +860,25 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
     (candidate) => !selectedPublisherKeys.has(candidate.publisherKey)
   );
 
-  if (!hasFunCandidateOutsidePrimary && rankedDailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
+  const bestOutsideFunCandidate = rankedDailyFunCandidates.find(
+    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey)
+  );
+  const bestSelectedFunCandidate = rankedDailyFunCandidates.find(
+    (candidate) => selectedCandidates.includes(candidate) && candidate.sourceType !== "project" && !candidate.isWelfare
+  );
+  const shouldReserveSelectedFun = bestSelectedFunCandidate && (
+    !hasFunCandidateOutsidePrimary ||
+    scoreDailyFunCandidate(bestSelectedFunCandidate) >= scoreDailyFunCandidate(bestOutsideFunCandidate) + 20
+  );
+  if (shouldReserveSelectedFun && selectedCandidates.length > 10) {
     const reserveCandidate =
-      rankedDailyFunCandidates.find(
-        (candidate) => selectedCandidates.includes(candidate) && candidate.sourceType !== "project" && !candidate.isWelfare
-      ) ||
-      rankedDailyFunCandidates.find((candidate) => selectedCandidates.includes(candidate));
+      bestSelectedFunCandidate;
     const reserveIndex = selectedCandidates.indexOf(reserveCandidate);
 
     if (reserveIndex >= 0) {
       removeSelectedCandidateAt(reserveIndex);
       reservedDailyFunCandidate = reserveCandidate;
+      reservedDailyFunCandidate.itemText += "\nPlacement Hint: Reserved for AI fun only. Do not use in the main daily prompt.";
     }
   }
   let dailyFunCandidates = rankedDailyFunCandidates.filter(

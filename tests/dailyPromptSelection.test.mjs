@@ -971,6 +971,47 @@ test("buildDailyPromptSelection returns diagnostics for status reporting", () =>
   assert.equal(result.selectionDiagnostics.quotas.news, 3);
 });
 
+test("a concrete AI mishap beats a generic support complaint for the fun slot", () => {
+  const topics = [
+    "Kimi 改进长文档检索", "DeepSeek 更新推理接口", "Gemini 增加图片编辑",
+    "Claude 推出代码解释", "Cursor 加入多仓库索引", "Copilot 改进测试建议",
+    "Qwen 发布语音模型", "Sora 调整视频导出", "Grok 支持表格分析",
+    "MCP 服务新增权限提示", "RAG 系统加入引用追踪",
+  ];
+  const news = Array.from({ length: 11 }, (_, index) => ({
+    ...buildNewsItem(index + 200),
+    title: topics[index],
+    url: `https://publisher-${index}.example.com/update`,
+  }));
+  news.push({
+    ...buildNewsItem(230),
+    title: "Codex 替用户订酒店还砍价",
+    description: "用户让 Codex 订酒店，AI 自己和店家讨价还价。",
+    url: "https://hotel-story.example.com/ai-hotel",
+  });
+  news.push({
+    ...buildNewsItem(231),
+    title: "Codex 文件改动卡片消失求助",
+    description: "用户升级后界面显示异常，求助如何修复。",
+    url: "https://x.com/support-poster/status/231",
+  });
+
+  const result = buildDailyPromptSelection(
+    { news, project: [], socialMedia: [], paper: [] },
+    {
+      DAILY_PROMPT_MAX_ITEMS: 12,
+      DAILY_PROMPT_NEWS_ITEMS: 12,
+      DAILY_PROMPT_SOCIAL_ITEMS: 0,
+      DAILY_PROMPT_ENTITY_HARD_CAP: 99,
+    }
+  );
+
+  assert.equal(result.selectionDiagnostics.dailyFunReservedFromPrimary, true);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /订酒店还砍价/);
+  assert.match(result.dailyFunContentItems[0], /订酒店还砍价/);
+  assert.match(result.dailyFunContentItems[0], /Reserved for AI fun only/);
+});
+
 test("one Telegram channel contributes only its strongest item", () => {
   const channelItem = (id, title, image = '') => ({
     ...buildNewsItem(id),

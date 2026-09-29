@@ -207,6 +207,18 @@ test("daily prompt fills TOP before reserving an optional fun candidate", () => 
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, backupItems), 10);
 });
 
+test("a reserved fun story cannot leak back into TOP as a backup", () => {
+  const selectedItems = Array.from({ length: 9 }, (_, index) =>
+    `News Title: AI update ${index + 1}\nUrl: https://example.com/update-${index + 1}`
+  );
+  const reservedFun = "News Title: Codex 帮用户订酒店砍价\nUrl: https://example.com/hotel\nPlacement Hint: Reserved for AI fun only. Do not use in the main daily prompt.";
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, [reservedFun]);
+
+  assert.doesNotMatch(promptInput, /订酒店砍价/);
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems, [reservedFun]), 9);
+});
+
 test("buildDailyGenerationPromptInput provides distinct TOP backup items without stealing the fun pool", () => {
   const news = (index) => [
     `News Title: AI news ${index}`,
