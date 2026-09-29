@@ -425,26 +425,6 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))
     .join("\n\n------\n\n");
   const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面每个明确 TOP 候选都必须在今日焦点中一对一生成一条；不得丢弃，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
-  const selectedItemKeys = new Set(allSelectedItems.map((item) => String(item).trim()).filter(Boolean));
-  const selectedItemUrls = new Set(allSelectedItems.map(getDailyPromptItemUrl).filter(Boolean));
-  const selectedEventKeys = new Set(allSelectedItems.map(getDailyPromptItemEventKey).filter(Boolean));
-  const supplementalSocialKeys = new Set(supplementalSocialItems);
-  const supplementalTopBackupKeys = new Set(supplementalTopBackupItems);
-  const funOnlyItems = (dailyFunContentItems || [])
-    .filter(Boolean)
-    .filter((item) => !isDailyPromptHiddenItem(item))
-    .filter((item) => !selectedItemKeys.has(String(item).trim()))
-    .filter((item) => {
-      const url = getDailyPromptItemUrl(item);
-      return !url || !selectedItemUrls.has(url);
-    })
-    .filter((item) => {
-      const eventKey = getDailyPromptItemEventKey(item);
-      return !eventKey || !selectedEventKeys.has(eventKey);
-    })
-    .filter((item) => !supplementalSocialKeys.has(String(item).trim()))
-    .filter((item) => !supplementalTopBackupKeys.has(String(item).trim()));
-
   const promptParts = [primaryPrompt];
 
   if (replacementTopBackupItems.length > 0) {
@@ -521,21 +501,6 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
       "",
       watchOnlyItems
         .map((item, index) => [`值得关注候选 ${index + 1}:`, item].join("\n"))
-        .join("\n\n------\n\n"),
-      "\n------\n\n",
-    ].join("\n"));
-  }
-
-  if (funOnlyItems.length > 0) {
-    promptParts.push([
-      "【AI趣闻专用候选素材】",
-      "下面这些素材是专门留给 `## **😄 AI趣闻**` 的候选。只要这里有可用素材，就必须先选 1 条写完整趣闻，不要省略。",
-      "只有当这些候选全是论文/融资/政策/公司通稿，且没有人物、用户、工具动作或反常结果时，才可以省略整个 AI趣闻栏目。",
-      "不要因为它们出现在这里就塞进今日焦点；今日焦点仍按主线素材和评分标准筛选。",
-      "写 AI趣闻时必须二次创作纯文本短标题，把原始来源链接放在正文真实细节附近，并按 Hook -> What -> Punchline 再开发，不要照搬原文标题、推文正文或项目名长句。",
-      "",
-      funOnlyItems
-        .map((item, index) => [`趣闻候选 ${index + 1}:`, item].join("\n"))
         .join("\n\n------\n\n"),
       "\n------\n\n",
     ].join("\n"));

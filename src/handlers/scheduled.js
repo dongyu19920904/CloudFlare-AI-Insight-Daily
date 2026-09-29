@@ -1513,7 +1513,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         pageMarkdown: dailySummaryMarkdownContent,
         ...dailyValidationOptions,
     });
-    const hasDedicatedDailyFunCandidates = outputOfCall2User.includes('【AI趣闻专用候选素材】');
+    const hasDedicatedDailyFunCandidates = Array.isArray(options.dailyFunContentItems) && options.dailyFunContentItems.length > 0;
     const initialDailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
     debugInfo.dailyFunCandidatesInPrompt = hasDedicatedDailyFunCandidates;
     debugInfo.dailyFunSectionPresentBeforeRepair = initialDailyFunStats.present;
@@ -1666,7 +1666,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     },
                     faqInput.prompt,
                     getStandaloneDailyFaqSystemPrompt()
-                ));
+                ), 30000);
                 const faqSection = normalizeStandaloneDailyFaqSection(
                     removeMarkdownCodeBlock(rawFaq),
                     faqInput.sourceUrl,

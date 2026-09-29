@@ -51,7 +51,7 @@ test("an official model announcement from social sources remains eligible for TO
   assert.equal(countDailyTopEligiblePromptItems([official, ...news]), 10);
 });
 
-test("buildDailyGenerationPromptInput includes AI fun candidates in the main generation prompt", () => {
+test("buildDailyGenerationPromptInput keeps AI fun-only candidates out of the main generation prompt", () => {
   const primaryItems = [
     [
       "News Title: Codex 帮音频转 MP4",
@@ -72,13 +72,8 @@ test("buildDailyGenerationPromptInput includes AI fun candidates in the main gen
   const promptInput = buildDailyGenerationPromptInput(primaryItems, funItems);
 
   assert.match(promptInput, /Codex 帮音频转 MP4/);
-  assert.match(promptInput, /AI趣闻专用候选素材/);
-  assert.match(promptInput, /必须先选 1 条写完整趣闻/);
-  assert.match(promptInput, /没有人物、用户、工具动作或反常结果/);
-  assert.doesNotMatch(promptInput, /兜底/);
-  assert.match(promptInput, /不要因为它们出现在这里就塞进今日焦点/);
-  assert.match(promptInput, /Hook -> What -> Punchline/);
-  assert.match(promptInput, /2058939766742335643/);
+  assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
+  assert.doesNotMatch(promptInput, /2058939766742335643/);
 });
 
 test("buildDailyGenerationPromptInput does not duplicate fun candidates already in primary items", () => {
@@ -224,8 +219,7 @@ test("buildDailyGenerationPromptInput provides distinct TOP backup items without
   assert.match(promptInput, /TOP 候选 10:/);
   assert.match(promptInput, /每个明确 TOP 候选都必须在今日焦点中一对一生成一条/);
   assert.equal((promptInput.match(/去重备用 \d:/g) || []).length, 5);
-  assert.match(promptInput, /AI趣闻专用候选素材/);
-  assert.equal((promptInput.match(/趣闻候选 \d:/g) || []).length, 1);
+  assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
   assert.match(promptInput, /组成 10 条明确 TOP 候选/);
   assert.match(promptInput, /不得凭主观判断自行减为 6-9 条/);
 });
