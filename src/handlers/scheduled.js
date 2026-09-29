@@ -1665,7 +1665,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 const faqSection = normalizeStandaloneDailyFaqSection(
                     removeMarkdownCodeBlock(rawFaq),
                     faqInput.sourceUrl,
-                    faqInput.sourceText
+                    faqInput.sourceText,
+                    faqInput.topic
                 );
                 if (faqSection) {
                     const withFaq = finalizeDailyShopFaq(

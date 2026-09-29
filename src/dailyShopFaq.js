@@ -98,7 +98,9 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
     const topic = TOPICS.find((item) => item.name === name);
     return topic && topic.pattern.test(visibleFaq) && topic.pattern.test(visibleArticle);
   });
-  if (!hasInputSource || !hasSameTopic || !buyerQuestion) return cleaned;
+  if (!hasInputSource || !hasSameTopic || !buyerQuestion) {
+    return cleaned.replace(faq[0], '').replace(/\n{3,}/g, '\n\n').trim();
+  }
 
   const cta = `准备比较当前公开的账号、订阅或额度服务时，可查看 [**爱窝啦·AI账号店**](${context.catalogUrl}) 的商品目录；是否支持新闻中的新功能，以产品官方说明和商品页为准。`;
   return cleaned.replace(faq[0], `${faq[0].trimEnd()}\n\n${cta}\n`);

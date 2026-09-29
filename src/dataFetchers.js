@@ -13,6 +13,7 @@ import HuggingfacePapersDataSource from './dataSources/huggingface-papers.js';
 import TwitterDataSource from './dataSources/twitter.js';
 import RedditDataSource from './dataSources/reddit.js';
 import { applyLinuxDoPolicy, applyNewsSourcePolicy, resolveLinuxDoPolicy } from './sourcePolicies.js';
+import { capNewsItemsWithPublisherDiversity } from './newsSourceDiversity.js';
 
 
 // Register data sources as arrays to support multiple sources per type
@@ -89,7 +90,9 @@ export async function fetchAndTransformDataForType(sourceType, env, foloCookie) 
     const maxItems = parseInt(env[typeCapKey] || env.MAX_ITEMS_PER_TYPE || '30', 10);
     if (Number.isFinite(maxItems) && maxItems > 0 && allUnifiedDataForType.length > maxItems) {
         console.log(`Capping ${sourceType} items from ${allUnifiedDataForType.length} to ${maxItems}.`);
-        allUnifiedDataForType = allUnifiedDataForType.slice(0, maxItems);
+        allUnifiedDataForType = sourceType === 'news'
+            ? capNewsItemsWithPublisherDiversity(allUnifiedDataForType, maxItems)
+            : allUnifiedDataForType.slice(0, maxItems);
     }
 
     return allUnifiedDataForType;

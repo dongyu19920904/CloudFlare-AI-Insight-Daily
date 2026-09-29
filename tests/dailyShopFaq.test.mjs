@@ -104,3 +104,20 @@ test('an open-source tool FAQ is not turned into an account shop pitch', () => {
   });
   assert.doesNotMatch(result, /aivora\.cn/);
 });
+
+test('a verified Gemini topic replaces an unrelated repo FAQ with a sourced buyer FAQ', () => {
+  const geminiUrl = 'https://x.com/GeminiApp/status/2104660668859453637';
+  const context = {
+    catalogUrl,
+    topics: ['Gemini'],
+    sourceText: `News Title: Gemini App 更新\nUrl: ${geminiUrl}`,
+  };
+  const article = `## **🔥 今日焦点 TOP 1**\n\n### 1. Gemini App 更新\n\n[Gemini 官方演示](${geminiUrl})展示新功能。`;
+  const unrelated = `${article}\n\n## **❓ 相关问题**\n\n### up 是什么项目？\n\n[up 仓库](https://github.com/byoungd/up)收集学习资料。`;
+  assert.doesNotMatch(finalizeDailyShopFaq(unrelated, context), /up 是什么项目|up 仓库/);
+
+  const buyerFaq = `${article}\n\n## **❓ 相关问题**\n\n### Gemini 新功能，购买订阅前要确认什么？\n\n[Gemini 官方演示](${geminiUrl})展示了功能，不能据此保证所有套餐可用。`;
+  const result = finalizeDailyShopFaq(buyerFaq, context);
+  assert.equal((result.match(/https:\/\/www\.aivora\.cn/g) || []).length, 1);
+  assert.match(result, /\[\*\*爱窝啦·AI账号店\*\*\]\(https:\/\/www\.aivora\.cn\/products\)/);
+});

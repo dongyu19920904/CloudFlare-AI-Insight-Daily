@@ -117,6 +117,12 @@ export function getDailyPublisherKey(item) {
     if (host === 't.me' || host === 'x.com' || host === 'threads.net') {
       return parts[0] ? `${host}/${parts[0]}` : host;
     }
+    if (host === 'm.okjike.com' || host === 'okjike.com' || host === 'mp.weixin.qq.com') {
+      const byline = String(item?.authors || '').trim();
+      const source = String(item?.source || '').trim();
+      const publisher = byline && !/^unknown$/i.test(byline) ? byline : source;
+      return publisher ? `${host}/${publisher.normalize('NFKC').toLowerCase()}` : host;
+    }
     if (host === 'github.com') {
       return parts.length >= 2 ? `${host}/${parts[0]}/${parts[1]}` : host;
     }
@@ -750,7 +756,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
 
   const tryAddCandidate = (candidate) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
-    if ((selectedPublisherCounts.get(candidate.publisherKey) || 0) >= 3) return false;
+    if ((selectedPublisherCounts.get(candidate.publisherKey) || 0) >= 1) return false;
     const hardCap = hardCaps[candidate.sourceType];
     if (
       hardCap > 0 &&

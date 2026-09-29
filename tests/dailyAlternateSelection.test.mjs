@@ -24,8 +24,8 @@ function promptUrls(items) {
 }
 
 test('reselects an unused same-day URL while preserving TOP capacity and publisher cap', () => {
-  const news = Array.from({ length: 4 }, (_, publisher) =>
-    Array.from({ length: 4 }, (_, index) => newsItem(publisher, index + 1))
+  const news = Array.from({ length: 12 }, (_, publisher) =>
+    Array.from({ length: 2 }, (_, index) => newsItem(publisher, index + 1))
   ).flat();
   const data = { news, project: [], socialMedia: [], paper: [] };
   const original = buildDailyPromptSelection(data);
@@ -50,14 +50,12 @@ test('reselects an unused same-day URL while preserving TOP capacity and publish
     const key = getDailyPublisherKey({ url });
     counts.set(key, (counts.get(key) || 0) + 1);
   }
-  assert.ok([...counts.values()].every((count) => count <= 3));
+  assert.ok([...counts.values()].every((count) => count <= 1));
 });
 
 test('does not invent replacement sources when the same-day pool has none', () => {
   const data = {
-    news: Array.from({ length: 4 }, (_, publisher) =>
-      Array.from({ length: 3 }, (_, index) => newsItem(publisher, index + 1))
-    ).flat(),
+    news: Array.from({ length: 10 }, (_, publisher) => newsItem(publisher, 1)),
     project: [], socialMedia: [], paper: [],
   };
   const original = buildDailyPromptSelection(data);

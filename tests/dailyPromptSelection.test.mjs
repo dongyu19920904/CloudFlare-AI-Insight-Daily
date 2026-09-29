@@ -343,7 +343,7 @@ test("official frontier model releases outrank image-backed routine news and mer
   assert.match(selected[1], /HS1iv5paYAEnRVx\.jpg/);
 });
 
-test("model launch priority holds when a publisher has multiple distinct stories", () => {
+test("model launch wins the publisher's single slot over a separate policy story", () => {
   const result = buildDailyPromptSelection({
     news: [
       {
@@ -372,14 +372,14 @@ test("model launch priority holds when a publisher has multiple distinct stories
 
   assert.match(result.selectedContentItems[0], /OpenAI 发布 GPT-6 Sol 与 Luna/);
   assert.match(result.selectedContentItems[1], /独立 AI 编辑器发布新版界面/);
-  assert.match(result.selectedContentItems.join("\n"), /OpenAI 更新 GPT-6 Sol 企业数据政策/);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /OpenAI 更新 GPT-6 Sol 企业数据政策/);
   assert.ok(result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
 });
 
-test("three items per publisher can supply ten distinct TOP candidates", () => {
+test("twelve distinct publishers can supply ten TOP candidates", () => {
   const news = Array.from({ length: 12 }, (_, index) => ({
     ...buildNewsItem(index + 1),
-    url: `https://feed-${Math.floor(index / 3)}.example.com/news-${index + 1}`,
+    url: `https://feed-${index}.example.com/news-${index + 1}`,
   }));
   const result = buildDailyPromptSelection({ news, project: [], socialMedia: [], paper: [] });
   const urls = result.selectedContentItems.map((item) => item.match(/^Url:\s*(\S+)/m)?.[1]);
@@ -388,9 +388,7 @@ test("three items per publisher can supply ten distinct TOP candidates", () => {
   assert.equal(result.selectionDiagnostics.dailyFunReservedFromPrimary, true);
   assert.equal(new Set(urls).size, 11);
   assert.equal(countDailyTopEligiblePromptItems(result.selectedContentItems), 10);
-  for (let publisher = 0; publisher < 4; publisher += 1) {
-    assert.ok(urls.filter((url) => url?.includes(`feed-${publisher}.example.com`)).length <= 3);
-  }
+  assert.equal(new Set(urls.map((url) => getDailyPublisherKey({ url }))).size, urls.length);
 });
 
 test("September 23 cached-style Anthropic post and OpenAI reshare outrank a V2EX screenshot", () => {
@@ -973,7 +971,7 @@ test("buildDailyPromptSelection returns diagnostics for status reporting", () =>
   assert.equal(result.selectionDiagnostics.quotas.news, 3);
 });
 
-test("one Telegram channel contributes at most three distinct items", () => {
+test("one Telegram channel contributes only its strongest item", () => {
   const channelItem = (id, title, image = '') => ({
     ...buildNewsItem(id),
     title,
@@ -993,7 +991,7 @@ test("one Telegram channel contributes at most three distinct items", () => {
   });
   const primary = result.selectedContentItems.join('\n');
   assert.match(primary, /aigc1024\/25112/);
-  assert.equal((primary.match(/https:\/\/t\.me\/aigc1024\//g) || []).length, 3);
+  assert.equal((primary.match(/https:\/\/t\.me\/aigc1024\//g) || []).length, 1);
   assert.match(primary, /other_ai\/25120/);
   assert.match(primary, /Source: Folo AI 探索/);
   assert.ok(result.selectionDiagnostics.publisherCandidatesDropped >= 1);
@@ -1006,6 +1004,14 @@ test('publisher keys distinguish channels, social accounts and GitHub repositori
   assert.equal(getDailyPublisherKey({ url: 'https://x.com/dotey/status/2' }), 'x.com/dotey');
   assert.notEqual(getDailyPublisherKey({ url: 'https://github.com/a/one' }),
     getDailyPublisherKey({ url: 'https://github.com/a/two' }));
+  assert.notEqual(
+    getDailyPublisherKey({ url: 'https://m.okjike.com/originalPosts/1', authors: '歸藏' }),
+    getDailyPublisherKey({ url: 'https://m.okjike.com/originalPosts/2', authors: '赵纯想' }),
+  );
+  assert.equal(
+    getDailyPublisherKey({ url: 'https://m.okjike.com/originalPosts/1', authors: '歸藏' }),
+    getDailyPublisherKey({ url: 'https://m.okjike.com/originalPosts/3', authors: '歸藏' }),
+  );
 });
 
 test('an off-topic day away from AI and a sensational repost cannot enter the daily', () => {
