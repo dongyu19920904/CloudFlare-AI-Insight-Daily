@@ -1026,6 +1026,19 @@ test("buildDailyPromptSelection returns diagnostics for status reporting", () =>
   assert.ok(result.selectionDiagnostics.candidateAudit.every((item) => item.selected));
 });
 
+test("a misspelled education discount remains watch-only", () => {
+  const result = buildDailyPromptSelection({
+    news: [{
+      ...buildNewsItem(320),
+      title: "AI 热潮下朋友用教育优帮买 MacBook",
+      description: "播客嘉宾猜测内存会涨价，这是个人购机经历。",
+      url: "https://x.com/individual/status/320",
+    }], project: [], socialMedia: [], paper: [],
+  });
+
+  assert.match(result.selectedContentItems.join("\n"), /Placement Hint: This is a welfare\/freebie item/);
+});
+
 test("one Telegram channel contributes only its strongest item", () => {
   const channelItem = (id, title, image = '') => ({
     ...buildNewsItem(id),

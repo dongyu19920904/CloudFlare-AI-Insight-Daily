@@ -451,7 +451,7 @@ function isDailyTrendingProjectCandidate(candidate) {
 }
 
 function isWelfareCandidateText(text) {
-  return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(
+  return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|教育优帮|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(
     String(text || "")
   );
 }
