@@ -297,6 +297,11 @@ function isWelfareContext(context, url = "") {
   return /每日薅羊毛|薅羊毛|羊毛|福利|优惠|限免|白嫖|折扣|兑换|代金券|coupon|promo|discount|free|credit/i.test(text);
 }
 
+function isWelfareTopItem(item) {
+  const lead = String(item.body || "").trimStart().split(/[。！？\r\n]/, 1)[0];
+  return isWelfareContext(`${item.title} ${lead}`, item.url);
+}
+
 function isPaperLikeContext(context, url = "") {
   const text = `${context || ""} ${url || ""}`;
   return /arxiv\.org|huggingface\.co\/papers|论文|研究|paper|abstract|benchmark|dataset/i.test(text);
@@ -468,7 +473,7 @@ function collectDailyStructureIssues(pageMarkdown, options = {}) {
     issues.push("Daily TOP must contain at most one GitHub/open-source project item");
   }
 
-  if (topItems.some((item) => isWelfareContext(item.context, item.url))) {
+  if (topItems.some(isWelfareTopItem)) {
     issues.push("Daily welfare/freebie items should stay in watch section, not TOP");
   }
 

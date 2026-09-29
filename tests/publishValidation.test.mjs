@@ -763,6 +763,19 @@ test("validateDailyPublication keeps welfare items out of TOP and limits them in
   assert.match(result.issues.join("\n"), /at most one welfare\/freebie item/i);
 });
 
+test("an incidental education discount does not turn an AI hardware story into a freebie", () => {
+  const result = validateDailyPublication({
+    summaryText: "今天有一条开发者讨论 AI 本地硬件需求的消息。",
+    pageMarkdown: `## **🔥 今日焦点 TOP 1**
+
+### 1. 开发者讨论 AI 本地运行所需的电脑配置
+
+**更大的内存正进入开发者选机清单。** [开发者讨论本地 AI 需求](https://x.com/example/status/123)，认为可以关注内存和存储配置。发帖人还提到家人通过教育优惠购买电脑；这是个人经历，并非面向读者的优惠活动。`,
+    minimumTopItems: 1,
+  });
+  assert.doesNotMatch(result.issues.join("\n"), /welfare\/freebie items should stay in watch section/i);
+});
+
 test("validateDailyPublication rejects meta commentary but allows an omitted FAQ section", () => {
   const result = validateDailyPublication({
     summaryText: "谷歌发了新模型，开源工具也不少。",
