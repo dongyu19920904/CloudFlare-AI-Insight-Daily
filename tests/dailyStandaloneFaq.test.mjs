@@ -18,6 +18,7 @@ test('missing FAQ prefers a matching official product post for a buyer question'
   const input = buildStandaloneDailyFaqPromptInput('2026-09-29', article, [unrelatedRepo, sourceText], context);
   assert.equal(input.sourceUrl, sourceUrl);
   assert.equal(input.topic, 'Gemini');
+  assert.match(input.prompt, /来源没有价格或额度，并不妨碍回答/);
   const answer = `## **❓ 相关问题**\n\n### Gemini 新功能，购买订阅前要确认什么？\n\n[Gemini 官方演示](${sourceUrl})展示了具体功能。先核对自己的实际入口，不能从演示推断所有套餐都支持。`;
   const normalized = normalizeStandaloneDailyFaqSection(answer, input.sourceUrl, input.sourceText, input.topic);
   assert.match(normalized, /购买订阅前/);

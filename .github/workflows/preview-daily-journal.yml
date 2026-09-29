@@ -81,6 +81,7 @@ jobs:
               'dailyFunSeparateGenerationAttempted': debug.get('dailyFunSeparateGenerationAttempted'),
               'dailyFunSeparateCandidateItems': debug.get('dailyFunSeparateCandidateItems'),
               'dailyFunSeparateGenerationValid': debug.get('dailyFunSeparateGenerationValid'),
+              'dailyFunRejectedDraft': debug.get('dailyFunRejectedDraft'),
               'dailyFunSeparateGenerationInserted': debug.get('dailyFunSeparateGenerationInserted'),
               'dailyFunSeparateGenerationError': debug.get('dailyFunSeparateGenerationError'),
               'dailyFunSectionPresent': debug.get('dailyFunSectionPresent'),

@@ -449,6 +449,23 @@ function getDailySectionEventKey(text) {
   return "";
 }
 
+function getDailySectionEntityNames(text) {
+  const names = String(text || "")
+    .replace(/https?:\/\/[^\s)]+/g, " ")
+    .match(/\b[A-Z][A-Za-z0-9]{2,}(?:[ \t]+[A-Z][a-z0-9]{2,})?\b/g) || [];
+  return new Set(names.map((name) => name.toLowerCase()).filter((name) =>
+    !/^(?:top|agent|agents|image|video|model|models|api|url)$/i.test(name)
+  ));
+}
+
+function sharesDistinctiveDailyEntities(leftNames, rightNames) {
+  let shared = 0;
+  for (const name of leftNames) {
+    if (rightNames.has(name) && ++shared >= 2) return true;
+  }
+  return false;
+}
+
 export function sanitizeDuplicateDailySections(markdown) {
   const content = stripDailyHeadingCountSuffix(markdown);
   if (!content) return content;
@@ -462,6 +479,7 @@ export function sanitizeDuplicateDailySections(markdown) {
       title: link.text || item.title,
       url: normalizeSectionUrl(link.url),
       eventKey: getDailySectionEventKey(`${item.title}\n${item.body}`),
+      entityNames: getDailySectionEntityNames(`${item.title}\n${item.body}`),
     }));
   });
 
@@ -497,6 +515,7 @@ export function sanitizeDuplicateDailySections(markdown) {
             title: match[1],
             url: normalizeSectionUrl(match[2]),
             eventKey: getDailySectionEventKey(chunk),
+            entityNames: getDailySectionEntityNames(chunk),
           }));
 
         if (links.length === 0) {
@@ -508,6 +527,7 @@ export function sanitizeDuplicateDailySections(markdown) {
           seenStories.some((story) => {
             if (story.url && link.url && story.url === link.url) return true;
             if (story.eventKey && link.eventKey && story.eventKey === link.eventKey) return true;
+            if (sharesDistinctiveDailyEntities(story.entityNames, link.entityNames)) return true;
             return isRepeatedSectionStory(story.title, link.title);
           })
         );

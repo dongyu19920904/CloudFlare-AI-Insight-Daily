@@ -403,6 +403,28 @@ test("sanitizeDuplicateDailySections removes repeated ChatGPT GitHub PR coverage
   assert.match(sanitized, /家庭测试视频/);
 });
 
+test("sanitizeDuplicateDailySections removes a second account of one event but keeps another company story", () => {
+  const markdown = `## **🔥 今日焦点 TOP 1**
+
+### 1. AMD 宣布收购李飞飞团队
+
+AMD 宣布拟收购 World Labs。[收购公告](https://example.com/acquisition)。
+
+## **◉ 社媒精选**
+
+### 李飞飞谈加入 AMD
+
+World Labs 团队将与 AMD 合作。[访谈](https://example.com/interview)。
+
+### AMD 发布新款 GPU
+
+AMD 展示另一款显卡。[产品演示](https://example.com/gpu)。`;
+
+  const sanitized = sanitizeDuplicateDailySections(markdown);
+  assert.doesNotMatch(sanitized, /李飞飞谈加入 AMD/);
+  assert.match(sanitized, /AMD 发布新款 GPU/);
+});
+
 test("stripDailyHeadingCountSuffix removes stale item counts from daily headings", () => {
   const markdown = [
     "## **\uD83D\uDD25 TOP 1**",

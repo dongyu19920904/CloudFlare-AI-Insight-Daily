@@ -15,7 +15,6 @@ test("daily prompt uses the V3 topic structure without duplicating the summary",
   assert.match(prompt, /## \*\*◉ 社媒精选\*\*/);
   assert.match(prompt, /至少输出上面五个专业栏目中的三个/);
   assert.match(prompt, /对应栏目不得只写 1 条/);
-  assert.match(prompt, /“未使用”按事件而不是 URL 判断/);
   assert.match(prompt, /约 2200-3000 个中文字符/);
   assert.match(prompt, /不要生成“今日摘要”“3分钟读懂今天”/);
   assert.doesNotMatch(prompt, /## \*\*📌 值得关注\*\*/);

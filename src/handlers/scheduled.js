@@ -1613,10 +1613,14 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     standaloneDailyFunPrompt,
                     getStandaloneDailyFunSystemPrompt()
                 );
+                const rawDailyFunSection = standaloneDailyFunSection;
                 standaloneDailyFunSection = removeMarkdownCodeBlock(standaloneDailyFunSection);
                 standaloneDailyFunSection = normalizeStandaloneDailyFunSection(standaloneDailyFunSection);
 
                 debugInfo.dailyFunSeparateGenerationValid = Boolean(standaloneDailyFunSection);
+                if (!standaloneDailyFunSection && options.dryRun) {
+                    debugInfo.dailyFunRejectedDraft = String(rawDailyFunSection || '').slice(0, 1000);
+                }
 
                 if (standaloneDailyFunSection) {
                     const markdownWithStandaloneFun = insertDailyFunSection(
