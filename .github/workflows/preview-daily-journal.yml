@@ -77,6 +77,13 @@ jobs:
               'dailyFaqSeparateGenerationRejectedIssues': debug.get('dailyFaqSeparateGenerationRejectedIssues'),
               'dailyFaqSeparateGenerationError': debug.get('dailyFaqSeparateGenerationError'),
               'dailyFaqSeparateGenerationInserted': debug.get('dailyFaqSeparateGenerationInserted'),
+              'dailyFaqRejectedDraft': debug.get('dailyFaqRejectedDraft'),
+              'dailyFunSeparateGenerationAttempted': debug.get('dailyFunSeparateGenerationAttempted'),
+              'dailyFunSeparateCandidateItems': debug.get('dailyFunSeparateCandidateItems'),
+              'dailyFunSeparateGenerationValid': debug.get('dailyFunSeparateGenerationValid'),
+              'dailyFunSeparateGenerationInserted': debug.get('dailyFunSeparateGenerationInserted'),
+              'dailyFunSeparateGenerationError': debug.get('dailyFunSeparateGenerationError'),
+              'dailyFunSectionPresent': debug.get('dailyFunSectionPresent'),
           }, ensure_ascii=False, indent=2))
           if result.get('state') != 'success' or not debug.get('dailyWouldPublish'):
               raise SystemExit(result.get('error') or 'Daily preview failed validation')

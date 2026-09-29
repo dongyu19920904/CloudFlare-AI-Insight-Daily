@@ -1682,6 +1682,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     } else {
                         debugInfo.dailyFaqSeparateGenerationRejectedIssues = faqValidation.issues;
                     }
+                } else if (options.dryRun) {
+                    debugInfo.dailyFaqRejectedDraft = String(rawFaq || '').slice(0, 1000);
                 }
             } catch (error) {
                 console.warn(`[Scheduled][Daily] Standalone FAQ generation failed: ${error.message}`);
@@ -2888,6 +2890,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
             minimumTopicSections,
             dailyFunContentItems,
             allowedTopGithubProjectUrls,
+            dryRun,
         }
     );
 
@@ -2942,6 +2945,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
                         dailyFunContentItems: alternate.dailyFunContentItems,
                         allowedTopGithubProjectUrls: alternate.allowedTopGithubProjectUrls,
                         sourceReselection: true,
+                        dryRun,
                     }
                 );
                 const retryValidation = retry.validation || validateDailyPublication({
