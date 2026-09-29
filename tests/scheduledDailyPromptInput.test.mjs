@@ -160,6 +160,21 @@ test("daily prompt allocation keeps at most one GitHub project in a low-volume T
   });
 });
 
+test("surplus TOP candidates become replacements instead of contradicting the ten-item target", () => {
+  const selectedItems = Array.from({ length: 13 }, (_, index) => [
+    `News Title: AI product update ${index + 1}`,
+    `Url: https://example.com/update-${index + 1}`,
+  ].join("\n"));
+  const promptInput = buildDailyGenerationPromptInput(selectedItems);
+  const topCandidates = promptInput.match(/【今日焦点候选素材】[\s\S]*?(?=【今日焦点去重替换素材】)/)?.[0] || "";
+  const replacements = promptInput.match(/【今日焦点去重替换素材】[\s\S]*?(?=【产品与行业栏目专用候选素材】)/)?.[0] || "";
+
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems), 10);
+  assert.equal((topCandidates.match(/^TOP 候选 \d+:/gm) || []).length, 10);
+  assert.doesNotMatch(topCandidates, /TOP 候选 11:/);
+  assert.match(replacements, /去重备用 1:/);
+});
+
 test("daily prompt fills low-volume TOP slots after reserving extra GitHub projects", () => {
   const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
   const news = (index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`;

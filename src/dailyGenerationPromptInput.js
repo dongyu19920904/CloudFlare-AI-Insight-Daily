@@ -371,7 +371,7 @@ export function getDailyPromptAllocationStats(selectedContentItems = [], dailyFu
   );
 
   return {
-    topItems: allocation.topItems.length + topCapacityFillCount,
+    topItems: Math.min(DAILY_TOP_TARGET, allocation.topItems.length + topCapacityFillCount),
     reservedProjectItems: allocation.reserved.project.length,
     reservedSocialItems: allocation.reserved.socialMedia.length + supplementalSocialItems.length,
     reservedPaperItems: allocation.reserved.paper.length,
@@ -404,7 +404,13 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const requiredTopBackupItems = Math.max(0, DAILY_TOP_TARGET - allocation.topItems.length);
   const promotedTopBackupItems = supplementalTopBackupItems.slice(0, requiredTopBackupItems);
   const replacementTopBackupItems = supplementalTopBackupItems.slice(promotedTopBackupItems.length);
-  const topCandidateItems = [...allocation.topItems, ...promotedTopBackupItems];
+  const topCandidateItems = [...allocation.topItems, ...promotedTopBackupItems]
+    .slice(0, DAILY_TOP_TARGET);
+  const overflowTopBackupItems = allocation.topItems.slice(DAILY_TOP_TARGET);
+  const dedupeReplacementItems = [
+    ...overflowTopBackupItems,
+    ...replacementTopBackupItems,
+  ];
   const { project: projectCount, socialMedia: socialCount, paper: paperCount, news: newsCount } = allocation.counts;
   const openSourceReserve = allocation.reserved.project.length;
   const socialReserve = socialSectionItems.length;
@@ -415,7 +421,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `已经为开源 TOP 项目单独预留 ${openSourceReserve} 个 GitHub 候选；它们只准写入后面的开源专用区。`,
     `已经为社媒精选单独预留 ${socialReserve} 条社媒候选；今日焦点最多使用 ${socialTopLimit} 条社媒。`,
     `已从补位池提取 ${promotedTopBackupItems.length} 条，与原主候选组成 ${topCandidateItems.length} 条明确 TOP 候选；下面的 TOP 候选必须逐条使用，每条只生成一次。`,
-    `另有 ${replacementTopBackupItems.length} 条去重替换素材，只在明确 TOP 候选发生同源拆分或重复时替换。`,
+    `另有 ${dedupeReplacementItems.length} 条去重替换素材，只在明确 TOP 候选发生同源拆分或重复时替换。`,
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
     `TOP 候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重替换素材替换。明确 TOP 候选达到 ${DAILY_TOP_TARGET} 条时必须逐条写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有明确候选确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
@@ -427,14 +433,14 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   const primaryPrompt = `\n\n${sectionBudget}\n\n【今日焦点候选素材】\n下面每个明确 TOP 候选都必须在今日焦点中一对一生成一条；不得丢弃，也不得挪到后面的专业栏目。即使一个候选是聚合稿并提到多件事，也必须合并成一条，不能拆分。\n\n${numberedTopCandidates}\n\n------\n\n`;
   const promptParts = [primaryPrompt];
 
-  if (replacementTopBackupItems.length > 0) {
+  if (dedupeReplacementItems.length > 0) {
     promptParts.push([
       "【今日焦点去重替换素材】",
-      `下面 ${replacementTopBackupItems.length} 条素材只用于替换今日焦点中的同源重复，不是额外加条目。`,
+      `下面 ${dedupeReplacementItems.length} 条素材只用于替换今日焦点中的同源重复，不是额外加条目。`,
       `同一个 Source URL 在今日焦点最多出现一次；聚合文章也只能生成一条。发生重复时保留最重要的一条，再从这里补足 TOP ${DAILY_TOP_TARGET}。`,
       "没有发生重复时不要使用；未被用于替换的素材不得出现在其他正文栏目，也不得超过目标条数。",
       "",
-      replacementTopBackupItems
+      dedupeReplacementItems
         .map((item, index) => [`去重备用 ${index + 1}:`, item].join("\n"))
         .join("\n\n------\n\n"),
       "\n------\n\n",
