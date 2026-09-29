@@ -71,6 +71,11 @@ jobs:
               'dailyValidationIssues': debug.get('dailyValidationIssues'),
               'promptSelectedItems': debug.get('promptSelectedItems'),
               'promptSelectionDiagnostics': debug.get('promptSelectionDiagnostics'),
+              'dailyShopCatalogVerified': debug.get('dailyShopCatalogVerified'),
+              'dailyShopRelevantTopics': debug.get('dailyShopRelevantTopics'),
+              'dailyFaqSeparateGenerationAttempted': debug.get('dailyFaqSeparateGenerationAttempted'),
+              'dailyFaqSeparateGenerationRejectedIssues': debug.get('dailyFaqSeparateGenerationRejectedIssues'),
+              'dailyFaqSeparateGenerationError': debug.get('dailyFaqSeparateGenerationError'),
               'dailyFaqSeparateGenerationInserted': debug.get('dailyFaqSeparateGenerationInserted'),
           }, ensure_ascii=False, indent=2))
           if result.get('state') != 'success' or not debug.get('dailyWouldPublish'):

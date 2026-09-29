@@ -45,3 +45,11 @@ test('optional FAQ timeout leaves the main article path free to continue', async
   );
   assert.equal(await withDailyFaqDeadline(() => Promise.resolve('ready'), 50), 'ready');
 });
+
+test('an official source used only in a supplemental section can support a buyer FAQ', () => {
+  const supplementalItem = `socialMedia Post by Google Gemini\nTitle: Gemini App 演示清理收件箱\nUrl: ${sourceUrl}\nContent: 官方演示 Agent 处理邮件。`;
+  const supplementalArticle = `## **社媒精选**\n\n### Gemini App 演示清理收件箱\n\n[Gemini 官方演示](${sourceUrl})展示邮件整理。`;
+  const input = buildStandaloneDailyFaqPromptInput('2026-09-29', supplementalArticle, [supplementalItem], context);
+  assert.equal(input.sourceUrl, sourceUrl);
+  assert.equal(input.topic, 'Gemini');
+});

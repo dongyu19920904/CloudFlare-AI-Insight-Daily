@@ -1438,7 +1438,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
         10
     ) || null;
-    const dailyShopContext = await loadDailyShopContext(selectedContentItems);
+    const faqSourceItems = [...selectedContentItems, ...(options.dailyFunContentItems || [])];
+    const dailyShopContext = await loadDailyShopContext(faqSourceItems);
     debugInfo.dailyShopCatalogVerified = Boolean(dailyShopContext.catalogUrl);
     debugInfo.dailyShopRelevantTopics = dailyShopContext.topics;
     if (dailyShopContext.error) console.warn(`[Scheduled][Daily] Shop catalog unavailable: ${dailyShopContext.error}`);
@@ -1647,7 +1648,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         const faqInput = buildStandaloneDailyFaqPromptInput(
             dateStr,
             dailySummaryMarkdownContent,
-            selectedContentItems,
+            faqSourceItems,
             dailyShopContext
         );
         debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
