@@ -61,7 +61,7 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
       !/(?:购买|选购|订阅|充值|账号|额度|套餐|付费|支付)/i.test(question))) return '';
   const answer = text.split(/^### [^\n]+$/m)[1]?.trim() || '';
   if (answer.length < 40 || answer.length > 420) return '';
-  if (/价格|售价|库存|无限(?:使用|额度)|质保|官方订阅|保证可用/.test(answer)) return '';
+  if (/价格(?:为|是|降|涨|低于|高于)|售价|库存|无限(?:使用|额度)|质保|官方订阅|保证可用/.test(answer)) return '';
   for (const number of answer.match(/\d+(?:\.\d+)?/g) || []) {
     if (!String(sourceText || '').includes(number)) return '';
   }

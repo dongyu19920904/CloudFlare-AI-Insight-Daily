@@ -38,6 +38,12 @@ test('FAQ skips social reposts and rejects unsupported links or sales claims', (
   assert.equal(normalizeStandaloneDailyFaqSection(wrongLink.replace('Gemini 购买订阅前', 'up 项目'), sourceUrl, sourceText, 'Gemini'), '');
 });
 
+test('FAQ can state that a price needs verification without asserting one', () => {
+  const answer = `## **❓ 相关问题**\n\n### Gemini 订阅前要确认哪些功能？\n\n[Gemini 官方演示](${sourceUrl})展示了邮件整理功能。不能据此推断所有订阅套餐都支持，具体价格和套餐差异需要进一步确认。`;
+  assert.match(normalizeStandaloneDailyFaqSection(answer, sourceUrl, sourceText, 'Gemini'), /价格和套餐差异需要进一步确认/);
+  assert.equal(normalizeStandaloneDailyFaqSection(answer.replace('价格和套餐差异需要进一步确认', '价格为 99 元'), sourceUrl, sourceText, 'Gemini'), '');
+});
+
 test('optional FAQ timeout leaves the main article path free to continue', async () => {
   await assert.rejects(
     withDailyFaqDeadline(() => new Promise(() => {}), 5),
