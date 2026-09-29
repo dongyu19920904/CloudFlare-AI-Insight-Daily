@@ -376,20 +376,6 @@ test("model launch wins the publisher's single slot over a separate policy story
   assert.ok(result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
 });
 
-test("Manus product update does not share the daily with a weaker Manus retrospective", () => {
-  const result = buildDailyPromptSelection({
-    news: [
-      { ...buildNewsItem(130), title: "Manus Studio 发布云端创作环境", url: "https://product.example.com/manus-studio", details: { content_html: '<p>Manus Studio 发布 AI 创作环境。</p><img src="https://product.example.com/demo.jpg">' } },
-      { ...buildNewsItem(131), title: "Manus 创始人的旧微信备注", url: "https://social.example.com/manus-founder" },
-      { ...buildNewsItem(132), title: "独立 AI 编程工具推出新功能", url: "https://developer.example.com/ai-tool" },
-    ], project: [], socialMedia: [], paper: [],
-  });
-
-  assert.equal(result.selectedContentItems.filter((item) => /Manus/i.test(item)).length, 1);
-  assert.match(result.selectedContentItems.join("\n"), /Manus Studio 发布云端创作环境/);
-  assert.match(result.selectedContentItems.join("\n"), /独立 AI 编程工具推出新功能/);
-});
-
 test("twelve distinct publishers can supply ten TOP candidates", () => {
   const news = Array.from({ length: 12 }, (_, index) => ({
     ...buildNewsItem(index + 1),

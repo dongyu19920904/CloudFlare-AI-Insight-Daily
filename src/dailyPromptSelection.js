@@ -461,7 +461,6 @@ function getDailyPromptEntityKey(candidate) {
     ["microsoft", /\b(microsoft|copilot|azure ai)\b/i],
     ["meta", /\b(meta ai|llama)\b/i],
     ["xai", /\b(xai|grok)\b/i],
-    ["manus", /\bmanus\b/i],
     ["apple", /\b(apple|siri|airpods)\b/i],
     ["xiaomi", /\bxiaomi\b|小米|玄戒/i],
   ];
