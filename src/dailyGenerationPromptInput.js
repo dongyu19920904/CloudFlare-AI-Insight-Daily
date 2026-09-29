@@ -270,7 +270,7 @@ function selectSupplementalDailySocialItems(
   );
   const supplementalItems = [];
 
-  for (const item of dailyFunContentItems || []) {
+  for (const item of (dailyFunContentItems || []).slice(1)) {
     const normalizedItem = String(item || "").trim();
     if (!normalizedItem || selectedKeys.has(normalizedItem) || isDailyPromptHiddenItem(normalizedItem)) continue;
     if (classifyDailyPromptItem(normalizedItem) !== "socialMedia") continue;
@@ -319,7 +319,10 @@ function selectSupplementalDailyTopBackupItems(
   );
   const backupItems = [];
 
-  for (const item of dailyFunContentItems || []) {
+  const funBackupItems = topItemCount >= DAILY_TOP_TARGET
+    ? (dailyFunContentItems || []).slice(1)
+    : [...(dailyFunContentItems || []).slice(1), (dailyFunContentItems || [])[0]];
+  for (const item of funBackupItems) {
     const normalizedItem = String(item || "").trim();
     if (!normalizedItem || excludedItems.has(normalizedItem) || isDailyPromptHiddenItem(normalizedItem)) continue;
     if (classifyDailyPromptItem(normalizedItem) === "project") continue;

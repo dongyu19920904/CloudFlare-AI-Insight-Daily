@@ -113,7 +113,7 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
       social(1), social(2), social(3), social(4),
       ...Array.from({ length: 9 }, (_, index) => news(index + 1)),
     ],
-    [social(5)]
+    [social(5), social(6)]
   );
 
   assert.match(promptInput, /栏目候选预算/);
@@ -134,14 +134,15 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
     ...Array.from({ length: 9 }, (_, index) => news(index + 1)),
   ];
   assert.equal(countDailyTopEligiblePromptItems(selectedItems), 10);
-  assert.deepEqual(getDailyPromptAllocationStats(selectedItems, [social(5)]), {
+  assert.deepEqual(getDailyPromptAllocationStats(selectedItems, [social(5), social(6)]), {
     topItems: 10,
     reservedProjectItems: 2,
     reservedSocialItems: 3,
     reservedPaperItems: 0,
     reservedNewsItems: 2,
   });
-  assert.equal(promptInput.match(/user-5\/status\/5/g)?.length, 1);
+  assert.doesNotMatch(promptInput, /user-5\/status\/5/);
+  assert.equal(promptInput.match(/user-6\/status\/6/g)?.length, 1);
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
 });
 
@@ -205,6 +206,18 @@ test("daily prompt fills TOP before reserving an optional fun candidate", () => 
   assert.match(promptInput, /TOP 候选 10:/);
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, backupItems), 10);
+});
+
+test("the only fun candidate stays out of social and replacement sections when TOP is full", () => {
+  const selectedItems = Array.from({ length: 12 }, (_, index) =>
+    `News Title: AI update ${index + 1}\nUrl: https://publisher-${index}.example.com/update`
+  );
+  const funStory = "socialMedia Post by fun-author\nUrl: https://x.com/fun-author/status/99\nContent: AI 工具闹了一个有事实依据的笑话。";
+
+  const promptInput = buildDailyGenerationPromptInput(selectedItems, [funStory]);
+
+  assert.equal(countDailyTopEligiblePromptItems(selectedItems, [funStory]), 10);
+  assert.doesNotMatch(promptInput, /fun-author/);
 });
 
 test("buildDailyGenerationPromptInput provides distinct TOP backup items without stealing the fun pool", () => {
