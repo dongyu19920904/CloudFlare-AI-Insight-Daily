@@ -85,8 +85,8 @@ jobs:
               'dailyFunSeparateGenerationError': debug.get('dailyFunSeparateGenerationError'),
               'dailyFunSectionPresent': debug.get('dailyFunSectionPresent'),
           }, ensure_ascii=False, indent=2))
-          if result.get('state') != 'success' or not debug.get('dailyWouldPublish'):
-              raise SystemExit(result.get('error') or 'Daily preview failed validation')
           print('--- DAILY PREVIEW MARKDOWN ---')
           print(debug.get('dailyPreviewMarkdown') or '')
+          if result.get('state') != 'success' or not debug.get('dailyWouldPublish'):
+              raise SystemExit(result.get('error') or 'Daily preview failed validation')
           PY
