@@ -405,6 +405,30 @@ test("unverified subscription quota claims do not enter the daily source pool", 
   assert.match(result.selectedContentItems.join("\n"), /codex-files/);
 });
 
+test("major acquisition beats a minor interface update from the same publisher", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      { ...buildNewsItem(310), title: "豆包新增 AI 出行入口", url: "https://www.36kr.com/p/doubao" },
+      { ...buildNewsItem(311), title: "AMD 550 亿吞下世界模型公司", description: "AMD 收购 World Labs，进入 AI 空间智能。", url: "https://www.36kr.com/p/amd-world-labs" },
+    ], project: [], socialMedia: [], paper: [],
+  });
+
+  assert.match(result.selectedContentItems.join("\n"), /amd-world-labs/);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /p\/doubao/);
+});
+
+test("a new TPU beats generic prompt tips from the same channel", () => {
+  const result = buildDailyPromptSelection({
+    news: [
+      { ...buildNewsItem(312), title: "AI 短片风格提示词合集", url: "https://t.me/aigc1024/312" },
+      { ...buildNewsItem(313), title: "Google 发布第八代 TPU AI 芯片", url: "https://t.me/aigc1024/313" },
+    ], project: [], socialMedia: [], paper: [],
+  });
+
+  assert.match(result.selectedContentItems.join("\n"), /aigc1024\/313/);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /aigc1024\/312/);
+});
+
 test("twelve distinct publishers can supply ten TOP candidates", () => {
   const news = Array.from({ length: 12 }, (_, index) => ({
     ...buildNewsItem(index + 1),

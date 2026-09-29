@@ -224,6 +224,16 @@ function scoreDailyPromptCandidate(candidate) {
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
 
   const sourceText = `${candidate?.source || ""} ${candidate?.title || ""} ${candidate?.description || ""}`.toLowerCase();
+  const headlineText = `${candidate?.title || ""} ${candidate?.description || ""}`;
+  if (/(?:收购|并购|吞下|买下).{0,35}(?:亿|world\s+labs|AI|模型)|(?:亿|world\s+labs|AI|模型).{0,35}(?:收购|并购|吞下|买下)/i.test(headlineText)) {
+    score += 25;
+  }
+  if (/(?:发布|推出).{0,20}TPU|TPU.{0,20}(?:发布|推出|第八代)/i.test(headlineText)) {
+    score += 25;
+  }
+  if (/微信备注|旧微信联系|教育优(?:惠|帮).{0,35}(?:电脑|MacBook|内存)|(?:囤|抢先买).{0,20}(?:内存|硬盘)|卡片消失/i.test(headlineText)) {
+    score -= 35;
+  }
   if (/github|open source|open-source|开源|project/i.test(sourceText)) score += 8;
   if (/release|launch|发布|更新|开源|上新|new/i.test(sourceText)) score += 4;
 
