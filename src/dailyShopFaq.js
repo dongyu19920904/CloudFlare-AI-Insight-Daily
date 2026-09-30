@@ -33,7 +33,7 @@ async function fetchText(fetchImpl, url, timeoutMs) {
   }
 }
 
-export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, timeoutMs = 2500 } = {}) {
+export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
   const sourceText = (selectedItems || []).join('\n');
   const visibleSourceText = sourceText.replace(/^Url:.*$/gmi, '');
   const candidateTopics = TOPICS.filter((topic) => topic.pattern.test(visibleSourceText));

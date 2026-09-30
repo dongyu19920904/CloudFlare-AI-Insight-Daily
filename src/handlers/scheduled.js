@@ -1676,10 +1676,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     faqInput.topic
                 );
                 if (faqSection) {
-                    const withFaq = finalizeDailyShopFaq(
-                        insertStandaloneDailyFaq(dailySummaryMarkdownContent, faqSection),
-                        dailyShopContext
-                    );
+                    const insertedFaq = insertStandaloneDailyFaq(dailySummaryMarkdownContent, faqSection);
+                    const withFaq = faqInput.topic
+                        ? finalizeDailyShopFaq(insertedFaq, dailyShopContext)
+                        : insertedFaq;
                     const faqValidation = validateGeneratedDaily(outputOfCall3, withFaq);
                     if (faqValidation.ok) {
                         dailySummaryMarkdownContent = withFaq;

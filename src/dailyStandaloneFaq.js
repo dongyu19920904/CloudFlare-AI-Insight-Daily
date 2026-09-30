@@ -22,26 +22,44 @@ function isPrimarySource(item, url) {
 }
 
 export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedItems, context = {}) {
-  if (/^##[^\r\n]*(?:相关问题|FAQ)/im.test(markdown) ||
-      !context.catalogUrl || !context.topics?.length) return null;
+  if (/^##[^\r\n]*(?:相关问题|FAQ)/im.test(markdown)) return null;
 
   const candidates = (selectedItems || [])
     .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
     .filter(({ item, url }) => url && markdown.includes(url) && isPrimarySource(item, url));
-  const chosen = candidates.map((candidate) => ({
+  const chosen = context.catalogUrl && context.topics?.length ? candidates.map((candidate) => ({
     ...candidate,
     topic: context.topics.find((topic) => new RegExp(topic, 'i').test(candidate.item)),
-  })).find((candidate) => candidate.topic);
-  if (!chosen) return null;
+  })).find((candidate) => candidate.topic) : null;
+  const project = !chosen ? (selectedItems || [])
+    .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
+    .filter(({ item, url }) => /^Project Name:/m.test(item) &&
+      /^https:\/\/github\.com\/[^/\s]+\/[^/\s?#]+\/?$/i.test(url) && markdown.includes(url))
+    .sort((left, right) => markdown.indexOf(left.url) - markdown.indexOf(right.url))[0] : null;
+  const source = chosen || project;
+  if (!source) return null;
 
-  const sourceText = chosen.item.slice(0, 1400);
+  const sourceText = source.item.slice(0, 1400);
+  if (!chosen) return {
+    sourceUrl: source.url,
+    sourceText,
+    topic: '',
+    prompt: [
+      `日期：${dateStr}。只根据下面这个正文已引用的原项目仓库，回答一个读者真会问的技术问题。`,
+      `唯一可引用的原始链接：${source.url}`,
+      sourceText,
+      '只输出 `## **❓ 相关问题**`、一个包含项目名的 `###` 问句和 2-3 句直接答案；答案中自然链接一次上述仓库。',
+      '问项目的实际用途、适用场景或来源明确写出的限制；不要推断安全保证、性能、收费或新功能。来源无法回答时输出空字符串。',
+      '这是技术问题，不要写购买建议或主站链接。',
+    ].join('\n\n'),
+  };
   return {
-    sourceUrl: chosen.url,
+    sourceUrl: source.url,
     sourceText,
     topic: chosen.topic,
     prompt: [
       `日期：${dateStr}。只根据下面这条已经进入正文的一手来源，写一个关于 ${chosen.topic} 的真实购买前问题。`,
-      `唯一可引用的原始链接：${chosen.url}`,
+      `唯一可引用的原始链接：${source.url}`,
       sourceText,
       '只输出 `## **❓ 相关问题**`、一个 `###` 问句和 2-3 句直接答案；答案中自然链接一次上述原始来源。',
       `问句必须出现“${chosen.topic}”及“购买/选购/订阅/账号/额度/套餐/付费”之一，先回答来源能证明的事实，再说明不能推断所有套餐都支持新闻功能。`,

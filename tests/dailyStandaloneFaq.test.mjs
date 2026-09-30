@@ -7,6 +7,7 @@ import {
   normalizeStandaloneDailyFaqSection,
   withDailyFaqDeadline,
 } from '../src/dailyStandaloneFaq.js';
+import { finalizeDailyShopFaq } from '../src/dailyShopFaq.js';
 
 const sourceUrl = 'https://x.com/GeminiApp/status/2104660668859453637';
 const sourceText = `News Title: Gemini App 更新\nSource: Google Gemini\nUrl: ${sourceUrl}\nContent Summary: Gemini 官方演示私人智能体功能。`;
@@ -59,4 +60,22 @@ test('an official source used only in a supplemental section can support a buyer
   const input = buildStandaloneDailyFaqPromptInput('2026-09-29', supplementalArticle, [supplementalItem], context);
   assert.equal(input.sourceUrl, sourceUrl);
   assert.equal(input.topic, 'Gemini');
+});
+
+test('an original project used in the article can answer a technical FAQ without a shop link', () => {
+  const repoUrl = 'https://github.com/NVIDIA/OpenShell';
+  const project = `Project Name: NVIDIA/OpenShell\nUrl: ${repoUrl}\nDescription: AI agent sandbox runtime written in Rust.`;
+  const body = `## **🔥 今日焦点 TOP 1**\n\n### 1. OpenShell 安全运行时\n\n[OpenShell 仓库](${repoUrl})提供沙盒运行时。`;
+  const input = buildStandaloneDailyFaqPromptInput('2026-09-30', body, [project], {
+    catalogUrl: 'https://www.aivora.cn/products', topics: ['Grok'],
+  });
+  assert.equal(input.sourceUrl, repoUrl);
+  assert.equal(input.topic, '');
+  const answer = `## **❓ 相关问题**\n\n### OpenShell 用来解决什么问题？\n\n[OpenShell 项目仓库](${repoUrl})描述了面向 AI Agent 的沙盒运行时。它适合需要隔离执行环境的工具，不能据此保证所有部署都安全。`;
+  const normalized = normalizeStandaloneDailyFaqSection(answer, input.sourceUrl, input.sourceText);
+  assert.ok(normalized);
+  const result = insertStandaloneDailyFaq(body, normalized);
+  assert.match(result, /相关问题/);
+  assert.doesNotMatch(result, /aivora\.cn/);
+  assert.doesNotMatch(finalizeDailyShopFaq(result, { catalogUrl: '', topics: [] }), /aivora\.cn/);
 });
