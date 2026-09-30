@@ -1442,6 +1442,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     const dailyShopContext = await loadDailyShopContext(faqSourceItems);
     debugInfo.dailyShopCatalogVerified = Boolean(dailyShopContext.catalogUrl);
     debugInfo.dailyShopRelevantTopics = dailyShopContext.topics;
+    debugInfo.dailyShopCandidateTopics = dailyShopContext.candidateTopics;
+    debugInfo.dailyShopCatalogError = dailyShopContext.error || null;
     if (dailyShopContext.error) console.warn(`[Scheduled][Daily] Shop catalog unavailable: ${dailyShopContext.error}`);
     console.log(`[Scheduled][Daily] Generating content...`);
     const outputOfCall2System = getSystemPromptSummarizationStepOne(dateStr);

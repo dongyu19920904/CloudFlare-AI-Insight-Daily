@@ -75,6 +75,8 @@ jobs:
               'dailyTopEligiblePromptItems': debug.get('dailyTopEligiblePromptItems'),
               'dailyShopCatalogVerified': debug.get('dailyShopCatalogVerified'),
               'dailyShopRelevantTopics': debug.get('dailyShopRelevantTopics'),
+              'dailyShopCandidateTopics': debug.get('dailyShopCandidateTopics'),
+              'dailyShopCatalogError': debug.get('dailyShopCatalogError'),
               'dailyFaqSeparateGenerationAttempted': debug.get('dailyFaqSeparateGenerationAttempted'),
               'dailyFaqSeparateGenerationRejectedIssues': debug.get('dailyFaqSeparateGenerationRejectedIssues'),
               'dailyFaqSeparateGenerationError': debug.get('dailyFaqSeparateGenerationError'),

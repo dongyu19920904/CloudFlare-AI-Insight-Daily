@@ -37,7 +37,10 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
   const sourceText = (selectedItems || []).join('\n');
   const visibleSourceText = sourceText.replace(/^Url:.*$/gmi, '');
   const candidateTopics = TOPICS.filter((topic) => topic.pattern.test(visibleSourceText));
-  const empty = { catalogUrl: '', topics: [], sourceText };
+  const empty = {
+    catalogUrl: '', topics: [], sourceText,
+    candidateTopics: candidateTopics.map((topic) => topic.name),
+  };
   if (candidateTopics.length === 0) return empty;
 
   try {
@@ -54,7 +57,7 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     const topics = candidateTopics
       .filter((topic) => productPaths.some((path) => topic.slug.test(path)))
       .map((topic) => topic.name);
-    return topics.length > 0 ? { catalogUrl: CATALOG_URL, topics, sourceText } : empty;
+    return topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty;
   } catch (error) {
     return { ...empty, error: error?.message || String(error) };
   }

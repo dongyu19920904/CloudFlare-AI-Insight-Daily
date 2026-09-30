@@ -28,6 +28,7 @@ test('daily shop context only exposes a sitemap-listed canonical catalog and rel
 
   assert.equal(context.catalogUrl, catalogUrl);
   assert.deepEqual(context.topics, ['ChatGPT']);
+  assert.deepEqual(context.candidateTopics, ['ChatGPT']);
   assert.match(formatDailyShopPromptContext(context), /ChatGPT/);
   assert.match(formatDailyShopPromptContext(context), /不证明库存或新闻中的新功能属于任一套餐/);
   assert.doesNotMatch(formatDailyShopPromptContext(context), /chatgpt-pro-20x-account-monthly/);
@@ -47,6 +48,7 @@ test('daily shop context fails closed without blocking generation', async () => 
   assert.equal(failed.catalogUrl, '');
   assert.equal(invalidCanonical.catalogUrl, '');
   assert.equal(unrelated.catalogUrl, '');
+  assert.deepEqual(unrelated.candidateTopics, []);
   assert.equal(formatDailyShopPromptContext(failed), '');
 });
 
