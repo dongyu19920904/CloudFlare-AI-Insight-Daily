@@ -71,6 +71,8 @@ test('an original project used in the article can answer a technical FAQ without
   });
   assert.equal(input.sourceUrl, repoUrl);
   assert.equal(input.topic, '');
+  assert.match(input.prompt, /不要复述今日星标数/);
+  assert.match(input.prompt, /首句直接回答/);
   const answer = `## **❓ 相关问题**\n\n### OpenShell 用来解决什么问题？\n\n[OpenShell 项目仓库](${repoUrl})描述了面向 AI Agent 的沙盒运行时。它适合需要隔离执行环境的工具，不能据此保证所有部署都安全。`;
   const normalized = normalizeStandaloneDailyFaqSection(answer, input.sourceUrl, input.sourceText);
   assert.ok(normalized);
