@@ -7,6 +7,7 @@ import {
   loadDailyShopContext,
 } from '../src/dailyShopFaq.js';
 import { assembleDailySummaryMarkdown } from '../src/dailyMarkdownAssembly.js';
+import { expandDailyFaqSourceItems } from '../src/dailyStandaloneFaq.js';
 
 const catalogUrl = 'https://www.aivora.cn/products';
 const sourceUrl = 'https://openai.com/index/chatgpt-update/';
@@ -50,6 +51,17 @@ test('daily shop context fails closed without blocking generation', async () => 
   assert.equal(unrelated.catalogUrl, '');
   assert.deepEqual(unrelated.candidateTopics, []);
   assert.equal(formatDailyShopPromptContext(failed), '');
+});
+
+test('main daily FAQ context includes the original official rollout terms', async () => {
+  const terms = '后续面向付费 API 客户开放，当前尚未全面开放。';
+  const originals = { news: [{ title: 'ChatGPT 更新', url: sourceUrl,
+    details: { content_html: `<p>${'背景。'.repeat(700)}</p><p>${terms}</p>` },
+  }] };
+  const context = await loadDailyShopContext(expandDailyFaqSourceItems(selectedItems, originals), { fetchImpl: fakeFetch });
+  assert.ok(formatDailyShopPromptContext(context).includes(terms));
+  assert.match(formatDailyShopPromptContext(context), /只有正文采用同一来源时才用于问答/);
+  assert.match(formatDailyShopPromptContext(context), /不得泛化为“官方未说明”/);
 });
 
 test('a sourced same-topic FAQ gets one verified catalog link, not a guessed SKU', async () => {

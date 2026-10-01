@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildStandaloneDailyFaqPromptInput,
+  expandDailyFaqSourceItems,
   insertStandaloneDailyFaq,
   normalizeStandaloneDailyFaqSection,
   withDailyFaqDeadline,
@@ -80,4 +81,40 @@ test('an original project used in the article can answer a technical FAQ without
   assert.match(result, /相关问题/);
   assert.doesNotMatch(result, /aivora\.cn/);
   assert.doesNotMatch(finalizeDailyShopFaq(result, { catalogUrl: '', topics: [] }), /aivora\.cn/);
+});
+
+test('buyer FAQ retains rollout terms at the end of the cached official article', () => {
+  const url = 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/argon/';
+  const summary = `News Title: Gemini 新模型\nUrl: ${url}\nContent Summary: 新模型已经宣布。`;
+  const rollout = '当前仅面向受邀用户；后续从 Google AI Ultra 订阅者开始开放，尚未公布具体日期。';
+  const expanded = expandDailyFaqSourceItems([summary], { news: [{
+    title: 'Gemini 新模型', url,
+    details: { content_html: `<p>模型介绍${'能力细节。'.repeat(500)}</p><p>${rollout}</p>` },
+  }] });
+  const input = buildStandaloneDailyFaqPromptInput('2026-10-01', `[新模型](${url})`, expanded, context);
+  assert.ok(input.sourceText.includes(rollout));
+  assert.match(input.prompt, /当前可用.*受邀试用.*未来开放/);
+  const answer = `## **❓ 相关问题**\n\n### Gemini 新模型，购买 Ultra 订阅就能用吗？\n\n现在还不能这样判断。[Google 公告](${url})说目前仅受邀用户能用，后续从 Google AI Ultra 订阅者开始开放。具体日期尚未公布，买订阅不能当成已获新模型权限。`;
+  assert.ok(normalizeStandaloneDailyFaqSection(answer, url, input.sourceText, 'Gemini'));
+  assert.equal(expandDailyFaqSourceItems([summary])[0], summary);
+});
+
+test('very long official FAQ sources keep both ends with a bounded input', () => {
+  const summary = `News Title: Gemini\nUrl: ${sourceUrl}\nContent Summary: 摘要`;
+  const expanded = expandDailyFaqSourceItems([summary], { news: [{
+    title: 'Gemini', url: sourceUrl,
+    details: { content_html: `<p>当前受邀试用。${'中间内容。'.repeat(2000)}后续从 Ultra 开放。</p>` },
+  }] });
+  assert.ok(expanded[0].length <= 6000);
+  assert.match(expanded[0], /当前受邀试用/);
+  assert.match(expanded[0], /后续从 Ultra 开放/);
+  assert.match(expanded[0], /来源中间已省略/);
+});
+
+test('FAQ expansion leaves social reposts unchanged even with cached original text', () => {
+  const url = 'https://t.me/aigc1024/25100';
+  const repost = `News Title: Gemini\nUrl: ${url}\nContent Summary: 社交转述`;
+  assert.deepEqual(expandDailyFaqSourceItems([repost], { news: [{
+    url, details: { content_html: '<p>转述声称所有套餐可用。</p>' },
+  }] }), [repost]);
 });

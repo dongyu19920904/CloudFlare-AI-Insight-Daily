@@ -27,6 +27,7 @@ import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext } from '../dailyShopFaq.js';
 import {
     buildStandaloneDailyFaqPromptInput,
+    expandDailyFaqSourceItems,
     insertStandaloneDailyFaq,
     normalizeStandaloneDailyFaqSection,
     withDailyFaqDeadline,
@@ -1438,7 +1439,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
         10
     ) || null;
-    const faqSourceItems = [...selectedContentItems, ...(options.dailyFunContentItems || [])];
+    const faqSourceItems = expandDailyFaqSourceItems(
+        [...selectedContentItems, ...(options.dailyFunContentItems || [])],
+        options.dailyFaqSourceItems
+    );
     const dailyShopContext = await loadDailyShopContext(faqSourceItems);
     debugInfo.dailyShopCatalogVerified = Boolean(dailyShopContext.catalogUrl);
     debugInfo.dailyShopRelevantTopics = dailyShopContext.topics;
@@ -2895,6 +2899,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
             minimumIndustryItems,
             minimumTopicSections,
             dailyFunContentItems,
+            dailyFaqSourceItems: allUnifiedData,
             allowedTopGithubProjectUrls,
             dryRun,
         }
@@ -2949,6 +2954,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
                         minimumIndustryItems,
                         minimumTopicSections,
                         dailyFunContentItems: alternate.dailyFunContentItems,
+                        dailyFaqSourceItems: allUnifiedData,
                         allowedTopGithubProjectUrls: alternate.allowedTopGithubProjectUrls,
                         sourceReselection: true,
                         dryRun,
