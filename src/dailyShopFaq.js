@@ -1,6 +1,6 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls, sanitizeOpportunityAivoraLinks } from './opportunityAivoraLinkPolicy.js';
-import { selectDailyFaqPrimarySource } from './dailyStandaloneFaq.js';
+import { loadDailyFaqPrimarySource, selectDailyFaqPrimarySource } from './dailyStandaloneFaq.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
 const CATALOG_URL = 'https://www.aivora.cn/products';
@@ -58,7 +58,9 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     const topics = candidateTopics
       .filter((topic) => productPaths.some((path) => topic.slug.test(path)))
       .map((topic) => topic.name);
-    return topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty;
+    if (topics.length === 0) return empty;
+    const sourceItems = await loadDailyFaqPrimarySource(selectedItems, topics, { fetchImpl, timeoutMs });
+    return { ...empty, catalogUrl: CATALOG_URL, topics, sourceItems, sourceText: sourceItems.join('\n') };
   } catch (error) {
     return { ...empty, error: error?.message || String(error) };
   }

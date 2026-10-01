@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildStandaloneDailyFaqPromptInput,
   expandDailyFaqSourceItems,
+  loadDailyFaqPrimarySource,
   insertStandaloneDailyFaq,
   normalizeStandaloneDailyFaqSection,
   withDailyFaqDeadline,
@@ -117,4 +118,39 @@ test('FAQ expansion leaves social reposts unchanged even with cached original te
   assert.deepEqual(expandDailyFaqSourceItems([repost], { news: [{
     url, details: { content_html: '<p>转述声称所有套餐可用。</p>' },
   }] }), [repost]);
+});
+
+test('official URL discussion metadata is replaced with the actual article for FAQ', async () => {
+  const url = 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/argon/';
+  const item = `Title: Gemini\nUrl: ${url}\nContent: Comments URL: https://news.ycombinator.com/item?id=1 # Comments: 10`;
+  const rollout = '目前受邀试用，后续从 Google AI Ultra 开放。';
+  let requests = 0;
+  const result = await loadDailyFaqPrimarySource([item], ['Gemini'], { fetchImpl: async (requested) => {
+    requests++;
+    assert.equal(requested, url);
+    return { ok: true, text: async () => `<nav>错误的套餐信息</nav><main><p>Gemini ${'介绍。'.repeat(40)}${rollout}</p></main>` };
+  } });
+  assert.equal(requests, 1);
+  assert.match(result[0], /已读取官方正文/);
+  assert.ok(result[0].includes(rollout));
+  assert.doesNotMatch(result[0], /错误的套餐信息|Comments URL/);
+});
+
+test('official FAQ fetch failure discards discussion metadata and leaves real cached facts available', async () => {
+  const url = 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/argon/';
+  const metadata = `Title: Gemini\nUrl: ${url}\nContent: Comments URL: https://news.ycombinator.com/item?id=1`;
+  const facts = `Title: Gemini\nUrl: ${url}\nContent: 官方已说明目前受邀试用。`;
+  const options = { fetchImpl: async () => { throw new Error('offline'); } };
+  assert.deepEqual(await loadDailyFaqPrimarySource([metadata], ['Gemini'], options), []);
+  assert.deepEqual(await loadDailyFaqPrimarySource([facts], ['Gemini'], options), [facts]);
+});
+
+test('Google AI original post supports buyer FAQ without another network fetch', async () => {
+  const url = 'https://x.com/GoogleAI/status/123';
+  const item = `Title: Gemini\nUrl: ${url}\nContent: 目前向 Fairwind 的受邀网络安全防御者开放。`;
+  const result = await loadDailyFaqPrimarySource([item], ['Gemini'], {
+    fetchImpl: async () => { throw new Error('must not fetch social pages'); },
+  });
+  assert.deepEqual(result, [item]);
+  assert.equal(buildStandaloneDailyFaqPromptInput('2026-10-01', `[Google 公告](${url})`, result, context).sourceUrl, url);
 });

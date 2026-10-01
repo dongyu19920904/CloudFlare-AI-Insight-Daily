@@ -1439,11 +1439,12 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
         10
     ) || null;
-    const faqSourceItems = expandDailyFaqSourceItems(
+    let faqSourceItems = expandDailyFaqSourceItems(
         [...selectedContentItems, ...(options.dailyFunContentItems || [])],
         options.dailyFaqSourceItems
     );
     const dailyShopContext = await loadDailyShopContext(faqSourceItems);
+    faqSourceItems = dailyShopContext.sourceItems;
     debugInfo.dailyShopCatalogVerified = Boolean(dailyShopContext.catalogUrl);
     debugInfo.dailyShopRelevantTopics = dailyShopContext.topics;
     debugInfo.dailyShopCandidateTopics = dailyShopContext.candidateTopics;

@@ -5,7 +5,7 @@ const OFFICIAL_HOSTS = new Set([
   'blog.google', 'ai.google.dev', 'deepmind.google', 'cursor.com',
   'microsoft.com', 'learn.microsoft.com', 'minimax.io', 'x.ai',
 ]);
-const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'geminiapp']);
+const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'geminiapp', 'googleai']);
 
 function getSourceUrl(item) {
   return String(item || '').match(/^Url:\s*(https?:\/\/\S+)/im)?.[1] || '';
@@ -51,6 +51,32 @@ export function selectDailyFaqPrimarySource(items, topics, markdown = '') {
       topic: (topics || []).find((topic) => new RegExp(topic, 'i').test(candidate.item)),
     }))
     .find((candidate) => candidate.topic) || null;
+}
+
+export async function loadDailyFaqPrimarySource(items, topics, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+  const source = selectDailyFaqPrimarySource(items, topics);
+  if (!source || new URL(source.url).hostname === 'x.com') return items;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(source.url, { signal: controller.signal, redirect: 'error' });
+    if (!response.ok) throw new Error(`Official FAQ source returned ${response.status}`);
+    const html = await response.text();
+    if (html.length > 1000000) throw new Error('Official FAQ source is too large');
+    const body = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1]
+      || html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1];
+    if (!body) throw new Error('Official FAQ article body is missing');
+    const text = stripHtml(body.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ''))
+      .replace(/\s+/g, ' ').trim();
+    if (text.length < 100 || !new RegExp(source.topic, 'i').test(text)) throw new Error('Official FAQ body does not match the topic');
+    const enriched = boundedFaqSource(`Title: ${source.topic}\nUrl: ${source.url}\n已读取官方正文：${text}`);
+    return items.map((item) => item === source.item ? enriched : item);
+  } catch {
+    // A feed's discussion metadata is not the article at its linked official URL.
+    return /Comments URL:|# Comments:/i.test(source.item) ? items.filter((item) => item !== source.item) : items;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedItems, context = {}) {

@@ -63,7 +63,7 @@ const withoutFaq = baseline.replace(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\
 const selection = buildDailyPromptSelection(data, env);
 const sources = expandDailyFaqSourceItems(selection.selectedContentItems, data);
 const context = await loadDailyShopContext(sources);
-const input = buildStandaloneDailyFaqPromptInput(date, withoutFaq, sources, context);
+const input = buildStandaloneDailyFaqPromptInput(date, withoutFaq, context.sourceItems, context);
 if (!input) throw new Error('No matching official buyer FAQ source');
 await writeFile(path.join(output, 'faq-source.txt'), input.sourceText, 'utf8');
 emit('Generating FAQ with the revised prompt and actual cached official source.');
