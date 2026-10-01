@@ -1,8 +1,7 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { registerHooks } from 'node:module';
 import { withWorkerConfigDefaults } from '../src/workerConfig.js';
-import { handleScheduledDaily } from '../src/handlers/scheduled.js';
-import { dataSources } from '../src/dataFetchers.js';
 import { buildDailyPromptSelection } from '../src/dailyPromptSelection.js';
 import { callChatAPI } from '../src/chatapi.js';
 import { removeMarkdownCodeBlock } from '../src/helpers.js';
@@ -13,6 +12,13 @@ import {
 import { loadDailyShopContext, finalizeDailyShopFaq } from '../src/dailyShopFaq.js';
 import { getDailyReportContent } from '../src/github.js';
 import { RECENT_GITHUB_TOP_PROJECTS_KEY, extractGithubTopProjectsFromMarkdown } from '../src/githubTopProjectDedupe.js';
+
+// Wrangler resolves the project's historical extensionless imports; Node needs the same rule for this preview.
+registerHooks({ resolve(specifier, context, nextResolve) {
+  return nextResolve(/^\.{1,2}\//.test(specifier) && !path.extname(specifier) ? `${specifier}.js` : specifier, context);
+} });
+const { handleScheduledDaily } = await import('../src/handlers/scheduled.js');
+const { dataSources } = await import('../src/dataFetchers.js');
 
 const date = process.argv[2];
 if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('Specify YYYY-MM-DD');
