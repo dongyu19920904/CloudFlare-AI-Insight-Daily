@@ -65,4 +65,7 @@ test('only general opportunity initial and repair calls receive the full output 
   assert.match(opportunity, /generateContentWithTransportFallback\(\s*opportunityGenerationEnv,\s*buildOpportunityRepairPrompt/);
   const rest = source.slice(source.indexOf('async function generateAccountOpportunityMarkdown('));
   assert.doesNotMatch(rest, /opportunityGenerationEnv/);
+  const prompt = readFileSync(new URL('../src/prompt/aiOpportunityPrompt.js', import.meta.url), 'utf8');
+  assert.match(prompt, /主推不超过 900 字符，每条小试不超过 500 字符/);
+  assert.match(source, /今日主推单条 900、本周小试单条 500/);
 });
