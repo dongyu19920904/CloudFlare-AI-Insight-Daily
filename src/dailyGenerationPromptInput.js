@@ -228,10 +228,6 @@ function getDailyPromptItemFingerprint(item) {
 export function getDailyPromptItemEventKey(item) {
   const raw = String(item || "");
   const text = raw.toLowerCase();
-  if (/\bbootloops\b|claude[-\s]shaped[-\s]science/i.test(raw) ||
-      (/Matthew\s+Schwartz/i.test(raw) && /impedance mismatch|阻抗不匹配/i.test(raw))) {
-    return "claude-shaped-science";
-  }
   const modelEventKey = getDailyModelReleaseEventKey(raw);
   if (modelEventKey) return modelEventKey;
   if (/\bjev\b/i.test(text)) return "jev-model-launch";

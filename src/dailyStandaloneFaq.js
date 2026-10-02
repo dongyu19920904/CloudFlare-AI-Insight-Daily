@@ -17,7 +17,6 @@ function isPrimarySource(item, url) {
     const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
     const parts = parsed.pathname.split('/').filter(Boolean);
     return OFFICIAL_HOSTS.has(host) ||
-      (host === 'github.com' && parts[0]?.toLowerCase() === 'cursor' && parts[1] === 'plugins') ||
       (host === 'x.com' && parts[1] === 'status' && OFFICIAL_SOCIAL_HANDLES.has(parts[0]?.toLowerCase()));
   } catch {
     return false;
@@ -56,7 +55,7 @@ export function selectDailyFaqPrimarySource(items, topics, markdown = '') {
 
 export async function loadDailyFaqPrimarySource(items, topics, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
   const source = selectDailyFaqPrimarySource(items, topics);
-  if (!source || ['x.com', 'github.com'].includes(new URL(source.url).hostname)) return items;
+  if (!source || new URL(source.url).hostname === 'x.com') return items;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

@@ -5,7 +5,6 @@ import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
 import {
   countDailyTopEligiblePromptItems,
-  getDailyPromptAllocationStats,
   getDailyPromptItemEventKey,
   isFirstPartyDailyModelLaunch,
   isOfficialDailyModelLaunch,
@@ -397,12 +396,6 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     candidate?.description || "",
   ].join(" ");
   const headline = candidate?.title || "";
-
-  if (/Telegram/i.test(String(candidate?.source || "")) && /这个东西/.test(headline) &&
-      /闻所未闻|见所未见|才认识/.test(titleAndDescription) &&
-      !/其实是|就是|叫做|名为|指的是|称为/.test(candidate?.plainText || "")) {
-    return false;
-  }
 
   if (/^(?:[🖼🎬🔁\s]*)?(?:现在[，,]?它|太强了|叹为观止)/.test(headline) &&
       /(?:震惊|太强了|叹为观止)/.test(headline) &&
@@ -892,8 +885,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       (left, right) => scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left)
     );
     for (const candidate of refillCandidates) {
-      const allocation = getDailyPromptAllocationStats(selectedCandidates.map((item) => item.itemText));
-      if ((allocation.topItems >= 10 && allocation.reservedSocialItems >= 1) || selectedCandidates.length >= maxItems) break;
+      if (topCapacity() >= 10 || selectedCandidates.length >= maxItems) break;
       tryAddCandidate(candidate, { allowAdditionalEntity: true });
     }
     if (topCapacity() < 10) {
