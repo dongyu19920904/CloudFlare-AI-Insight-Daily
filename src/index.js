@@ -143,6 +143,7 @@ function createScheduledProgressReporter(kvNamespace, mode, dateOrAlias, baseSta
 
 async function runScheduledEventWithStatus(event, env, ctx) {
     const mode = resolveScheduledModeFromEvent(event, env);
+    if (mode === 'noop') return;
     const date = getScheduledEventDate(event);
     const cron = String(event?.cron || '');
     const scheduledTime = Number.isFinite(Number(event?.scheduledTime)) ? Number(event.scheduledTime) : null;

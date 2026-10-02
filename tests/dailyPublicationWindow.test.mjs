@@ -39,10 +39,23 @@ test('deployed configuration routes 09:00 and 10:00 independently', () => {
   const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
   const env = Object.fromEntries([...config.matchAll(/^(\w+_CRON_SCHEDULE) = "([^"]+)"/gm)].map((match) => [match[1], match[2]]));
   assert.equal(env.DAILY_BACKUP_CRON_SCHEDULE, '0 2 * * *');
-  assert.match(config, /"0 2 \* \* \*"\s*\]/);
+  assert.match(config, /"0,20,50 1,2 \* \* \*"\s*\]/);
   assert.equal(resolveScheduledModeFromEvent({ cron: '0,20,50 1 * * *', scheduledTime: Date.parse('2026-10-03T01:00:00Z') }, env), 'daily');
-  assert.equal(resolveScheduledModeFromEvent({ cron: '0 2 * * *', scheduledTime: Date.parse('2026-10-03T02:00:00Z') }, env), 'daily-backup');
+  assert.equal(resolveScheduledModeFromEvent({ cron: '0,20,50 1,2 * * *', scheduledTime: Date.parse('2026-10-03T02:00:00Z') }, env), 'daily-backup');
   assert.equal(resolveScheduledModeFromEvent({ cron: '0,20,50 1 * * *', scheduledTime: Date.parse('2026-10-03T01:20:00Z') }, env), 'opportunity');
+  for (const minute of ['20', '50']) {
+    assert.equal(resolveScheduledModeFromEvent({ cron: '0,20,50 1,2 * * *', scheduledTime: Date.parse(`2026-10-03T02:${minute}:00Z`) }, env), 'noop');
+  }
+});
+
+test('unused grouped slots exit before status writes or downstream calls', async () => {
+  const index = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  const start = index.indexOf('async function runScheduledEventWithStatus(');
+  const end = index.indexOf('\nasync function ', start + 1);
+  const run = vm.runInNewContext(`(${index.slice(start, end).trim()})`, {
+    resolveScheduledModeFromEvent: () => 'noop',
+  });
+  await run({}, {}, {});
 });
 
 test('only general opportunity initial and repair calls receive the full output budget', () => {

@@ -89,5 +89,7 @@ export function resolveScheduledModeFromEvent(event, env, mode = "auto") {
     }
   }
 
+  // Group 09:00/09:20/09:50 and 10:00 without consuming another account cron slot.
+  if (cron === "0,20,50 1,2 * * *") return "noop";
   return "daily";
 }
