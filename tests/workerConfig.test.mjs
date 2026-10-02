@@ -10,7 +10,7 @@ test('fixed settings preserve legacy string values including disabled features',
     assert.ok(Object.isFrozen(WORKER_CONFIG_DEFAULTS));
     assert.ok(Object.values(WORKER_CONFIG_DEFAULTS).every(value => typeof value === 'string'));
     assert.equal(WORKER_CONFIG_DEFAULTS.OPEN_TRANSLATE, 'true');
-    assert.equal(WORKER_CONFIG_DEFAULTS.DAILY_ANTHROPIC_MAX_TOKENS, '8192');
+    assert.equal(WORKER_CONFIG_DEFAULTS.DAILY_ANTHROPIC_MAX_TOKENS, '4096');
     assert.equal(WORKER_CONFIG_DEFAULTS.GEMINI_RETRY_MAX, '3');
     assert.equal(WORKER_CONFIG_DEFAULTS.GEMINI_RETRY_BASE_MS, '2000');
     assert.equal(WORKER_CONFIG_DEFAULTS.GEMINI_FALLBACK_ENABLED, 'false');

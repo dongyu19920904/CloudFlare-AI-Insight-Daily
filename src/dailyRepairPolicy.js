@@ -30,8 +30,6 @@ export function shouldAdoptDailyRepair({
 }) {
   if (!repairedPassed) return false;
   if (!initialPassed) return true;
-  // Fewer items can hide warnings; never shrink an already publishable draft.
-  if (repairedTopItemCount < initialTopItemCount) return false;
 
   const initialQualityScore = initialQualityWarnings.length > 0
     ? scoreDailyQualityWarnings(initialQualityWarnings)

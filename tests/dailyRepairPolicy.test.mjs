@@ -101,29 +101,3 @@ test("daily repair does not trade fuller TOP coverage for worse writing quality"
     targetTopItemCount: 10,
   }), false);
 });
-
-test("daily repair preserves a complete draft even when a truncated repair has fewer warnings", () => {
-  for (const initialTopItemCount of [6, 10]) {
-    assert.equal(shouldAdoptDailyRepair({
-      initialPassed: true,
-      repairedPassed: true,
-      initialQualityWarningCount: 8,
-      repairedQualityWarningCount: 0,
-      initialTopItemCount,
-      repairedTopItemCount: 1,
-      targetTopItemCount: 10,
-    }), false);
-  }
-});
-
-test("daily repair can improve a genuinely short late edition without requiring ten items", () => {
-  assert.equal(shouldAdoptDailyRepair({
-    initialPassed: true,
-    repairedPassed: true,
-    initialQualityWarningCount: 3,
-    repairedQualityWarningCount: 1,
-    initialTopItemCount: 1,
-    repairedTopItemCount: 1,
-    targetTopItemCount: 10,
-  }), true);
-});

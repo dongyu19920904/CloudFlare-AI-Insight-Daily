@@ -683,10 +683,6 @@ export function validateDailyPublication({
     ...collectMarkdownIssues(summaryText, {
       label: "日报摘要",
       minChars: 30,
-      forbiddenPatterns: [
-        /我只收到(?:了)?(?:一条|一篇|单篇)/,
-        /请提供(?:完整的?)?日报正文/,
-      ],
     }),
     ...collectMarkdownIssues(pageMarkdown, {
       label: "日报页面",

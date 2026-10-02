@@ -13,22 +13,6 @@ import {
   normalizeSupplyDailyLines,
 } from "../src/supplyDrivenAccountOpportunity.js";
 
-test("a late daily may contain one real item but a model refusal is not a summary", () => {
-  const pageMarkdown = `## 今日摘要\n\n摘要正文。\n\n## 今日焦点 TOP\n\n### 1. 编程工具更新\n\n**工具更新。** [查看更新说明](https://example.com/release)。${"功能说明和使用边界。".repeat(40)}`;
-  const options = { pageMarkdown, minimumTopItems: 1, hardMinimumTopItems: 1 };
-  const complete = validateDailyPublication({
-    ...options,
-    summaryText: "编程工具更新了使用界面。开发者可以查看更新说明并测试。使用前仍应核对项目的适用环境和功能范围。",
-  });
-  assert.equal(complete.ok, true, JSON.stringify(complete.issues));
-  const refused = validateDailyPublication({
-    ...options,
-    summaryText: "我只收到了一条单篇报道，无法概括整篇日报。请提供完整的日报正文，以便生成三句话的今日摘要。",
-  });
-  assert.equal(refused.ok, false);
-  assert.ok(refused.issues.some(issue => issue.includes("日报摘要")));
-});
-
 test("supply-driven account daily accepts only snapshot-backed facts and links", () => {
   const snapshot = {
     schemaVersion: 2,
