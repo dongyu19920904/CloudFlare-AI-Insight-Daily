@@ -57,8 +57,11 @@ env.DATA_KV = {
   get: async (key) => memory.get(key) || null,
   put: async (key, value) => { memory.set(key, value); },
 };
-const baseline = await getDailyReportContent(env, `daily/${date}.md`);
-if (!baseline) throw new Error('Published baseline is missing');
+const baseline = await getDailyReportContent(env, `daily/${date}.md`).catch((error) => {
+  if (/404/.test(error.message)) return null;
+  throw error;
+});
+if (baseline) {
 const withoutFaq = baseline.replace(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im, '').trim();
 const selection = buildDailyPromptSelection(data, env);
 const sources = expandDailyFaqSourceItems(selection.selectedContentItems, data);
@@ -75,6 +78,9 @@ if (!faq) throw new Error('Generated FAQ failed existing validation');
 const pilot = finalizeDailyShopFaq(insertStandaloneDailyFaq(withoutFaq, faq), context);
 await writeFile(path.join(output, 'faq-pilot.md'), pilot, 'utf8');
 emit(faq);
+} else {
+  emit('No published baseline yet; running the complete daily preview without a separate FAQ comparison.');
+}
 emit('Generating a complete daily dry-run from this branch; KV writes stay in memory.');
 const debug = await handleScheduledDaily({}, env, {}, date, { dryRun: true,
   onProgress: async (progress) => emit(JSON.stringify(progress)),
