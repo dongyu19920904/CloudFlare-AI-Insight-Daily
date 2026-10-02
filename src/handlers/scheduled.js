@@ -1585,7 +1585,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             repairedQualityWarnings: repairedQualityTargetWarnings,
             initialTopItemCount: extractNumberedDailyItems(dailySummaryMarkdownContent).length,
             repairedTopItemCount: extractNumberedDailyItems(repairedDailySummaryMarkdownContent).length,
-            targetTopItemCount: options.minimumTopItems || 0,
+            targetTopItemCount: DAILY_TOP_TARGET,
         });
 
         if (adoptRepair) {

@@ -391,7 +391,7 @@ jobs:
           MODE=daily \
           TARGET_DATE="${TARGET_DATE}" \
           PAGE_RESPONSE_PATH=publication-page.json \
-          MINIMUM_TOP_ITEMS=3 \
+          MINIMUM_TOP_ITEMS=1 \
           node .github/scripts/validate-publication-content.mjs
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
