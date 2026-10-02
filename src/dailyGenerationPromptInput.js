@@ -433,6 +433,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
     `TOP 候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重替换素材替换。明确 TOP 候选达到 ${DAILY_TOP_TARGET} 条时必须逐条写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有明确候选确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
     "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
+    "每条的数字、星标、价格和功能只能取自该条自己的来源；没有 Stars Today 字段的新闻不得借用邻近 GitHub 项目的星标数。仓库进入日榜不代表今天新发布，公开仓库也不证明某个付费套餐已开通功能。",
   ].join("\n");
   const numberedTopCandidates = topCandidateItems
     .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))
