@@ -1,5 +1,6 @@
 ﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, replaceIncorrectDomainLinks } from '../helpers.js';
 import { normalizeMarkdownImageSyntax, normalizeMarkdownMediaUrl } from '../helpers.js';
+import { getDailyPublicationPolicy } from '../dailyPublicationWindow.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
@@ -2097,8 +2098,13 @@ async function generateOpportunityMarkdown(
         return { markdown, validation };
     };
 
+    // A full opportunity brief can exceed the shared 2048-token default.
+    const opportunityGenerationEnv = {
+        ...env,
+        ANTHROPIC_MAX_TOKENS: String(Math.max(6144, Number.parseInt(env.ANTHROPIC_MAX_TOKENS, 10) || 0)),
+    };
     const firstDraft = await generateContentWithTransportFallback(
-        env,
+        opportunityGenerationEnv,
         opportunityPromptInput,
         opportunitySystemPrompt
     );
@@ -2111,7 +2117,7 @@ async function generateOpportunityMarkdown(
             `[Scheduled][Opportunity] First draft failed validation, retrying repair pass: ${validation.issues.join(' | ')}`
         );
         const repairedDraft = await generateContentWithTransportFallback(
-            env,
+            opportunityGenerationEnv,
             buildOpportunityRepairPrompt(
                 opportunityPromptInput,
                 opportunityMarkdownContent,
@@ -2732,6 +2738,8 @@ async function handleScheduledDailyBackup(event, env, ctx, specifiedDate = null,
         return buildSkippedScheduledResult(dateStr, 'daily-backup', 'daily-output-healthy', health);
     }
 
+    // Refresh at 10:00 only when the 09:00 edition has not been published.
+    await prefetchDailySourceCategories(env, dateStr);
     return handleScheduledDaily(event, env, ctx, dateStr, options);
 }
 
@@ -2852,8 +2860,19 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedContentItems,
         dailyFunContentItems
     );
-    const minimumTopItems = DAILY_TOP_TARGET;
-    const hardMinimumTopItems = DAILY_TOP_TARGET;
+    const publicationPolicy = getDailyPublicationPolicy({
+        scheduledTime: event?.scheduledTime,
+        topEligibleItems: dailyTopEligiblePromptItems,
+    });
+    debugInfo.dailyLatePublicationAttempt = publicationPolicy.lateAttempt;
+    if (publicationPolicy.waitForTen) {
+        debugInfo.skipped = true;
+        debugInfo.skipReason = 'insufficient-material-wait-until-10';
+        await reportScheduledProgress(options, 'daily', 'waiting-until-10', 100);
+        return debugInfo;
+    }
+    const minimumTopItems = publicationPolicy.minimumTopItems;
+    const hardMinimumTopItems = minimumTopItems;
     const minimumOpenSourceItems = Math.min(
         dailyPromptAllocation.reservedProjectItems,
         DAILY_OPEN_SOURCE_MIN
@@ -2872,7 +2891,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const minimumTopicSections = Math.min(potentialTopicSections, 3);
     debugInfo.dailyPromptAllocation = dailyPromptAllocation;
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
-    debugInfo.dailyTopTargetItems = minimumTopItems;
+    debugInfo.dailyTopTargetItems = DAILY_TOP_TARGET;
     debugInfo.dailyMinimumTopItems = hardMinimumTopItems;
     debugInfo.dailyOpenSourceTargetItems = minimumOpenSourceItems;
     debugInfo.dailySocialTargetItems = minimumSocialItems;

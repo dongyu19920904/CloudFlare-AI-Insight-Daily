@@ -2,11 +2,7 @@ name: Ensure Daily Journal
 
 on:
   schedule:
-    - cron: "31 0 * * *"
-    - cron: "47 0 * * *"
-    - cron: "59 0 * * *"
-    - cron: "19 1 * * *"
-    - cron: "47 1 * * *"
+    - cron: "17 2 * * *"
     - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
@@ -64,9 +60,9 @@ jobs:
           fi
 
           SHANGHAI_TIME=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$SHANGHAI_TIME" -lt 0915 ]; then
+          if [ "$SHANGHAI_TIME" -lt 1015 ]; then
             echo "open=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping early recovery at ${SHANGHAI_TIME}; the Worker primary and backup runs keep priority until 09:15 Asia/Shanghai."
+            echo "Skipping early recovery at ${SHANGHAI_TIME}; the Worker primary and 10:00 retry keep priority until 10:15 Asia/Shanghai."
           else
             echo "open=true" >> "$GITHUB_OUTPUT"
             echo "Recovery window is open at ${SHANGHAI_TIME} Asia/Shanghai."
@@ -74,7 +70,7 @@ jobs:
 
       - name: Skip before Worker recovery window
         if: steps.recovery_window.outputs.open != 'true'
-        run: echo "No Worker request was made before the 09:15 Asia/Shanghai recovery window."
+        run: echo "No Worker request was made before the 10:15 Asia/Shanghai recovery window."
 
       - name: Check current daily page and home pointer
         id: check

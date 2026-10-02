@@ -61,7 +61,7 @@ PODCAST_BEGIN = "欢迎收听爱窝啦 AI 日报，每天为你精选 AI 领域�
 PODCAST_END = "感谢收听，我们下期再见"
 DAILY_PREFETCH_CRON_SCHEDULE = "50 0 * * *"
 DAILY_CRON_SCHEDULE = "0 1 * * *"
-DAILY_BACKUP_CRON_SCHEDULE = "12 1 * * *"
+DAILY_BACKUP_CRON_SCHEDULE = "0 2 * * *"
 OPPORTUNITY_CRON_SCHEDULE = "20 1 * * *"
 ACCOUNT_OPPORTUNITY_CRON_SCHEDULE = "50 1 * * *"
 BACKUP_CRON_SCHEDULE = "10 2 * * *"
@@ -72,5 +72,6 @@ INSERT_APP_URL = "<h3>[查看完整版 AI 日报 ↗️](https://news.aivora.cn)
 [triggers]
 crons = [
   "50 0 * * *",
-  "0,12,20,50 1 * * *"
+  "0,20,50 1 * * *",
+  "0 2 * * *"
 ]
