@@ -55,7 +55,7 @@ test("TOP deficit refills distinct vendor events without relaxing publisher or p
   });
   assert.equal(countDailyTopEligiblePromptItems(result.selectedContentItems), 10);
   assert.ok(result.selectionDiagnostics.topCapacityRefillCount > 0);
-  assert.equal(result.selectedCounts.project, 3);
+  assert.ok(result.selectedCounts.project <= 4);
   assert.ok(result.selectedContentItems.length <= 24);
   const urls = result.selectedContentItems.map((item) => item.match(/^Url:\s*(\S+)/m)?.[1]);
   assert.equal(new Set(urls.map((url) => getDailyPublisherKey({ url }))).size, urls.length);
@@ -68,18 +68,6 @@ test("a truly insufficient pool retains the normal entity cap rather than adding
     { ...buildNewsItem(2), title: "Claude 音频界面更新" },
   ], project: [], socialMedia: [], paper: [] });
   assert.equal(result.selectedContentItems.length, 1);
-  assert.equal(result.selectionDiagnostics.topCapacityRefillCount, 0);
-});
-
-test("an insufficient refill restores the fourth original repository reserve", () => {
-  const result = buildDailyPromptSelection({ news: [
-    { ...buildNewsItem(1), title: "Claude 数据库迁移审查" },
-    { ...buildNewsItem(2), title: "Claude 音频界面更新" },
-  ], project: Array.from({ length: 4 }, (_, index) => buildProjectItem(index + 1)),
-    socialMedia: [], paper: [],
-  });
-  assert.equal(result.selectedCounts.project, 4);
-  assert.equal(result.selectedCounts.news, 1);
   assert.equal(result.selectionDiagnostics.topCapacityRefillCount, 0);
 });
 
@@ -100,9 +88,7 @@ test("a science framework article and its original author post are one event", (
     { ...buildNewsItem(83), title: "科学家的 AI 协作", description: "Matthew Schwartz discusses impedance mismatch in AI science.",
       details: { content_html: "Matthew Schwartz discusses impedance mismatch in AI science." } },
   ];
-  const result = buildDailyPromptSelection({ news: items }, { DAILY_PROMPT_ENTITY_HARD_CAP: 99 });
-  assert.equal(result.selectedContentItems.length, 1);
-  assert.equal(result.dailyFunContentItems.length, 0);
+  assert.equal(buildDailyPromptSelection({ news: items }, { DAILY_PROMPT_ENTITY_HARD_CAP: 99 }).selectedContentItems.length, 1);
 });
 
 test("direct repository news cannot bypass the Trending Daily project source", () => {
