@@ -71,6 +71,26 @@ test("a truly insufficient pool retains the normal entity cap rather than adding
   assert.equal(result.selectionDiagnostics.topCapacityRefillCount, 0);
 });
 
+test("a picture-only teaser without a named subject is not a news candidate", () => {
+  const vague = { ...buildNewsItem(81), title: "据说科班程序员才认识这个东西",
+    description: "只会 AI Coding 的我闻所未闻，见所未见。", source: "Telegram",
+    url: "https://t.me/example/81", details: { content_html: "<p>只会 AI Coding 的我闻所未闻，见所未见。</p>" } };
+  assert.equal(buildDailyPromptSelection({ news: [vague] }).selectedContentItems.length, 0);
+  assert.equal(buildDailyPromptSelection({ news: [{ ...vague,
+    details: { content_html: "<p>这个东西叫做 AI Agent 的状态机，用来管理任务流。</p>" },
+  }] }).selectedContentItems.length, 1);
+});
+
+test("a science framework article and its original author post are one event", () => {
+  const items = [
+    { ...buildNewsItem(82), title: "Claude 时代的科学", description: "BootLoops 处理跨领域 AI 科学计算。",
+      details: { content_html: "<p>BootLoops 处理跨领域 AI 科学计算。</p>" } },
+    { ...buildNewsItem(83), title: "科学家的 AI 协作", description: "Matthew Schwartz discusses impedance mismatch in AI science.",
+      details: { content_html: "Matthew Schwartz discusses impedance mismatch in AI science." } },
+  ];
+  assert.equal(buildDailyPromptSelection({ news: items }, { DAILY_PROMPT_ENTITY_HARD_CAP: 99 }).selectedContentItems.length, 1);
+});
+
 test("direct repository news cannot bypass the Trending Daily project source", () => {
   const repoNews = { ...buildNewsItem(96), url: "https://github.com/TencentCloud/Octop" };
   const ordinaryNews = buildNewsItem(97);

@@ -22,3 +22,9 @@ No cron, provider, secret, opportunity, account-opportunity or frontend theme ch
 Run all Node tests using process-scoped D-drive caches. Run branch preview against today's actual cached sources, inspect the full Markdown and all validation diagnostics, correct concrete defects and preview again when necessary. Deploy only the reviewed change through existing SSH/GitHub Actions flow. Publish the reviewed edition through existing repository paths, verify Hugo/Pages, dated URL and homepage. Confirm scheduled status reports publication accurately.
 
 Rollback is a targeted revert of the recovery commit, not reset or overwrite of original workspaces. This fixes the observed selection contradiction; external model/API/source availability remains a residual operational risk.
+
+## First preview review
+
+Run 36954695024 passed hard validation with ten TOP items, but editorial review rejected it: the BootLoops/Claude-shaped-science article was duplicated via BestBlogs and Anthropic; an image-only unnamed-object teaser became an empty news item; and the standalone FAQ selected an academic Claude article and failed the buyer-question check.
+
+The follow-up adds a shared event key for that scientific framework, rejects unnamed-object Telegram teasers without an explanation, preserves one social-section reserve while refilling TOP, and recognizes only the original cursor/plugins repository as Cursor functionality evidence for FAQ. Arbitrary GitHub forks stay technical-only. These changes do not add model calls, fetches or scheduled triggers.

@@ -16,6 +16,21 @@ const sourceText = `News Title: Gemini App 更新\nSource: Google Gemini\nUrl: $
 const article = `## **🔥 今日焦点 TOP 1**\n\n[Gemini 官方演示私人智能体功能](${sourceUrl})。\n\n[up 知识库](https://github.com/byoungd/up)也在文中。`;
 const context = { catalogUrl: 'https://www.aivora.cn/products', topics: ['Gemini'] };
 
+test('the original Cursor plugin repository supports a buyer-facing functionality question, not arbitrary forks', () => {
+  const repo = 'https://github.com/cursor/plugins';
+  const source = `Project Name: plugins\nUrl: ${repo}\nOwner: cursor\nDescription: Cursor 插件规范和官方插件`;
+  const input = buildStandaloneDailyFaqPromptInput('2026-10-02', `[插件仓库](${repo})`, [source], {
+    catalogUrl: context.catalogUrl, topics: ['Cursor'],
+  });
+  assert.equal(input.topic, 'Cursor');
+  assert.equal(input.sourceUrl, repo);
+  assert.match(input.prompt, /真实购买前问题/);
+  const fork = source.replace(repo, 'https://github.com/other/plugins');
+  assert.equal(buildStandaloneDailyFaqPromptInput('2026-10-02', fork, [fork], {
+    catalogUrl: context.catalogUrl, topics: ['Cursor'],
+  }).topic, '');
+});
+
 test('missing FAQ prefers a matching official product post for a buyer question', () => {
   const unrelatedRepo = 'Project Name: up\nUrl: https://github.com/byoungd/up\nDescription: AI 学习指南';
   const input = buildStandaloneDailyFaqPromptInput('2026-09-29', article, [unrelatedRepo, sourceText], context);
