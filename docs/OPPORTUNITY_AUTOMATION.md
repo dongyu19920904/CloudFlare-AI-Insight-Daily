@@ -8,11 +8,13 @@ To make daily updates more reliable, the repository now includes:
 
 What this workflow does:
 
-- Runs every day at `09:35` Beijing time.
+- Runs every day at `09:31` and `09:39` Beijing time, after the Worker's `09:20` opportunity task.
 - Checks whether today's opportunity file already exists in the frontend repo.
 - If the file is missing, it calls:
   - `/testTriggerScheduledOpportunity?date=YYYY-MM-DD`
 - After triggering, it verifies that today's file was created.
+
+The opportunity recovery workflow is independent of the main AI daily. It does not change the daily's 09:00 attempt / 10:00 retry policy. An existing dated page and a working latest pointer are checked before generation, so a healthy edition does not need another model call.
 
 ## Required GitHub Actions Secret
 
