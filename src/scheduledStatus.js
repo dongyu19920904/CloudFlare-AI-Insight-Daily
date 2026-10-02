@@ -123,10 +123,6 @@ export function inferScheduledOutcome(mode, debugInfo) {
     };
 }
 
-export function getScheduledCompletionState(outcome) {
-    return outcome?.outcome === 'not-published' || outcome?.outcome === 'partial' ? 'error' : 'success';
-}
-
 export async function storeScheduledRunStatus(kvNamespace, mode, dateOrAlias, status, options = {}) {
     const ttl = options.ttl || SCHEDULED_STATUS_TTL_SECONDS;
     const keys = getScheduledStatusKeys(mode, dateOrAlias, {

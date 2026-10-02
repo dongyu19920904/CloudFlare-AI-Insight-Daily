@@ -4,7 +4,6 @@ import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
 import {
-  countDailyTopEligiblePromptItems,
   getDailyPromptItemEventKey,
   isFirstPartyDailyModelLaunch,
   isOfficialDailyModelLaunch,
@@ -784,7 +783,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
     }
   };
 
-  const tryAddCandidate = (candidate, { allowAdditionalEntity = false } = {}) => {
+  const tryAddCandidate = (candidate) => {
     if (!candidate || selectedCandidates.length >= maxItems) return false;
     if ((selectedPublisherCounts.get(candidate.publisherKey) || 0) >= 1) return false;
     const hardCap = hardCaps[candidate.sourceType];
@@ -795,7 +794,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       return false;
     }
     const entityKey = getDailyPromptEntityCountKey(candidate);
-    if (!allowAdditionalEntity && entityHardCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= entityHardCap) {
+    if (entityHardCap > 0 && entityKey && (selectedEntityCounts.get(entityKey) || 0) >= entityHardCap) {
       return false;
     }
     const isProjectLike = isProjectLikeDailyPromptCandidate(candidate);
@@ -875,28 +874,6 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
     }
   }
 
-  const topCapacity = (candidates = selectedCandidates) =>
-    countDailyTopEligiblePromptItems(candidates.map((candidate) => candidate.itemText));
-  const originalSelectionLength = selectedCandidates.length;
-  let topCapacityRefillCount = 0;
-  // A shared vendor is not a shared event. Refill only a TOP deficit, never publisher/event caps.
-  if (topCapacity() < 10 && maxItems >= 10) {
-    const refillCandidates = [...buckets.values()].flat().sort(
-      (left, right) => scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left)
-    );
-    for (const candidate of refillCandidates) {
-      if (topCapacity() >= 10 || selectedCandidates.length >= maxItems) break;
-      tryAddCandidate(candidate, { allowAdditionalEntity: true });
-    }
-    if (topCapacity() < 10) {
-      while (selectedCandidates.length > originalSelectionLength) {
-        removeSelectedCandidateAt(selectedCandidates.length - 1);
-      }
-    } else {
-      topCapacityRefillCount = selectedCandidates.length - originalSelectionLength;
-    }
-  }
-
   const dailyFunCandidateLimit = parsePositiveInt(env.DAILY_FUN_FALLBACK_CANDIDATES, 12);
   const rankedDailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
   let reservedDailyFunCandidate = null;
@@ -912,7 +889,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       rankedDailyFunCandidates.find((candidate) => selectedCandidates.includes(candidate));
     const reserveIndex = selectedCandidates.indexOf(reserveCandidate);
 
-    if (reserveIndex >= 0 && topCapacity(selectedCandidates.filter((_, index) => index !== reserveIndex)) >= 10) {
+    if (reserveIndex >= 0) {
       removeSelectedCandidateAt(reserveIndex);
       reservedDailyFunCandidate = reserveCandidate;
     }
@@ -992,7 +969,6 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       itemsWithMedia,
       itemsWithoutMedia,
       selectedMediaCount,
-      topCapacityRefillCount,
       selectedMediaInFirstFive: orderedSelectedCandidates.slice(0, 5).filter((candidate) => candidate.itemHasMedia).length,
       dailyFunCandidateCount: dailyFunCandidates.length,
       dailyFunReservedFromPrimary: Boolean(reservedDailyFunCandidate),

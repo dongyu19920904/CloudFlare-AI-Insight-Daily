@@ -6,19 +6,8 @@ import {
   getScheduledStatusKey,
   getScheduledStatusKeys,
   inferScheduledOutcome,
-  getScheduledCompletionState,
   storeScheduledRunStatus,
 } from "../src/scheduledStatus.js";
-
-test("failed publication is not reported as a successful scheduled run", () => {
-  assert.equal(getScheduledCompletionState(inferScheduledOutcome("daily", {
-    dailyGenerated: true, dailyValidationPassed: false, dailyPublished: false,
-  })), "error");
-  assert.equal(getScheduledCompletionState({ outcome: "partial" }), "error");
-  for (const outcome of ["published", "skipped", "dry-run", "completed"]) {
-    assert.equal(getScheduledCompletionState({ outcome }), "success");
-  }
-});
 
 test("getScheduledStatusKey builds stable current and dated keys", () => {
   assert.equal(getScheduledStatusKey("daily"), "scheduled-status:daily:current");

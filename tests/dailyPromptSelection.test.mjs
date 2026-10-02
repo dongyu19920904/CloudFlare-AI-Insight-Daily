@@ -37,40 +37,6 @@ function buildProjectItem(index) {
   };
 }
 
-test("TOP deficit refills distinct vendor events without relaxing publisher or project caps", () => {
-  const titles = [
-    "Claude 帮科研人员设计实验", "Claude 音频对话支持无障碍操作",
-    "Claude 数据库迁移审查新流程", "Claude 桌面文件分类功能",
-    "Claude 浏览器端新增可视化交互", "Claude 协作会议记录实测",
-    "Claude 机器人控制演示", "Claude 视频教学课程设计",
-    "Claude 报表分析扩展上线", "Claude 翻译工作台更新",
-    "Claude 医疗文献检索方法", "Claude 图片编辑工作流",
-  ];
-  const news = titles.map((title, index) => ({ ...buildNewsItem(index + 1), title }));
-  news.push({ ...news[0], url: "https://mirror.example.com/same-event" });
-  news.push({ ...buildNewsItem(90), title: "Claude 新任务排程界面", url: news[0].url });
-  const result = buildDailyPromptSelection({
-    news, project: Array.from({ length: 4 }, (_, index) => buildProjectItem(index + 1)),
-    socialMedia: [], paper: [],
-  });
-  assert.equal(countDailyTopEligiblePromptItems(result.selectedContentItems), 10);
-  assert.ok(result.selectionDiagnostics.topCapacityRefillCount > 0);
-  assert.ok(result.selectedCounts.project <= 4);
-  assert.ok(result.selectedContentItems.length <= 24);
-  const urls = result.selectedContentItems.map((item) => item.match(/^Url:\s*(\S+)/m)?.[1]);
-  assert.equal(new Set(urls.map((url) => getDailyPublisherKey({ url }))).size, urls.length);
-  assert.ok(result.selectedContentItems.filter((item) => item.includes(titles[0])).length <= 1);
-});
-
-test("a truly insufficient pool retains the normal entity cap rather than adding filler", () => {
-  const result = buildDailyPromptSelection({ news: [
-    { ...buildNewsItem(1), title: "Claude 数据库迁移审查" },
-    { ...buildNewsItem(2), title: "Claude 音频界面更新" },
-  ], project: [], socialMedia: [], paper: [] });
-  assert.equal(result.selectedContentItems.length, 1);
-  assert.equal(result.selectionDiagnostics.topCapacityRefillCount, 0);
-});
-
 test("direct repository news cannot bypass the Trending Daily project source", () => {
   const repoNews = { ...buildNewsItem(96), url: "https://github.com/TencentCloud/Octop" };
   const ordinaryNews = buildNewsItem(97);

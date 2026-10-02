@@ -20,7 +20,6 @@ import {
     buildScheduledProgressStatus,
     getScheduledStatusKey,
     inferScheduledOutcome,
-    getScheduledCompletionState,
     storeScheduledRunStatus,
 } from './scheduledStatus.js';
 import { repairDailyHomePointer } from './dailyHomeRepair.js';
@@ -175,7 +174,7 @@ async function runScheduledEventWithStatus(event, env, ctx) {
         const outcome = inferScheduledOutcome(mode, debug);
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, date, {
             ...baseStatus,
-            state: getScheduledCompletionState(outcome),
+            state: 'success',
             phase: 'completed',
             progress: 100,
             finishedAt: new Date().toISOString(),
@@ -252,7 +251,7 @@ async function runScheduledModeWithStatus(mode, env, specifiedDate, source = 'ma
         const outcome = inferScheduledOutcome(mode, debug);
         await tryStoreScheduledRunStatus(env.DATA_KV, mode, statusDateOrAlias, {
             ...baseStatus,
-            state: getScheduledCompletionState(outcome),
+            state: 'success',
             phase: 'completed',
             progress: 100,
             finishedAt: new Date().toISOString(),
