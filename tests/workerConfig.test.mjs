@@ -10,7 +10,7 @@ test('fixed settings preserve legacy string values including disabled features',
     assert.ok(Object.isFrozen(WORKER_CONFIG_DEFAULTS));
     assert.ok(Object.values(WORKER_CONFIG_DEFAULTS).every(value => typeof value === 'string'));
     assert.equal(WORKER_CONFIG_DEFAULTS.OPEN_TRANSLATE, 'true');
-    assert.equal(WORKER_CONFIG_DEFAULTS.DAILY_ANTHROPIC_MAX_TOKENS, '4096');
+    assert.equal(WORKER_CONFIG_DEFAULTS.DAILY_ANTHROPIC_MAX_TOKENS, '8192');
     assert.equal(WORKER_CONFIG_DEFAULTS.GEMINI_RETRY_MAX, '3');
     assert.equal(WORKER_CONFIG_DEFAULTS.GEMINI_RETRY_BASE_MS, '2000');
     assert.equal(WORKER_CONFIG_DEFAULTS.GEMINI_FALLBACK_ENABLED, 'false');
@@ -65,6 +65,7 @@ test('scheduled entry supplies original settings to all cron modes', async () =>
         assert.equal(received.ctx, ctx);
         assert.equal(received.resolved.DATA_KV, env.DATA_KV);
         assert.deepEqual(received.resolved, withWorkerConfigDefaults(env));
+        assert.equal(received.resolved.DAILY_ANTHROPIC_MAX_TOKENS, '8192');
         assert.equal(resolveScheduledModeFromEvent(event, received.resolved), resolveScheduledModeFromEvent(event, env));
     }
 });
@@ -96,6 +97,7 @@ test('HTTP handler receives defaults plus unchanged publishing targets and secre
     const response = await worker.fetch(new Request('https://worker.example/login'), env, {});
     assert.equal(response.status, 200);
     assert.deepEqual(received, withWorkerConfigDefaults(env));
+    assert.equal(received.DAILY_ANTHROPIC_MAX_TOKENS, '8192');
     assert.equal(received.ACCOUNT_OPPORTUNITY_GITHUB_REPO_NAME, 'merchant');
     assert.equal(received.GITHUB_REPO_NAME, 'daily');
 });
