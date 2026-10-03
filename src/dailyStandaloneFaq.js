@@ -34,6 +34,7 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
         scene.official ? `已读取的官方资料，仅用于解释工具/订阅权益：${scene.official.url}\n${scene.official.text}` : '没有补充官方权益资料，不写套餐权限、模型可用性或额度结论。',
         `已核实的店铺交付名称：${product.name}。名称只证明交付类型，不证明库存、稳定性或新闻功能可用。`,
         '采用 B 场景型写法：读者具体困扰 → 一句简短反差判断 → 两三句解决思路 → 一个自然的商品入口；不要把所有句子都写成风险告知。',
+        '第一句必须直接回答问句，而不是另起一个话题或只写口号。比如问是否还要配置，就先说明会员和工作方法配置不是一件事。每句尽量 20-35 字，不用分号把几句话串成长句。',
         `只输出 \`## **❓ 相关问题**\`、一个 \`###\` 问句，再写一个自然段。问句必须包含“${scene.topic} 会员”或“${scene.topic} 账号”，问具体使用困扰，不问“需要什么条件”或“是什么”。正文 120-180 字，最多 4 句，链接文字也计入字数；首句加粗，只突出 1-2 个短关键词。`,
         `原新闻链接必须自然出现一次：${scene.sourceUrl}。它只证明今天的线索，不把社交实测升级为官方承诺。${scene.official ? `需要说明订阅权益时可另引用一次 ${scene.official.url}。` : ''}`,
         `主站链接只写一次占位符 [爱窝啦·AI账号店的 ${scene.topic} ${scene.product && /续费|充值/.test(product.name) ? '续费' : '商品'}](AIVORA_PRODUCT_URL)，不要照搬商品全名；代码会填入核实过的 URL。已有账号才说续费，不要把续费当成品账号。`,
