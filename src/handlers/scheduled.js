@@ -24,12 +24,13 @@ import {
     inferOpportunityReplaySignals,
 } from "../opportunityScoring.js";
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
-import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext } from '../dailyShopFaq.js';
+import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext, loadDailyFaqSceneContext } from '../dailyShopFaq.js';
 import {
     buildStandaloneDailyFaqPromptInput,
     insertStandaloneDailyFaq,
     normalizeStandaloneDailyFaqSection,
     withDailyFaqDeadline,
+    getStandaloneDailyFaqSystemPrompt,
 } from '../dailyStandaloneFaq.js';
 import {
     buildDailyContentWithFrontMatter,
@@ -733,10 +734,6 @@ function getStandaloneDailyFunSystemPrompt() {
         "不要编造新闻，不要写兜底内容，不要解释生成过程。",
         "输出必须是 Markdown；如果写不出合格栏目，就输出空字符串。",
     ].join('\n');
-}
-
-function getStandaloneDailyFaqSystemPrompt() {
-    return '你是 AI 日报的事实核查编辑。只根据给定的一手来源写一条简短相关问题；无法从素材回答时输出空字符串，不编造价格、额度、可用性或商店承诺。';
 }
 
 function getDuplicateDailyTopSourceUrls(markdown) {
@@ -1651,16 +1648,15 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     }
 
     if (validation.ok) {
-        const faqInput = buildStandaloneDailyFaqPromptInput(
-            dateStr,
-            dailySummaryMarkdownContent,
-            faqSourceItems,
-            dailyShopContext
-        );
-        debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
-        if (faqInput) {
-            try {
-                const rawFaq = await withDailyFaqDeadline(() => generateContentWithTransportFallback(
+        try {
+            const faqDraft = await withDailyFaqDeadline(async () => {
+                const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, dailyShopContext);
+                const faqInput = buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
+                debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
+                debugInfo.dailyFaqSceneTopic = sceneContext.scene?.topic || '';
+                debugInfo.dailyFaqVerifiedProductUrl = sceneContext.scene?.product?.url || '';
+                if (!faqInput) return null;
+                const rawFaq = await generateContentWithTransportFallback(
                     {
                         ...env,
                         ANTHROPIC_MAX_TOKENS: '700',
@@ -1668,17 +1664,22 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     },
                     faqInput.prompt,
                     getStandaloneDailyFaqSystemPrompt()
-                ), 30000);
+                );
+                return { rawFaq, faqInput, sceneContext };
+            }, 30000);
+            if (faqDraft) {
+                const { rawFaq, faqInput, sceneContext } = faqDraft;
                 const faqSection = normalizeStandaloneDailyFaqSection(
                     removeMarkdownCodeBlock(rawFaq),
                     faqInput.sourceUrl,
                     faqInput.sourceText,
-                    faqInput.topic
+                    faqInput.topic,
+                    sceneContext
                 );
                 if (faqSection) {
                     const insertedFaq = insertStandaloneDailyFaq(dailySummaryMarkdownContent, faqSection);
                     const withFaq = faqInput.topic
-                        ? finalizeDailyShopFaq(insertedFaq, dailyShopContext)
+                        ? finalizeDailyShopFaq(insertedFaq, sceneContext)
                         : insertedFaq;
                     const faqValidation = validateGeneratedDaily(outputOfCall3, withFaq);
                     if (faqValidation.ok) {
@@ -1691,10 +1692,10 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 } else if (options.dryRun) {
                     debugInfo.dailyFaqRejectedDraft = String(rawFaq || '').slice(0, 1000);
                 }
-            } catch (error) {
-                console.warn(`[Scheduled][Daily] Standalone FAQ generation failed: ${error.message}`);
-                debugInfo.dailyFaqSeparateGenerationError = error.message;
             }
+        } catch (error) {
+            console.warn(`[Scheduled][Daily] Standalone FAQ generation failed: ${error.message}`);
+            debugInfo.dailyFaqSeparateGenerationError = error.message;
         }
     }
 

@@ -10,6 +10,10 @@ on:
         description: "Refresh today's cached source categories before preview"
         type: boolean
         default: false
+      faq_only:
+        description: "Preview only FAQ against the published edition; never publish or regenerate news"
+        type: boolean
+        default: false
 
 jobs:
   preview:
@@ -21,8 +25,25 @@ jobs:
       TARGET_DATE: ${{ inputs.date }}
       TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
     steps:
+      - uses: actions/checkout@v6
+        if: ${{ inputs.faq_only }}
+      - uses: actions/setup-node@v4
+        if: ${{ inputs.faq_only }}
+        with:
+          node-version: 22
+      - name: Preview only the optional FAQ
+        if: ${{ inputs.faq_only }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
+        run: node scripts/preview-daily-faq.mjs
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.faq_only }}
+        with:
+          name: faq-only-preview
+          path: artifacts/faq-only
+          retention-days: 7
       - name: Refresh source categories
-        if: ${{ inputs.refresh_sources }}
+        if: ${{ inputs.refresh_sources && !inputs.faq_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -43,6 +64,7 @@ jobs:
           PY
           done
       - name: Generate a dry-run preview
+        if: ${{ !inputs.faq_only }}
         shell: bash
         run: |
           set -euo pipefail
