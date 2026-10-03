@@ -5,6 +5,68 @@ const OFFICIAL_HOSTS = new Set([
   'help.openai.com', 'support.claude.com', 'code.claude.com',
 ]);
 const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'geminiapp']);
+const FAQ_HISTORY_KEY = 'daily-faq-published-history-v1';
+
+function faqQuestionKey(question) {
+  return String(question || '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
+}
+
+export function getDailyFaqTheme(text) {
+  if (/skill|技能|工作流|(?:重复|反复|重新).*交代|反复配置/i.test(text)) return 'workflow';
+  if (/额度|次数|用完|不够用|限额/.test(text)) return 'quota';
+  if (/续费|到期|充值/.test(text)) return 'renewal';
+  if (/登录|换号|历史|数据|迁移/.test(text)) return 'account-use';
+  if (/套餐|选.*会员|怎么选|如何选|值得买/.test(text)) return 'plan-choice';
+  return '';
+}
+
+export function isRepeatedDailyFaq(question, topic, history = []) {
+  const key = faqQuestionKey(question);
+  const theme = getDailyFaqTheme(question);
+  return Boolean(key) && history.some((item) => faqQuestionKey(item.question) === key ||
+    (theme && item.topic?.toLowerCase() === String(topic).toLowerCase() && item.theme === theme));
+}
+
+function recentFaqHistory(records, dateStr, includeToday = false) {
+  const today = Date.parse(`${dateStr}T00:00:00Z`);
+  return (Array.isArray(records) ? records : []).filter((item) => {
+    const age = (today - Date.parse(`${item.date}T00:00:00Z`)) / 86400000;
+    return item.question && age >= (includeToday ? 0 : 1) && age <= 7;
+  }).slice(-8);
+}
+
+export async function loadRecentDailyFaqs(kv, dateStr) {
+  if (!kv) return [];
+  try {
+    const stored = await withDailyFaqDeadline(() => kv.get(FAQ_HISTORY_KEY), 1000);
+    return recentFaqHistory(stored ? JSON.parse(stored) : [], dateStr);
+  } catch (error) {
+    console.warn(`[Daily FAQ] History read skipped: ${error.message}`);
+    return [];
+  }
+}
+
+export async function rememberPublishedDailyFaq(kv, dateStr, markdown) {
+  if (!kv) return;
+  const section = String(markdown).match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im)?.[0];
+  const question = section?.match(/^###\s+([^\r\n]+)/m)?.[1];
+  if (!question) return;
+  try {
+    await withDailyFaqDeadline(async () => {
+      const stored = await kv.get(FAQ_HISTORY_KEY);
+      const records = recentFaqHistory(stored ? JSON.parse(stored) : [], dateStr, true)
+        .filter((item) => item.date !== dateStr);
+      const topic = question.match(/Claude|ChatGPT|Cursor|Gemini|Codex|MiniMax|Grok|Perplexity/i)?.[0] || '';
+      records.push({ date: dateStr, question, topic, theme: getDailyFaqTheme(question),
+        sourceUrls: [...section.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)]
+          .map((match) => match[1]).filter((url) => !/aivora\.cn/i.test(url)),
+      });
+      await kv.put(FAQ_HISTORY_KEY, JSON.stringify(records), { expirationTtl: 86400 * 10 });
+    }, 2000);
+  } catch (error) {
+    console.warn(`[Daily FAQ] History write skipped: ${error.message}`);
+  }
+}
 
 function getSourceUrl(item) {
   return String(item || '').match(/^Url:\s*(https?:\/\/\S+)/im)?.[1] || '';
@@ -30,6 +92,7 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
       sourceUrl: scene.sourceUrl, sourceText: scene.sourceText, topic: scene.topic, scene,
       prompt: [
         `日期：${dateStr}。只重写日报末尾的一个“相关问题”，不重写新闻正文。`,
+        `每天按当天新闻换具体问题，不只是换标题。最近已发布的问题（只用于避重，不作事实来源）：\n${(context.recentFaqs || []).map((item) => `${item.date}：${item.question}`).join('\n') || '暂无记录'}\n避开同一工具已经写过的问题场景。示范只学语言，不要每天都套“会员加 Skill”。`,
         `今天已经发布的线索：\n${scene.sourceText.slice(0, 1600)}`,
         scene.official ? `已读取的官方资料，仅用于解释工具/订阅权益：${scene.official.url}\n${scene.official.text}` : '没有补充官方权益资料，不写套餐权限、模型可用性或额度结论。',
         `已核实的店铺交付名称：${product.name}。名称只证明交付类型，不证明库存、稳定性或新闻功能可用。`,
@@ -102,6 +165,7 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
   if (sceneContext.scene) {
     const scene = sceneContext.scene;
     const question = text.match(/^###\s+([^\r\n]+)/m)?.[1] || '';
+    if (isRepeatedDailyFaq(question, topic, sceneContext.recentFaqs)) return '';
     const answer = text.split(/^### [^\n]+$/m)[1]?.trim() || '';
     const visible = answer.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\*\*/g, '');
     const allowed = new Set([sourceUrl, scene.official?.url].filter(Boolean));

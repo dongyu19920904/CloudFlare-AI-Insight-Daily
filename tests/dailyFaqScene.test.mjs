@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
-  insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt } from '../src/dailyStandaloneFaq.js';
+  insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt,
+  loadRecentDailyFaqs, rememberPublishedDailyFaq, isRepeatedDailyFaq } from '../src/dailyStandaloneFaq.js';
 import { finalizeDailyShopFaq } from '../src/dailyShopFaq.js';
 
 const sourceUrl = 'https://github.com/example/skills';
@@ -64,7 +65,7 @@ function runOptional(overrides = {}) {
   })`, {
     console: {warn() {}}, buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
     insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, finalizeDailyShopFaq,
-    removeMarkdownCodeBlock: (text) => text, loadDailyFaqSceneContext: async () => context,
+    removeMarkdownCodeBlock: (text) => text, loadRecentDailyFaqs: async () => [], loadDailyFaqSceneContext: async () => context,
     generateContentWithTransportFallback: async () => raw,
     validateGeneratedDaily: () => ({ok:true}), ...overrides,
   });
@@ -79,6 +80,29 @@ test('optional fetch, model, invalid-output and deadline failures leave the read
     {generateContentWithTransportFallback: () => new Promise(() => {}),
       withDailyFaqDeadline: (task) => withDailyFaqDeadline(task, 5)},
   ]) assert.equal((await runOptional(overrides)(ready)).markdown, ready);
+});
+
+test('published FAQ history excludes today, survives month rollover and treats failures as optional', async () => {
+  let stored;
+  const kv = {get: async () => stored, put: async (_key, value) => {stored = value;}};
+  await rememberPublishedDailyFaq(kv, '2026-09-30', article + oldFaq);
+  await rememberPublishedDailyFaq(kv, '2026-10-03', article + raw);
+  assert.equal((await loadRecentDailyFaqs(kv, '2026-10-03')).length, 1);
+  const history = await loadRecentDailyFaqs(kv, '2026-10-04');
+  assert.equal(history.length, 2);
+  assert.equal(history[1].theme, 'workflow');
+  assert.equal(isRepeatedDailyFaq('Claude 会员如何用 Skill 少交代几遍？', 'Claude', history), true);
+  assert.equal(isRepeatedDailyFaq('Claude 会员到期了怎么续费？', 'Claude', history), false);
+  assert.equal((await loadRecentDailyFaqs(kv, '2026-10-12')).length, 0);
+  assert.deepEqual(await loadRecentDailyFaqs({get: async () => {throw new Error('offline');}}, '2026-10-04'), []);
+  await assert.doesNotReject(rememberPublishedDailyFaq({get: async () => {throw new Error('offline');}}, '2026-10-04', article + raw));
+});
+
+test('recent FAQ questions guide generation and the same problem cannot pass by changing its title', () => {
+  const recentFaqs = [{date:'2026-10-02', question:'Claude 会员如何装 Skill？', topic:'Claude', theme:'workflow'}];
+  const sceneContext = {...context, recentFaqs};
+  assert.match(buildStandaloneDailyFaqPromptInput('2026-10-03', article, [sourceText], sceneContext).prompt, /2026-10-02：Claude 会员如何装 Skill/);
+  assert.equal(normalizeStandaloneDailyFaqSection(raw, sourceUrl, sourceText, 'Claude', sceneContext), '');
 });
 
 test('successful optional runtime changes only FAQ and a late timed-out result cannot mutate publication', async () => {

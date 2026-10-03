@@ -31,6 +31,8 @@ import {
     normalizeStandaloneDailyFaqSection,
     withDailyFaqDeadline,
     getStandaloneDailyFaqSystemPrompt,
+    loadRecentDailyFaqs,
+    rememberPublishedDailyFaq,
 } from '../dailyStandaloneFaq.js';
 import {
     buildDailyContentWithFrontMatter,
@@ -1650,7 +1652,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     if (validation.ok) {
         try {
             const faqDraft = await withDailyFaqDeadline(async () => {
-                const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, dailyShopContext);
+                const recentFaqs = await loadRecentDailyFaqs(env.DATA_KV, dateStr);
+                const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, { ...dailyShopContext, recentFaqs });
                 const faqInput = buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
                 debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
                 debugInfo.dailyFaqSceneTopic = sceneContext.scene?.topic || '';
@@ -3041,6 +3044,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         console.warn(`[Scheduled][Daily] Telegram image archive skipped: ${error.message}`);
     }
     await commitDailyOutputs(env, dateStr, publicationMarkdown);
+    await rememberPublishedDailyFaq(env.DATA_KV, dateStr, publicationMarkdown);
     await storePublishedDailyGithubTopProjects(env, dateStr, publicationMarkdown, debugInfo);
     debugInfo.dailyPublished = true;
     await reportScheduledProgress(options, 'daily', 'published', 98);

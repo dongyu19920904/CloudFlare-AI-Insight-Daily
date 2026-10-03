@@ -182,6 +182,19 @@ test('failed SKU and official checks keep only the verified catalog, not fabrica
   assert.equal(result.catalogUrl, catalogUrl);
 });
 
+test('FAQ rotates to another actual news scene instead of reusing yesterday workflow', async () => {
+  const skillUrl = 'https://github.com/example/skills';
+  const quotaUrl = 'https://example.org/claude-quota';
+  const result = await loadDailyFaqSceneContext(`[Claude Skill](${skillUrl})\n[Claude 额度](${quotaUrl})`, [
+    `Project Name: skills\nUrl: ${skillUrl}\nDescription: Claude Code 工作流技能`,
+    `News Title: Claude 使用额度\nUrl: ${quotaUrl}\nContent Summary: Claude 用户关注额度的消耗`,
+  ], {catalogUrl, topics:['Claude'], recentFaqs:[{
+    date:'2026-10-02', topic:'Claude', theme:'workflow', question:'Claude Skill 如何用？', sourceUrls:[skillUrl],
+  }]}, {fetchImpl: async () => {throw new Error('offline');}});
+  assert.equal(result.scene.sourceUrl, quotaUrl);
+  assert.equal(result.scene.topic, 'Claude');
+});
+
 test('FAQ link sanitation leaves news, images and footer byte-identical and allows only one verified URL', () => {
   const before = '## 新闻\r\n\r\n[Claude 工具](https://example.org/a)\r\n\r\n![配图](https://example.org/a.png)\r\n\r\n';
   const after = '## 页脚\r\n\r\n保留空白。\r\n';

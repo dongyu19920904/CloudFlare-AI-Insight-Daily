@@ -1,6 +1,7 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls } from './opportunityAivoraLinkPolicy.js';
 import { stripHtml } from './helpers.js';
+import { getDailyFaqTheme } from './dailyStandaloneFaq.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
 const CATALOG_URL = 'https://www.aivora.cn/products';
@@ -157,7 +158,12 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
         score: (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) + (/Claude Code/i.test(visible) ? 5 : 0),
       }));
   });
-  const chosen = candidates.sort((a, b) => b.score - a.score)[0];
+  const recent = context.recentFaqs || [];
+  const chosen = candidates.filter((candidate) => !recent.some((item) =>
+    item.sourceUrls?.includes(candidate.sourceUrl) ||
+    (item.topic?.toLowerCase() === candidate.topic.toLowerCase() && item.theme &&
+      item.theme === getDailyFaqTheme(candidate.sourceText))))
+    .sort((a, b) => b.score - a.score)[0];
   if (!chosen) return context;
   const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);
   const product = (context.products || [])

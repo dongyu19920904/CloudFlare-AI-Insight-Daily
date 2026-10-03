@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { loadDailyShopContext, loadDailyFaqSceneContext, finalizeDailyShopFaq } from '../src/dailyShopFaq.js';
 import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
-  insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt } from '../src/dailyStandaloneFaq.js';
+  insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, loadRecentDailyFaqs } from '../src/dailyStandaloneFaq.js';
 import { callChatAPI, callChatAPIStream } from '../src/chatapi.js';
 import { validateDailyPublication } from '../src/publishValidation.js';
 import { removeMarkdownCodeBlock } from '../src/helpers.js';
@@ -68,6 +68,7 @@ const run = vm.runInNewContext(`(async function(markdown, env, dateStr, faqSourc
     return normalizeStandaloneDailyFaqSection(...args);
   },
   withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, removeMarkdownCodeBlock,
+  loadRecentDailyFaqs,
   insertStandaloneDailyFaq, finalizeDailyShopFaq, validateGeneratedDaily,
   callChatAPIStream: async function* (...args) {
     modelCalls += 1;
