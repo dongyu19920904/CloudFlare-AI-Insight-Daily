@@ -10,6 +10,10 @@ on:
         description: "Refresh today's cached source categories before preview"
         type: boolean
         default: false
+      local_code:
+        description: "Isolated recovery test only; do not deploy this branch"
+        type: boolean
+        default: false
 
 jobs:
   preview:
@@ -21,8 +25,26 @@ jobs:
       TARGET_DATE: ${{ inputs.date }}
       TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
     steps:
+      - uses: actions/checkout@v6
+        if: ${{ inputs.local_code }}
+      - uses: actions/setup-node@v4
+        if: ${{ inputs.local_code }}
+        with:
+          node-version: 22
+      - name: Test restored runtime without publishing
+        if: ${{ inputs.local_code }}
+        env:
+          AI_PROVIDER_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/dry-run-backfill.mjs "$TARGET_DATE" "$RUNNER_TEMP/restored-preview"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.local_code }}
+        with:
+          name: restored-preview
+          path: ${{ runner.temp }}/restored-preview
+          retention-days: 7
       - name: Refresh source categories
-        if: ${{ inputs.refresh_sources }}
+        if: ${{ inputs.refresh_sources && !inputs.local_code }}
         shell: bash
         run: |
           set -euo pipefail
@@ -43,6 +65,7 @@ jobs:
           PY
           done
       - name: Generate a dry-run preview
+        if: ${{ !inputs.local_code }}
         shell: bash
         run: |
           set -euo pipefail
