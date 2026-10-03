@@ -82,10 +82,10 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     const topics = candidateTopics
       .filter((topic) => productPaths.some((path) => topic.slug.test(path)))
       .map((topic) => topic.name);
-    return topics.length > 0 ? {
-      ...empty, catalogUrl: CATALOG_URL, topics,
+    return {
+      ...(topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
       products: catalogProducts(catalogHtml, urls),
-    } : empty;
+    };
   } catch (error) {
     return { ...empty, error: error?.message || String(error) };
   }
@@ -138,6 +138,14 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
 
 // Enrich only the optional FAQ, after the news body has passed publication checks.
 export async function loadDailyFaqSceneContext(markdown, selectedItems, context = {}, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+  const namedTopics = TOPICS.filter((topic) =>
+    context.candidateTopics?.includes(topic.name) &&
+    (context.products || []).some(({ name }) => topic.pattern.test(name)))
+    .map((topic) => topic.name);
+  if (namedTopics.length) context = {
+    ...context, catalogUrl: context.catalogUrl || CATALOG_URL,
+    topics: [...new Set([...(context.topics || []), ...namedTopics])],
+  };
   if (!context.catalogUrl || !context.topics?.length) return context;
   const candidates = (selectedItems || []).flatMap((item) => {
     const text = String(item);

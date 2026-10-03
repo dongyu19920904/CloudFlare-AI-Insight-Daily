@@ -150,6 +150,28 @@ test('FAQ enrichment verifies one named SKU and one official page, excludes quot
   assert.equal(result.scene.sourceUrl, source);
 });
 
+test('Chinese-only SKU names support the optional FAQ while main prompt context stays unchanged', async () => {
+  const source = 'https://github.com/example/skills';
+  const productUrl = `${catalogUrl}/chong-zhi-xu-fei-yue-ka-2`;
+  const items = [`Project Name: skills\nUrl: ${source}\nDescription: Claude Code 技能库`];
+  const context = await loadDailyShopContext(items, { fetchImpl: async (url) => ({ ok: true,
+    text: async () => url.endsWith('sitemap.xml')
+      ? `<urlset><url><loc>${catalogUrl}</loc></url><url><loc>${productUrl}</loc></url></urlset>`
+      : `<link rel="canonical" href="${catalogUrl}"><a href="${productUrl}">Claude Pro 充值续费</a>`,
+  }) });
+  assert.equal(formatDailyShopPromptContext(context), '');
+  assert.deepEqual(context.topics, []);
+  const enriched = await loadDailyFaqSceneContext(`[Claude Code](${source})`, items, context, {
+    fetchImpl: async (url) => ({ ok: true, text: async () => url === productUrl
+      ? `<link rel="canonical" href="${productUrl}"><h1>Claude Pro 充值续费</h1>`
+      : 'With Pro and Max plans, you have access to Claude Code.' }),
+  });
+  assert.equal(enriched.scene.product.url, productUrl);
+  assert.equal(enriched.catalogUrl, catalogUrl);
+  assert.deepEqual(context.topics, []);
+  assert.equal(formatDailyShopPromptContext(context), '');
+});
+
 test('failed SKU and official checks keep only the verified catalog, not fabricated rights', async () => {
   const url = 'https://x.com/example/status/123';
   const result = await loadDailyFaqSceneContext(`[Claude](${url})`, [`News Title: Claude\nUrl: ${url}`], {
