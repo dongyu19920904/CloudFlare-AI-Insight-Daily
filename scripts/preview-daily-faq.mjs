@@ -54,7 +54,7 @@ const run = vm.runInNewContext(`(async function(markdown, env, dateStr, faqSourc
   ${scheduled.slice(start, end)}
   return {markdown:dailySummaryMarkdownContent, debug:debugInfo, validation};
 })`, {
-  console, callChatAPI, callChatAPIStream,
+  console, callChatAPI,
   loadDailyFaqSceneContext: async (...args) => {
     sceneEvidence = await loadDailyFaqSceneContext(...args);
     return sceneEvidence;
