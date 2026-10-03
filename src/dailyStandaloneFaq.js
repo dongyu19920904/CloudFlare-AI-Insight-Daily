@@ -1,11 +1,9 @@
-import { stripHtml } from './helpers.js';
-
 const OFFICIAL_HOSTS = new Set([
   'openai.com', 'developers.openai.com', 'anthropic.com', 'docs.anthropic.com',
   'blog.google', 'ai.google.dev', 'deepmind.google', 'cursor.com',
   'microsoft.com', 'learn.microsoft.com', 'minimax.io', 'x.ai',
 ]);
-const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'geminiapp', 'googleai']);
+const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'geminiapp']);
 
 function getSourceUrl(item) {
   return String(item || '').match(/^Url:\s*(https?:\/\/\S+)/im)?.[1] || '';
@@ -23,67 +21,16 @@ function isPrimarySource(item, url) {
   }
 }
 
-function boundedFaqSource(text) {
-  if (text.length <= 6000) return text;
-  return `${text.slice(0, 4500)}\n[来源中间已省略；不能据此断言官方未说明]\n${text.slice(-1400)}`;
-}
-
-export function expandDailyFaqSourceItems(selectedItems, unifiedData = {}) {
-  const originals = new Map(Object.values(unifiedData || {}).flat()
-    .filter((item) => item?.url && item.details?.content_html)
-    .map((item) => [item.url, item]));
-  return (selectedItems || []).map((item) => {
-    const url = getSourceUrl(item);
-    const original = originals.get(url);
-    if (!original || !isPrimarySource(item, url)) return item;
-    const content = stripHtml(String(original.details.content_html)).replace(/\s+/g, ' ').trim();
-    if (!content) return item;
-    return boundedFaqSource(`Title: ${original.title || ''}\nUrl: ${url}\nFAQ 原始来源正文：${content}`);
-  });
-}
-
-export function selectDailyFaqPrimarySource(items, topics, markdown = '') {
-  return (items || [])
-    .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
-    .filter(({ item, url }) => url && (!markdown || markdown.includes(url)) && isPrimarySource(item, url))
-    .map((candidate) => ({
-      ...candidate,
-      topic: (topics || []).find((topic) => new RegExp(topic, 'i').test(candidate.item)),
-    }))
-    .find((candidate) => candidate.topic) || null;
-}
-
-export async function loadDailyFaqPrimarySource(items, topics, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
-  const source = selectDailyFaqPrimarySource(items, topics);
-  if (!source || new URL(source.url).hostname === 'x.com') return items;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(source.url, { signal: controller.signal, redirect: 'error' });
-    if (!response.ok) throw new Error(`Official FAQ source returned ${response.status}`);
-    const html = await response.text();
-    if (html.length > 1000000) throw new Error('Official FAQ source is too large');
-    const body = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1]
-      || html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1];
-    if (!body) throw new Error('Official FAQ article body is missing');
-    const text = stripHtml(body.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ''))
-      .replace(/\s+/g, ' ').trim();
-    if (text.length < 100 || !new RegExp(source.topic, 'i').test(text)) throw new Error('Official FAQ body does not match the topic');
-    const enriched = boundedFaqSource(`Title: ${source.topic}\nUrl: ${source.url}\n已读取官方正文：${text}`);
-    return items.map((item) => item === source.item ? enriched : item);
-  } catch {
-    // A feed's discussion metadata is not the article at its linked official URL.
-    return /Comments URL:|# Comments:/i.test(source.item) ? items.filter((item) => item !== source.item) : items;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedItems, context = {}) {
   if (/^##[^\r\n]*(?:相关问题|FAQ)/im.test(markdown)) return null;
 
-  const chosen = context.catalogUrl && context.topics?.length
-    ? selectDailyFaqPrimarySource(selectedItems, context.topics, markdown) : null;
+  const candidates = (selectedItems || [])
+    .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
+    .filter(({ item, url }) => url && markdown.includes(url) && isPrimarySource(item, url));
+  const chosen = context.catalogUrl && context.topics?.length ? candidates.map((candidate) => ({
+    ...candidate,
+    topic: context.topics.find((topic) => new RegExp(topic, 'i').test(candidate.item)),
+  })).find((candidate) => candidate.topic) : null;
   const project = !chosen ? (selectedItems || [])
     .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
     .filter(({ item, url }) => /^Project Name:/m.test(item) &&
@@ -92,7 +39,7 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
   const source = chosen || project;
   if (!source) return null;
 
-  const sourceText = chosen ? boundedFaqSource(source.item) : source.item.slice(0, 1400);
+  const sourceText = source.item.slice(0, 1400);
   if (!chosen) return {
     sourceUrl: source.url,
     sourceText,
@@ -116,10 +63,8 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
       `唯一可引用的原始链接：${source.url}`,
       sourceText,
       '只输出 `## **❓ 相关问题**`、一个 `###` 问句和 2-3 句直接答案；答案中自然链接一次上述原始来源。',
-      `问句必须出现“${chosen.topic}”及“购买/选购/订阅/账号/额度/套餐/付费”之一。首句直接回答；若来源写明套餐、试用人群或开放顺序，准确说出，不要统一写成“官方未说明”。`,
-      '明确区分“当前可用”“受邀试用”“未来开放”；计划从某套餐开始开放，不等于今天买它就能用。只有输入确实没有细节时，才说“当前素材无法确认”，不要断言完整公告未提及。',
-      '2-3 个短句，尽量每句不超过 45 字；具体说谁现在能用、买家今天该怎么判断。自然嵌入证据链接，不重复新闻，不用“建议向官方确认”代替已知答案。',
-      '来源没有价格或额度，并不妨碍回答有证据的功能边界问题；不主动添加价格、额度或购买承诺。',
+      `问句必须出现“${chosen.topic}”及“购买/选购/订阅/账号/额度/套餐/付费”之一，先回答来源能证明的事实，再说明不能推断所有套餐都支持新闻功能。`,
+      '购买前问题可以只问官方演示了什么、哪些套餐差异尚未确认；来源没有价格或额度，并不妨碍回答这个有证据的功能边界问题。不要反过来补写价格、额度或购买承诺。',
       '不编造价格、额度、地区、购买承诺或未提供的功能；不写主站链接，后处理会决定是否加入。没有可直接回答的问题就输出空字符串。',
     ].join('\n\n'),
   };

@@ -1,6 +1,5 @@
 ﻿import { getISODate, formatDateToChinese, removeMarkdownCodeBlock, stripHtml, convertPlaceholdersToMarkdownImages, setFetchDate, replaceIncorrectDomainLinks } from '../helpers.js';
 import { normalizeMarkdownImageSyntax, normalizeMarkdownMediaUrl } from '../helpers.js';
-import { getDailyPublicationPolicy } from '../dailyPublicationWindow.js';
 import { fetchAllData, dataSources } from '../dataFetchers.js';
 import { storeInKV, getFromKV } from '../kv.js';
 import { callChatAPI, callChatAPIStream } from '../chatapi.js';
@@ -28,7 +27,6 @@ import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext } from '../dailyShopFaq.js';
 import {
     buildStandaloneDailyFaqPromptInput,
-    expandDailyFaqSourceItems,
     insertStandaloneDailyFaq,
     normalizeStandaloneDailyFaqSection,
     withDailyFaqDeadline,
@@ -1440,12 +1438,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         String(dailyBodyGenerationEnv.ANTHROPIC_MAX_TOKENS || ''),
         10
     ) || null;
-    let faqSourceItems = expandDailyFaqSourceItems(
-        [...selectedContentItems, ...(options.dailyFunContentItems || [])],
-        options.dailyFaqSourceItems
-    );
+    const faqSourceItems = [...selectedContentItems, ...(options.dailyFunContentItems || [])];
     const dailyShopContext = await loadDailyShopContext(faqSourceItems);
-    faqSourceItems = dailyShopContext.sourceItems;
     debugInfo.dailyShopCatalogVerified = Boolean(dailyShopContext.catalogUrl);
     debugInfo.dailyShopRelevantTopics = dailyShopContext.topics;
     debugInfo.dailyShopCandidateTopics = dailyShopContext.candidateTopics;
@@ -2738,8 +2732,6 @@ async function handleScheduledDailyBackup(event, env, ctx, specifiedDate = null,
         return buildSkippedScheduledResult(dateStr, 'daily-backup', 'daily-output-healthy', health);
     }
 
-    // Refresh at 10:00 only when the 09:00 edition has not been published.
-    await prefetchDailySourceCategories(env, dateStr);
     return handleScheduledDaily(event, env, ctx, dateStr, options);
 }
 
@@ -2860,19 +2852,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         selectedContentItems,
         dailyFunContentItems
     );
-    const publicationPolicy = getDailyPublicationPolicy({
-        scheduledTime: event?.scheduledTime,
-        topEligibleItems: dailyTopEligiblePromptItems,
-    });
-    debugInfo.dailyLatePublicationAttempt = publicationPolicy.lateAttempt;
-    if (publicationPolicy.waitForTen) {
-        debugInfo.skipped = true;
-        debugInfo.skipReason = 'insufficient-material-wait-until-10';
-        await reportScheduledProgress(options, 'daily', 'waiting-until-10', 100);
-        return debugInfo;
-    }
-    const minimumTopItems = publicationPolicy.minimumTopItems;
-    const hardMinimumTopItems = minimumTopItems;
+    const minimumTopItems = DAILY_TOP_TARGET;
+    const hardMinimumTopItems = DAILY_TOP_TARGET;
     const minimumOpenSourceItems = Math.min(
         dailyPromptAllocation.reservedProjectItems,
         DAILY_OPEN_SOURCE_MIN
@@ -2891,7 +2872,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     const minimumTopicSections = Math.min(potentialTopicSections, 3);
     debugInfo.dailyPromptAllocation = dailyPromptAllocation;
     debugInfo.dailyTopEligiblePromptItems = dailyTopEligiblePromptItems;
-    debugInfo.dailyTopTargetItems = DAILY_TOP_TARGET;
+    debugInfo.dailyTopTargetItems = minimumTopItems;
     debugInfo.dailyMinimumTopItems = hardMinimumTopItems;
     debugInfo.dailyOpenSourceTargetItems = minimumOpenSourceItems;
     debugInfo.dailySocialTargetItems = minimumSocialItems;
@@ -2919,7 +2900,6 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
             minimumIndustryItems,
             minimumTopicSections,
             dailyFunContentItems,
-            dailyFaqSourceItems: allUnifiedData,
             allowedTopGithubProjectUrls,
             dryRun,
         }
@@ -2974,7 +2954,6 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
                         minimumIndustryItems,
                         minimumTopicSections,
                         dailyFunContentItems: alternate.dailyFunContentItems,
-                        dailyFaqSourceItems: allUnifiedData,
                         allowedTopGithubProjectUrls: alternate.allowedTopGithubProjectUrls,
                         sourceReselection: true,
                         dryRun,

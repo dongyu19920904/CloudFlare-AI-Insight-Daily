@@ -1,6 +1,5 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls, sanitizeOpportunityAivoraLinks } from './opportunityAivoraLinkPolicy.js';
-import { loadDailyFaqPrimarySource, selectDailyFaqPrimarySource } from './dailyStandaloneFaq.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
 const CATALOG_URL = 'https://www.aivora.cn/products';
@@ -39,7 +38,7 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
   const visibleSourceText = sourceText.replace(/^Url:.*$/gmi, '');
   const candidateTopics = TOPICS.filter((topic) => topic.pattern.test(visibleSourceText));
   const empty = {
-    catalogUrl: '', topics: [], sourceText, sourceItems: selectedItems,
+    catalogUrl: '', topics: [], sourceText,
     candidateTopics: candidateTopics.map((topic) => topic.name),
   };
   if (candidateTopics.length === 0) return empty;
@@ -58,9 +57,7 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     const topics = candidateTopics
       .filter((topic) => productPaths.some((path) => topic.slug.test(path)))
       .map((topic) => topic.name);
-    if (topics.length === 0) return empty;
-    const sourceItems = await loadDailyFaqPrimarySource(selectedItems, topics, { fetchImpl, timeoutMs });
-    return { ...empty, catalogUrl: CATALOG_URL, topics, sourceItems, sourceText: sourceItems.join('\n') };
+    return topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty;
   } catch (error) {
     return { ...empty, error: error?.message || String(error) };
   }
@@ -68,14 +65,12 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
 
 export function formatDailyShopPromptContext(context) {
   if (!context?.catalogUrl || !context.topics?.length) return '';
-  const source = selectDailyFaqPrimarySource(context.sourceItems, context.topics);
   return [
     '【已核实的主站商品目录，仅供相关问题选题】',
     `今天的资讯与当前 sitemap 中的这些公开商品类别有交集：${context.topics.join('、')}。`,
     `已核实的商品目录：${context.catalogUrl}。只允许引用这个目录 URL，不得猜测具体商品 URL。`,
     '目录只证明店内公开展示这些商品类别，不证明库存或新闻中的新功能属于任一套餐，也不证明官方价格、额度、地区或政策。',
     '如果正文中有同一工具的新闻，且输入里的原始来源能回答真实买家问题，优先写 1 条相关问题；先给有来源的直接答案，再自然提供一次目录入口。否则省略 FAQ 和主站链接。',
-    source ? `【FAQ 专用官方原文；只有正文采用同一来源时才用于问答】\n${source.item}\n先核对末尾的开放范围。区分当前可用、受邀试用与未来开放；来源已写明的套餐或开放顺序必须准确回答，不得泛化为“官方未说明”。` : '',
   ].join('\n');
 }
 

@@ -2,7 +2,11 @@ name: Ensure Daily Journal
 
 on:
   schedule:
-    - cron: "17 2 * * *"
+    - cron: "31 0 * * *"
+    - cron: "47 0 * * *"
+    - cron: "59 0 * * *"
+    - cron: "19 1 * * *"
+    - cron: "47 1 * * *"
     - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
@@ -60,9 +64,9 @@ jobs:
           fi
 
           SHANGHAI_TIME=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$SHANGHAI_TIME" -lt 1015 ]; then
+          if [ "$SHANGHAI_TIME" -lt 0915 ]; then
             echo "open=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping early recovery at ${SHANGHAI_TIME}; the Worker primary and 10:00 retry keep priority until 10:15 Asia/Shanghai."
+            echo "Skipping early recovery at ${SHANGHAI_TIME}; the Worker primary and backup runs keep priority until 09:15 Asia/Shanghai."
           else
             echo "open=true" >> "$GITHUB_OUTPUT"
             echo "Recovery window is open at ${SHANGHAI_TIME} Asia/Shanghai."
@@ -70,7 +74,7 @@ jobs:
 
       - name: Skip before Worker recovery window
         if: steps.recovery_window.outputs.open != 'true'
-        run: echo "No Worker request was made before the 10:15 Asia/Shanghai recovery window."
+        run: echo "No Worker request was made before the 09:15 Asia/Shanghai recovery window."
 
       - name: Check current daily page and home pointer
         id: check
@@ -391,7 +395,7 @@ jobs:
           MODE=daily \
           TARGET_DATE="${TARGET_DATE}" \
           PAGE_RESPONSE_PATH=publication-page.json \
-          MINIMUM_TOP_ITEMS=1 \
+          MINIMUM_TOP_ITEMS=3 \
           node .github/scripts/validate-publication-content.mjs
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
