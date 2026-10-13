@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { handleScheduledDaily } from '../artifacts/scheduled-dry-run.mjs';
+import { withWorkerConfigDefaults } from '../src/workerConfig.js';
 
 const date = process.env.TARGET_DATE;
 if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('TARGET_DATE required');
@@ -9,7 +10,7 @@ const originalFetch = globalThis.fetch;
 const response = await originalFetch(`https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${date}`, { signal: AbortSignal.timeout(45000) });
 if (!response.ok) throw new Error(`Source cache: HTTP ${response.status}`);
 const data = await response.json();
-const vars = JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8'));
+const vars = withWorkerConfigDefaults(JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8')));
 let modelCalls = 0;
 globalThis.fetch = async (url, options = {}) => {
   const method = String(options.method || 'GET').toUpperCase();
