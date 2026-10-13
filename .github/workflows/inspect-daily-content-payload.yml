@@ -37,8 +37,27 @@ jobs:
                   if 'muse-wonder' in str(item.get('url','')):
                       print('META_SOURCE_ITEM', json.dumps(item, ensure_ascii=False))
           PY
+      - name: Verify published edition without writing
+        run: |
+          python - <<'PY'
+          import json,re,urllib.request
+          date='${{ inputs.date }}'
+          if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',date):
+              raise SystemExit('Invalid date')
+          rows=[]
+          for url in ['https://news.aivora.cn/',f'https://news.aivora.cn/{date[:7]}/{date}/']:
+              with urllib.request.urlopen(url,timeout=25) as response:
+                  html=response.read().decode('utf-8')
+                  rows.append({'url':url,'status':response.status,'figures':len(re.findall(r'<figure\b[^>]*ai-daily-figure',html)),
+                    'metaCorrected':'面向个人与专业智能体' in html,'wrongMusic':'Meta 的音乐 AI' in html})
+          with open('public-check.json','w') as f:
+              json.dump(rows,f,ensure_ascii=False,indent=2)
+          print(json.dumps(rows,ensure_ascii=False))
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: daily-source-evidence
-          path: payload.json
+          path: |
+            payload.json
+            public-check.json
           retention-days: 3
