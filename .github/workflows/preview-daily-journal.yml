@@ -18,6 +18,10 @@ on:
         description: "Read-only original-source media preview against published prose; no model calls"
         type: boolean
         default: false
+      source_grounding:
+        description: "Run this branch's complete daily code with read-only cached sources; never publish"
+        type: boolean
+        default: false
 
 jobs:
   preview:
@@ -30,21 +34,42 @@ jobs:
       TEST_TRIGGER_SECRET: ${{ secrets.TEST_TRIGGER_SECRET }}
     steps:
       - uses: actions/checkout@v6
-        if: ${{ inputs.faq_only || inputs.media_only }}
+        if: ${{ inputs.faq_only || inputs.media_only || inputs.source_grounding }}
       - uses: actions/setup-node@v4
-        if: ${{ inputs.faq_only || inputs.media_only }}
+        if: ${{ inputs.faq_only || inputs.media_only || inputs.source_grounding }}
         with:
           node-version: 22
       - name: Preview only the optional FAQ
-        if: ${{ inputs.faq_only && !inputs.media_only }}
+        if: ${{ inputs.faq_only && !inputs.media_only && !inputs.source_grounding }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
         run: node scripts/preview-daily-faq.mjs
       - name: Preview only source media
-        if: ${{ inputs.media_only }}
+        if: ${{ inputs.media_only && !inputs.source_grounding }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/preview-daily-media.mjs
+      - name: Run complete branch code without production writes
+        if: ${{ inputs.source_grounding }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
+        run: |
+          mkdir -p artifacts
+          python - <<'PY'
+          import json,tomllib
+          with open('wrangler.toml','rb') as f:
+              config=tomllib.load(f)
+          with open('artifacts/worker-vars.json','w') as f:
+              json.dump(config['vars'],f)
+          PY
+          npx --yes esbuild@0.25.12 src/handlers/scheduled.js --bundle --platform=node --format=esm --outfile=artifacts/scheduled-dry-run.mjs
+          node scripts/preview-daily-grounding.mjs
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.source_grounding }}
+        with:
+          name: daily-grounding-preview
+          path: artifacts/grounding-preview
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: ${{ always() && inputs.media_only }}
         with:
@@ -58,7 +83,7 @@ jobs:
           path: artifacts/faq-only
           retention-days: 7
       - name: Refresh source categories
-        if: ${{ inputs.refresh_sources && !inputs.faq_only && !inputs.media_only }}
+        if: ${{ inputs.refresh_sources && !inputs.faq_only && !inputs.media_only && !inputs.source_grounding }}
         shell: bash
         run: |
           set -euo pipefail
@@ -79,7 +104,7 @@ jobs:
           PY
           done
       - name: Generate a dry-run preview
-        if: ${{ !inputs.faq_only && !inputs.media_only }}
+        if: ${{ !inputs.faq_only && !inputs.media_only && !inputs.source_grounding }}
         shell: bash
         run: |
           set -euo pipefail

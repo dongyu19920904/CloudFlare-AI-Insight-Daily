@@ -559,7 +559,8 @@ function buildDailyPromptCandidate(item) {
   const stableContentHtml = removeUnusableMediaTagsFromHtml(item.details?.content_html);
   const mediaPlaceholders = extractMediaPlaceholdersFromHtml(stableContentHtml);
   const itemHasMedia = mediaPlaceholders.length > 0;
-  const plainTextContent = truncatePromptText(stripHtml(stableContentHtml));
+  const articleEvidence = item.details?.articleEvidence;
+  const plainTextContent = truncatePromptText(articleEvidence?.excerpt || stripHtml(stableContentHtml) || item.description);
   let itemText = "";
 
   switch (sourceType) {
@@ -589,6 +590,12 @@ function buildDailyPromptCandidate(item) {
   }
 
   if (!itemText) return null;
+
+  if (articleEvidence?.excerpt) {
+    itemText += `\nOriginal Article Title: ${articleEvidence.title}`;
+    itemText += `\nEvidence Scope: ${articleEvidence.kind}; only the supplied title and excerpt support facts, not the entire linked page.`;
+    itemText += `\nDiscovery Metadata: ${truncatePromptText(stripHtml(stableContentHtml))}`;
+  }
 
   if (mediaPlaceholders.length > 0) {
     itemText += `\nMedia References: ${mediaPlaceholders.join(" ")}`;

@@ -45,6 +45,7 @@ import {
 } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
+import { groundDailyNewsSources } from '../dailyNewsGrounding.js';
 import { selectAlternateDailySources } from '../dailyAlternateSelection.js';
 import {
     buildOpportunityPaths,
@@ -1420,11 +1421,21 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         await Promise.all(fetchPromises);
     }
 
+    let selection = buildDailyPromptSelection(allUnifiedData, env);
+    if (options.groundDailyNews) {
+        const grounded = await groundDailyNewsSources(allUnifiedData, selection.selectedContentItems);
+        allUnifiedData = grounded.data;
+        selection = buildDailyPromptSelection(allUnifiedData, env);
+        debugInfo.dailyArticleGrounding = {
+            grounded: grounded.grounded, replaced: grounded.replaced,
+            requests: grounded.requests, rows: grounded.rows,
+        };
+    }
     return {
         allUnifiedData,
         previousOpportunityReplaySignals,
         recentOpportunityReplayMemory,
-        ...buildDailyPromptSelection(allUnifiedData, env),
+        ...selection,
     };
 }
 
@@ -2845,6 +2856,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         preferCachedData: options.preferCachedData !== false,
         applyGithubTopProjectDedupe: true,
         skipSourceCacheWrite: dryRun,
+        groundDailyNews: true,
     });
     debugInfo.promptSelectedItems = selectedContentItems.length;
     debugInfo.telegramImageCandidateCount = telegramImageCandidates.length;
