@@ -560,7 +560,8 @@ function buildDailyPromptCandidate(item) {
   const mediaPlaceholders = extractMediaPlaceholdersFromHtml(stableContentHtml);
   const itemHasMedia = mediaPlaceholders.length > 0;
   const articleEvidence = item.details?.articleEvidence;
-  const plainTextContent = truncatePromptText(articleEvidence?.excerpt || stripHtml(stableContentHtml) || item.description);
+  const factualContentHtml = stableContentHtml.replace(/<img\b[^>]*>|<video\b[^>]*>[\s\S]*?<\/video>/gi, '');
+  const plainTextContent = truncatePromptText(articleEvidence?.excerpt || stripHtml(factualContentHtml) || item.description);
   let itemText = "";
 
   switch (sourceType) {

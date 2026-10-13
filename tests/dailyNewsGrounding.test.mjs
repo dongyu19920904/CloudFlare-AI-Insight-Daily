@@ -31,6 +31,16 @@ test('actual generation input carries original article facts, not only HN discus
   assert.doesNotMatch(prompt, /Content Summary: Article URL:/);
 });
 
+test('long image URLs cannot consume the factual excerpt budget and media stays available separately', () => {
+  const image = `https://cdn.example.com/${'x'.repeat(700)}.jpg`;
+  const item = { type: 'news', title: 'AI robot planning', url: 'https://example.com/robot', source: 'Original publisher',
+    details: { content_html: `<img src="${image}"><p>AI robot experiments use system-level policies, not music generation. The original article describes the actual tested control workflow.</p>` } };
+  const selected = buildDailyPromptSelection({ news: [item] }).selectedContentItems.join('\n');
+  assert.match(selected, /Content Summary: AI robot experiments use system-level policies/);
+  assert.ok(selected.includes(`Media References: ![image](${image})`));
+  assert.doesNotMatch(selected.split('Media References:')[0], /cdn\.example/);
+});
+
 test('discussion-only detection does not discard real reporting or substantive HN summaries', () => {
   assert.equal(isDiscussionMetadataOnly(meta), true);
   assert.equal(isDiscussionMetadataOnly({ ...meta, details: { content_html: `${meta.details.content_html}<p>A real report about agents with its own facts.</p>` } }), false);
