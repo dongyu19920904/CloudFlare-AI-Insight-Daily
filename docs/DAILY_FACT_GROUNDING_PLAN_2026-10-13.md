@@ -84,6 +84,18 @@
 
 线上复核：https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/38345624085 。首页和 10-13 日期页均为 200，11 张 figure，Meta 更正存在，没有旧的音乐描述。
 
+## 代码发布
+
+发布提交 `19b54f78dbd27adfc36684644ff72b842f6dd416`；部署 https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/38346189126 成功。Worker 版本 `dd13fa57-ff18-425b-a9de-a7de823be3c4`。生产主模型、备选模型的普通与流式探测均为 200。
+
+未更改 wrangler.toml、workerConfig.js、定时表达式、模型线路、8192 正文输出预算、前端或商机代码。共享候选构造的事实文本与媒体分离由完整回归覆盖；只有主日报启用原文补取选项。
+
+最坏新增网络消耗为 10 次 HTTP 和 12 秒等待，没有新增模型复核调用；最多 6 条原文摘录从 500 增至 1600 字符，存在有界的输入 token 增量。正式日报下一次仍按原定时执行，不能把本次 dry-run 当作明天调度已发生的证据。
+
+部署后的真实 Worker dry-run：https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/38346298927 ，3 分钟完成，state=success、dailyWouldPublish=true、原有结构校验无错误。生产实际取到 Meta 和 Ars 原文；Meta 仍准确写为智能体，Wonder 的 API/Muse Code 与 Full 的订阅条件分别对应，没有“今日起”或音乐生成。该运行同样没有发布。
+
+这次生产重跑把握力器素材放入 TOP 10，未再生成独立趣闻；只有一个开源项目和一个社媒条目，说明同日重跑及现有预留/候选容量仍有栏目波动。不能把 state=success 说成所有栏目都已达到最佳质量。当前已发布的 11 图、有趣闻的原版不被覆盖，本轮不扩展修改栏目分配和去重策略。
+
 ## 风险与不做的事
 
 不能把一次修复说成“所有未来新闻零幻觉”。本轮降低的是已证实的“仅标题/元数据硬扩写”风险；来源本身写错、模型不遵守正文约束和未抓到的动态页面仍需分别处理。
