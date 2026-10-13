@@ -594,7 +594,7 @@ function buildDailyPromptCandidate(item) {
   if (articleEvidence?.excerpt) {
     itemText += `\nOriginal Article Title: ${articleEvidence.title}`;
     itemText += `\nEvidence Scope: ${articleEvidence.kind}; only the supplied title and excerpt support facts, not the entire linked page.`;
-    itemText += `\nDiscovery Metadata: ${truncatePromptText(stripHtml(stableContentHtml))}`;
+    itemText += '\nDiscovery Metadata: Discovered via a discussion feed. Popularity and comment counts are not article facts; do not print or compare them.';
   }
 
   if (mediaPlaceholders.length > 0) {

@@ -26,7 +26,8 @@ test('actual generation input carries original article facts, not only HN discus
   const prompt = buildDailyGenerationPromptInput(selected);
   assert.match(prompt, /Original Article Title: .*Personal & Professional AI Agents/);
   assert.match(prompt, /Content Summary: Meta introduces Muse Wonder/);
-  assert.match(prompt, /Discovery Metadata: .*Points: 492/);
+  assert.match(prompt, /Discovery Metadata: Discovered via a discussion feed/);
+  assert.doesNotMatch(prompt, /Points: 492|Comments: 266/);
   assert.doesNotMatch(prompt, /Content Summary: Article URL:/);
 });
 

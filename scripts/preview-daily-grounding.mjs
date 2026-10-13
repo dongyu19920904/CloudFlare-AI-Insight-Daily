@@ -46,3 +46,4 @@ console.log(JSON.stringify({ published: false, modelCalls, wouldPublish: debug.d
   grounding: debug.dailyArticleGrounding, issues: debug.dailyValidationIssues }, null, 2));
 if (!debug.dailyWouldPublish) throw new Error('Full daily dry-run did not pass existing validation');
 if (/Meta.{0,30}音乐|Muse.{0,30}音乐生成/.test(debug.dailyPreviewMarkdown || '')) throw new Error('Meta category regression');
+if (/HN[^。\n]{0,50}(?:点赞|评论|点数|热度)|Hacker News[^。\n]{0,50}(?:点赞|评论|点数|热度)/i.test(debug.dailyPreviewMarkdown || '')) throw new Error('Discussion metadata leaked into the news');
