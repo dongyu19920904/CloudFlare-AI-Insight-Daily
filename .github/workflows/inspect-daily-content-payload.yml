@@ -15,7 +15,7 @@ jobs:
           set -euo pipefail
           DATE='${{ github.event.inputs.date }}'
           URL="https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${DATE}"
-          curl -fsSL "$URL" > payload.json
+          curl --max-time 45 -fsSL "$URL" > payload.json
           python - <<'PY'
           import json,re
           with open('payload.json','r',encoding='utf-8') as f:
@@ -33,4 +33,12 @@ jobs:
                       if len(examples) < 3:
                           examples.append(item.get('title','')[:120])
               print(f'{key}: total={len(items)} media={media} examples={examples}')
+              for item in items:
+                  if 'muse-wonder' in str(item.get('url','')):
+                      print('META_SOURCE_ITEM', json.dumps(item, ensure_ascii=False))
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-source-evidence
+          path: payload.json
+          retention-days: 3
