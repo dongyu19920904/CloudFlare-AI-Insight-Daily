@@ -41,6 +41,14 @@ test('long image URLs cannot consume the factual excerpt budget and media stays 
   assert.doesNotMatch(selected.split('Media References:')[0], /cdn\.example/);
 });
 
+test('fetched original excerpts retain availability facts beyond a short marketing introduction', () => {
+  const item = { ...meta, details: { ...meta.details, articleEvidence: {
+    ...evidence, excerpt: `${'Personal and professional agents. '.repeat(20)}Wonder is available through Meta Model API and Muse Code.`,
+  } } };
+  const input = buildDailyPromptSelection({ news: [item] }).selectedContentItems.join('\n');
+  assert.match(input, /Wonder is available through Meta Model API and Muse Code/);
+});
+
 test('discussion-only detection does not discard real reporting or substantive HN summaries', () => {
   assert.equal(isDiscussionMetadataOnly(meta), true);
   assert.equal(isDiscussionMetadataOnly({ ...meta, details: { content_html: `${meta.details.content_html}<p>A real report about agents with its own facts.</p>` } }), false);

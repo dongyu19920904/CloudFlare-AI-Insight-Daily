@@ -561,7 +561,8 @@ function buildDailyPromptCandidate(item) {
   const itemHasMedia = mediaPlaceholders.length > 0;
   const articleEvidence = item.details?.articleEvidence;
   const factualContentHtml = stableContentHtml.replace(/<img\b[^>]*>|<video\b[^>]*>[\s\S]*?<\/video>/gi, '');
-  const plainTextContent = truncatePromptText(articleEvidence?.excerpt || stripHtml(factualContentHtml) || item.description);
+  const plainTextContent = truncatePromptText(articleEvidence?.excerpt || stripHtml(factualContentHtml) || item.description,
+    articleEvidence?.excerpt ? 1600 : 500);
   let itemText = "";
 
   switch (sourceType) {
