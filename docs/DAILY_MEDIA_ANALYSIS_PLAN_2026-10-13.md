@@ -18,7 +18,7 @@
 
 ## 独立发现
 
-Meta 官方 Muse Wonder 页面描述的是 personal/professional AI agents，不是日报写的音乐生成。补图不能证明原文没有的说法。本轮记录事实问题，不悄悄重写整篇；涉及该条图片必须明确来源，避免用音乐素材填充。
+Meta 官方 Muse Wonder 页面描述的是 personal/professional AI agents，不是日报写的音乐生成。补图不能证明原文没有的说法。用户明确回复“同时纠正这一条事实错误”，因此仅修正这一条标题和正文，并补入官方发布配图；其他新闻文字不动。
 
 ## 解决方案
 
@@ -51,11 +51,19 @@ dailyMediaCoverage.js 仅按需导出/复用来源匹配，不重写媒体策略
 - 第一次真实试点发现一处新增空行；修复布局保留后，非媒体正文 SHA-256 前后均为 22011a957aca32a49ca4d64c1d915f214af62a5565efa8849c45e0c46f3a2500。
 - 最终只读预览：https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/38339894125 ，通过；0 次模型调用，实际 15 个 HTTP 请求，7 张直接补图 + 1 张 Telegram 归档，发布校验通过。
 - 智谱页面直抓只有 683 字符的脚本壳；通过正常专用浏览器确认文章正文及首图，并验证 CDN 图片为 200/image/png。今天补入此真图，但服务器自动抓图暂不执行浏览器脚本或绕过反爬。
-- Meta 官方原文为智能体模型而非音乐研究。已向用户询问是否修正文案，尚未收到答复；今日内容修补暂不加入该条图片，不私改文字。
-- 今日中文首页、日期页和 daily 原稿各新增 8 张；图片总数从 2 到 10，另保留 3 个视频。新增图片分别为 BestBlogs、Ars、智谱、mortoray、史记、Open WebUI、BitNet 和趣闻引用帖。
+- Meta 已按用户授权修正为个人与专业智能体，说明主动记忆、持续执行和实际开放入口，不保留音乐生成的错误描述。官方原文：https://research.meta.ai/blog/muse-wonder 。
+- 今日中文首页、日期页和 daily 原稿各新增 9 张；图片总数从 2 到 11，另保留 3 个视频。新增图片分别为 BestBlogs、Ars、Meta、智谱、mortoray、史记、Open WebUI、BitNet 和趣闻引用帖。
 - 其中史记图为真实原帖 58102 字节 JPEG，存放 static/images/daily/2026-10-13/telegram-aigc1024-25740.jpg；不把 Telegram 临时热链写入公开正文。
-- 后端 456/456，前端 21/21 测试通过；Hugo 0.147.9 构建通过（904 中文页面、929 英文页面）。三个中文副本的非媒体正文与基线一致。
-- 专用 BrowserOS 原 MCP 未取得有效会话，按本机已记录的官方 stdio 有界恢复成功；实际检查 1440 和 390 宽度，10/10 图片 naturalWidth > 0、图片宽度在内容容器内。未更改浏览器凭据、登录态或其他任务标签。
+- 后端 456/456，前端最终 22/22 测试通过；Hugo 0.147.9 构建通过（904 中文页面、930 英文页面）。三个中文副本除获批 Meta 条目和媒体行外，正文与最新远端基线一致。远端自动翻译更新通过正常 merge 保留。
+- 专用 BrowserOS 原 MCP 未取得有效会话，按本机已记录的官方 stdio 恢复后，本地与线上桌面实际检查 11/11 图片 naturalWidth > 0、图片宽度在内容容器内。390px 模拟指令未稳定生效，最终结果返回 1440px，不能将该截图冒充手机验收；本次未修改布局与 CSS。未更改浏览器凭据或登录态。
+
+## 发布回执
+
+- 后端发布提交 2eff63e849ba4e5b77f1132f734abcdb2b90eb0b；Worker 版本 a8085dbe-8e3d-4c12-b02a-e84161f346c7。
+- 后端部署：https://github.com/dongyu19920904/CloudFlare-AI-Insight-Daily/actions/runs/38340597427 ，成功。原流程主/备模型普通及流式探测均为 200。
+- 前端合并发布提交 698f16b9a090fca6762aceaf73ffdbfb3ac17a3f；改动提交 eaed9d2f。部署：https://github.com/dongyu19920904/Hextra-AI-Insight-Daily/actions/runs/38341887724 ，成功。
+- 首页 https://news.aivora.cn/ 与日期页 https://news.aivora.cn/2026-10/2026-10-13/ 均返回 200，包含修正后的 Meta 条目、README 图和本地史记图；浏览器确认日期页 11 张图片全部成功加载。
+- 本次是同日媒体后处理实跑及获批单条事实修正，不重新调用大模型生成正文，避免改变其他已正常内容。
 
 ## 剩余限制与成本
 
