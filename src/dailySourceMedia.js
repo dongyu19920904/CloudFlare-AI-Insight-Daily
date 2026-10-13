@@ -19,6 +19,7 @@ export function dailyMediaSourceKey(value) {
 function publicUrl(value, base) {
   try {
     const url = new URL(normalizeMarkdownMediaUrl(value), base);
+    url.hostname = url.hostname.replace(/\.$/, '');
     if (url.protocol === 'http:') url.protocol = 'https:';
     if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') ||
         !url.hostname.includes('.') || /(?:^|\.)(?:localhost|local|internal|invalid|test)$/.test(url.hostname) ||
@@ -120,7 +121,7 @@ export async function enrichDailySourceMedia(markdown, allUnifiedData, env = {},
     if (!url) throw new Error('non-public-source-url');
     for (let redirects = 0; redirects <= 2; redirects += 1) {
       if (controller.signal.aborted) throw new Error('media-deadline');
-      if (requestCount >= 24) throw new Error('media-request-budget');
+      if (requestCount >= 18) throw new Error('media-request-budget');
       requestCount += 1;
       const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]);
       const response = await fetchImpl(url, { signal, redirect: 'manual', headers: {
@@ -168,7 +169,7 @@ export async function enrichDailySourceMedia(markdown, allUnifiedData, env = {},
         .map((image) => ({ ...image, origin: 'cached-post' }));
       if (!images.length) {
         if (/^https:\/\/(?:x\.com|twitter\.com|t\.me)\//i.test(link.url)) { row.status = 'no-cached-stable-media'; return; }
-        if (pageCount >= 10) { row.status = 'media-page-budget'; return; }
+        if (pageCount >= 8) { row.status = 'media-page-budget'; return; }
         pageCount += 1;
         const repo = link.url.match(/^https:\/\/github\.com\/([^/]+\/[^/?#]+)\/?$/);
         if (repo) {
