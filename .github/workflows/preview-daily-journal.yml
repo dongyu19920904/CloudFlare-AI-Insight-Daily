@@ -131,6 +131,7 @@ jobs:
               'date': result.get('date'),
               'dailyWouldPublish': debug.get('dailyWouldPublish'),
               'dailyValidationIssues': debug.get('dailyValidationIssues'),
+              'dailyArticleGrounding': debug.get('dailyArticleGrounding'),
               'promptSelectedItems': debug.get('promptSelectedItems'),
               'promptSelectionDiagnostics': debug.get('promptSelectionDiagnostics'),
               'dailyPromptAllocation': debug.get('dailyPromptAllocation'),
