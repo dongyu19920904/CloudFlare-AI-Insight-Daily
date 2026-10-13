@@ -123,6 +123,8 @@ test('slow article respects abort and cannot hold the daily indefinitely', async
 
 test('original facts rules and daily-only integration do not alter opportunity scheduling', () => {
   assert.match(getSystemPromptSummarizationStepOne('2026-10-13'), /不得从陌生产品名猜/);
+  assert.match(getSystemPromptSummarizationStepOne('2026-10-13'), /不能合并主语后共享权限/);
+  assert.match(getSystemPromptSummarizationStepOne('2026-10-13'), /不等于日报当天/);
   const scheduled = fs.readFileSync(new URL('../src/handlers/scheduled.js', import.meta.url), 'utf8');
   assert.equal((scheduled.match(/groundDailyNews: true/g) || []).length, 1);
   assert.ok(scheduled.indexOf('groundDailyNews: true') > scheduled.indexOf('export async function handleScheduledDaily('));
