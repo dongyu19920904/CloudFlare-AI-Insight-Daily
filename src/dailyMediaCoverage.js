@@ -147,7 +147,7 @@ export function repairDailyMediaReferences(markdown, mediaCandidates) {
   return { markdown: updated, correctedCount, removedCount };
 }
 
-export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 6) {
+export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 6, options = {}) {
   const content = String(markdown || "");
   const candidatesBySource = buildCandidateMap(mediaCandidates);
   if (!content || candidatesBySource.size === 0) {
@@ -187,7 +187,7 @@ export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 
   let usableMediaCount = usedMediaUrls.size;
   let insertedCount = 0;
 
-  if (usableMediaCount >= targetCount && socialMediaBlockCount >= socialTargetCount) {
+  if (!options.coverEverySource && usableMediaCount >= targetCount && socialMediaBlockCount >= socialTargetCount) {
     return { markdown: content, insertedCount, targetCount, usableMediaCount };
   }
 
@@ -196,7 +196,7 @@ export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 
     if (/(?:相关问题|FAQ)/i.test(sectionHeading)) return block;
 
     const isSocialBlock = /社媒精选/.test(sectionHeading);
-    const needsGlobalCoverage = usableMediaCount < targetCount;
+    const needsGlobalCoverage = options.coverEverySource || usableMediaCount < targetCount;
     const needsSocialCoverage = isSocialBlock && socialMediaBlockCount < socialTargetCount;
     if (!needsGlobalCoverage && !needsSocialCoverage) return block;
     if (extractMediaUrls(block).length > 0) return block;

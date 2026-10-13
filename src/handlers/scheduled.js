@@ -124,7 +124,8 @@ import {
     sanitizeDuplicateDailySections,
 } from '../dailySectionSanitizer.js';
 import { ensureDailyMediaCoverage, repairDailyMediaReferences } from '../dailyMediaCoverage.js';
-import { archiveDailyTelegramImages } from '../dailyTelegramImageArchive.js';
+import { archiveDailyTelegramImages, extractTelegramDailyImageCandidate } from '../dailyTelegramImageArchive.js';
+import { enrichDailySourceMedia } from '../dailySourceMedia.js';
 import { extractNumberedDailyItems } from '../dailyMarkdownItems.js';
 import {
     buildDailyGenerationPromptInput,
@@ -3006,6 +3007,16 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         return debugInfo;
     }
 
+    try {
+        const media = await enrichDailySourceMedia(dailySummaryMarkdownContent, allUnifiedData, env);
+        dailySummaryMarkdownContent = media.markdown;
+        debugInfo.dailySourceMediaInserted = media.insertedCount;
+        debugInfo.dailySourceMediaRequests = media.requestCount;
+        debugInfo.dailySourceMediaAudit = media.rows;
+    } catch (error) {
+        console.warn(`[Scheduled][Daily] Optional source media skipped: ${error.message}`);
+    }
+
     if (dryRun) {
         await reportScheduledProgress(options, 'daily', 'dry-run-complete', 100);
         debugInfo.dailyWouldPublish = true;
@@ -3020,7 +3031,9 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     let publicationMarkdown = dailySummaryMarkdownContent;
     try {
         const archived = await archiveDailyTelegramImages(
-            publicationMarkdown, telegramImageCandidates, dateStr, env
+            publicationMarkdown,
+            [...telegramImageCandidates, ...Object.values(allUnifiedData || {}).flat().map(extractTelegramDailyImageCandidate).filter(Boolean)],
+            dateStr, env
         );
         debugInfo.telegramImagesArchived = archived.archivedCount;
         if (archived.archivedCount > 0) {
