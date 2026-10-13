@@ -89,7 +89,12 @@ function normalizePlaceholderCaption(placeholder, candidate) {
   return `![${caption}](${imageMatch[1]} "${caption}")`;
 }
 
-function appendMediaToBlock(block, placeholder) {
+function appendMediaToBlock(block, placeholder, preserveLayout = false) {
+  if (preserveLayout) {
+    const beforeSeparator = block.match(/\n---\s*$/)?.index;
+    const offset = beforeSeparator ?? block.length - (block.match(/\s*$/)?.[0].length || 0);
+    return block.slice(0, offset) + `\n\n${placeholder}` + block.slice(offset);
+  }
   const content = String(block || "").trimEnd();
   const separatorMatch = content.match(/\n---\s*$/);
   if (!separatorMatch) return `${content}\n\n${placeholder}\n\n`;
@@ -215,7 +220,7 @@ export function ensureDailyMediaCoverage(markdown, mediaCandidates, maxImages = 
     usableMediaCount = usedMediaUrls.size;
     if (isSocialBlock) socialMediaBlockCount += 1;
     insertedCount += 1;
-    return appendMediaToBlock(block, normalizePlaceholderCaption(placeholder, candidate));
+    return appendMediaToBlock(block, normalizePlaceholderCaption(placeholder, candidate), options.coverEverySource);
   });
 
   return {

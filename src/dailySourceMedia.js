@@ -62,7 +62,8 @@ export function extractSourcePageImages(html, pageUrl, { readme = false } = {}) 
     const srcset = attrs['data-srcset'] || attrs.srcset || '';
     const srcsetUrl = srcset.split(',').map((item) => item.trim().split(/\s+/))
       .filter((item) => /^(?:[6-9]\d\d|1[0-4]\d\d)w$/.test(item[1] || ''))[0]?.[0];
-    add(attrs['data-src'] || attrs['data-original'] || attrs.poster || srcsetUrl || attrs.src, readme ? 'readme' : 'article', attrs.alt);
+    add(attrs['data-src'] || attrs['data-original'] || attrs.poster || srcsetUrl || attrs.src,
+      readme ? 'readme' : attrs.poster ? 'video-poster' : 'article', attrs.alt);
   }
   if (!readme) {
     for (const match of clean.matchAll(/<meta\b[^>]*>/gi)) {
@@ -70,7 +71,7 @@ export function extractSourcePageImages(html, pageUrl, { readme = false } = {}) 
       if (/^(?:og:image(?::secure_url)?|twitter:image(?::src)?)$/i.test(attrs.property || attrs.name || '')) add(attrs.content, 'article-cover');
     }
   }
-  return result.slice(0, 5);
+  return result.sort((a, b) => Number(a.origin === 'video-poster') - Number(b.origin === 'video-poster')).slice(0, 5);
 }
 
 async function boundedText(response, maxBytes = 768000) {

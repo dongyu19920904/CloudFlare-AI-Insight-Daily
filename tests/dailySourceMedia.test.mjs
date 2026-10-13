@@ -19,7 +19,7 @@ test('README resolves relative Markdown/HTML images and ignores badges, sponsors
 
 test('article scopes real media, supports lazy loading and poster, never takes sidebar or script images', () => {
   const images = extractSourcePageImages(`<img src="/sidebar.jpg"><script><img src="/fake.jpg"></script><article><img data-src="/real.jpg" width="800"><video poster="/cover.jpg"></video></article><meta content="/og.jpg" property="og:image">`, 'https://example.org/news/a');
-  assert.deepEqual(images.map((item) => item.url), ['https://example.org/real.jpg','https://example.org/cover.jpg','https://example.org/og.jpg']);
+  assert.deepEqual(images.map((item) => item.url), ['https://example.org/real.jpg','https://example.org/og.jpg','https://example.org/cover.jpg']);
 });
 
 test('public source normalization removes tracking only, not article query IDs', () => {
