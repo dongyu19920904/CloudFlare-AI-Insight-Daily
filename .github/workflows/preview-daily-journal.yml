@@ -53,6 +53,7 @@ jobs:
         if: ${{ inputs.source_grounding }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           mkdir -p artifacts
           python - <<'PY'

@@ -452,7 +452,9 @@ function getDailySectionEventKey(text) {
 function getDailySectionEntityNames(text) {
   const names = String(text || "")
     .replace(/https?:\/\/[^\s)]+/g, " ")
-    .match(/\b[A-Z][A-Za-z0-9]{2,}(?:[ \t]+[A-Z][a-z0-9]{2,})?\b/g) || [];
+    .replace(/[*_`]/g, "")
+    // A versioned model name is one entity, not two independent shared entities.
+    .match(/\b[A-Z][A-Za-z0-9]{2,}(?:[ \t]+\d+(?:\.\d+)*(?:[ \t]+[A-Z][a-z]+)?)?(?:[ \t]+[A-Z][a-z0-9]{2,})?\b/g) || [];
   return new Set(names.map((name) => name.toLowerCase()).filter((name) =>
     !/^(?:top|agent|agents|image|video|model|models|api|url)$/i.test(name)
   ));
@@ -480,6 +482,7 @@ export function sanitizeDuplicateDailySections(markdown) {
       url: normalizeSectionUrl(link.url),
       eventKey: getDailySectionEventKey(`${item.title}\n${item.body}`),
       entityNames: getDailySectionEntityNames(`${item.title}\n${item.body}`),
+      isTransaction: /收购|并购|合并|加入|\bacquir|\bmerger|\bjoin/i.test(`${item.title}\n${item.body}`),
     }));
   });
 
@@ -516,6 +519,7 @@ export function sanitizeDuplicateDailySections(markdown) {
             url: normalizeSectionUrl(match[2]),
             eventKey: getDailySectionEventKey(chunk),
             entityNames: getDailySectionEntityNames(chunk),
+            isTransaction: /收购|并购|合并|加入|\bacquir|\bmerger|\bjoin/i.test(chunk),
           }));
 
         if (links.length === 0) {
@@ -527,7 +531,9 @@ export function sanitizeDuplicateDailySections(markdown) {
           seenStories.some((story) => {
             if (story.url && link.url && story.url === link.url) return true;
             if (story.eventKey && link.eventKey && story.eventKey === link.eventKey) return true;
-            if (sharesDistinctiveDailyEntities(story.entityNames, link.entityNames)) return true;
+            // Shared brands or tooling words do not prove that two demonstrations are one event.
+            if (story.isTransaction && link.isTransaction &&
+                sharesDistinctiveDailyEntities(story.entityNames, link.entityNames)) return true;
             return isRepeatedSectionStory(story.title, link.title);
           })
         );

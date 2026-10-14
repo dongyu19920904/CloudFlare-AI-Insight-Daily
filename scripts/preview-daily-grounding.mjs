@@ -37,6 +37,7 @@ globalThis.fetch = async (url, options = {}) => {
   return originalFetch(url, options);
 };
 const env = { ...vars, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, ANTHROPIC_BACKUP_API_KEY: process.env.ANTHROPIC_API_KEY,
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   DATA_KV: {
     async get(key) {
       if (key === RECENT_GITHUB_TOP_PROJECTS_KEY) return JSON.stringify(recentProjects);

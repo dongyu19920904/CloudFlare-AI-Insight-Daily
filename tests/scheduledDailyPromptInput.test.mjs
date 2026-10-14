@@ -161,6 +161,19 @@ test("daily prompt allocation keeps at most one GitHub project in a low-volume T
   });
 });
 
+test("the sole fresh project stays in open-source while distinct backups fill TOP", () => {
+  const project = "Project Name: skills\nUrl: https://github.com/vercel-labs/skills";
+  const news = (index) => `News Title: AI update ${index}\nUrl: https://example.com/item-${index}`;
+  const items = [project, ...Array.from({ length: 7 }, (_, index) => news(index))];
+  const backups = Array.from({ length: 5 }, (_, index) => news(index + 20));
+  const stats = getDailyPromptAllocationStats(items, backups);
+  assert.equal(stats.reservedProjectItems, 1);
+  assert.equal(stats.topItems, 10);
+  const prompt = buildDailyGenerationPromptInput(items, backups);
+  assert.equal(prompt.match(/https:\/\/github.com\/vercel-labs\/skills/g)?.length, 1);
+  assert.match(prompt, /开源 TOP 项目专用候选素材[\s\S]*vercel-labs\/skills/);
+});
+
 test("surplus TOP candidates become replacements instead of contradicting the ten-item target", () => {
   const selectedItems = Array.from({ length: 13 }, (_, index) => [
     `News Title: AI product update ${index + 1}`,
