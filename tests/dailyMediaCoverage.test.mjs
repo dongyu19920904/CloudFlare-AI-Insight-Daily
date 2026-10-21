@@ -15,6 +15,25 @@ function candidate(index, imageUrl) {
   };
 }
 
+test("source-wide media insertion keeps separators out of image Setext headings", () => {
+  for (const ending of ["\n", "\r\n"]) {
+    const markdown = [
+      "## 今日焦点 TOP 10", "", "### 1. 新闻", "",
+      "[来源](https://example.com/news-1)。", "", "---", "",
+      "### 2. 下一条", "", "正文。", "",
+    ].join(ending);
+    const result = ensureDailyMediaCoverage(markdown, [
+      candidate(1, "https://cdn.example.com/one.jpg"),
+    ], 6, { coverEverySource: true });
+    assert.equal(result.insertedCount, 1);
+    assert.match(result.markdown, /!\[[^\]]+\]\([^\n]+\)\r?\n\r?\n---/);
+    assert.equal(result.markdown.replace(/\n\n!\[[^\n]+\]\([^\n]+\)\n/, ""), markdown);
+    assert.equal(ensureDailyMediaCoverage(result.markdown, [
+      candidate(1, "https://cdn.example.com/one.jpg"),
+    ], 6, { coverEverySource: true }).markdown, result.markdown);
+  }
+});
+
 test("ensureDailyMediaCoverage inserts only source-matched media beside each item", () => {
   const markdown = `## **🔥 今日焦点 TOP 10**
 

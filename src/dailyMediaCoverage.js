@@ -93,7 +93,8 @@ function appendMediaToBlock(block, placeholder, preserveLayout = false) {
   if (preserveLayout) {
     const beforeSeparator = block.match(/\n---\s*$/)?.index;
     const offset = beforeSeparator ?? block.length - (block.match(/\s*$/)?.[0].length || 0);
-    return block.slice(0, offset) + `\n\n${placeholder}` + block.slice(offset);
+    // A blank line keeps the following rule from turning the image into a Setext heading.
+    return block.slice(0, offset) + `\n\n${placeholder}${beforeSeparator != null ? '\n' : ''}` + block.slice(offset);
   }
   const content = String(block || "").trimEnd();
   const separatorMatch = content.match(/\n---\s*$/);
