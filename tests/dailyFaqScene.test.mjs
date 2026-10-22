@@ -46,6 +46,7 @@ test('scene FAQ rejects refusal, invented URLs, duplicate brand, unsupported pri
   for (const bad of ['', '我需要你确认后再写日报', raw.replace(sourceUrl, 'https://example.org/invented'),
     raw.replace('会员只是工具入口', '售价 99 元'), raw.replace('更贵的会员', '无限使用'),
     raw.replace('会员只是工具入口', '国内不限地区都可用'),
+    raw.replace('会员只是工具入口', '数据本身没有加密'),
     raw.replace('已有账号', '爱窝啦·AI账号店已有账号'), raw.replace('AIVORA_PRODUCT_URL', context.scene.product.url)]) {
     assert.equal(normalizeStandaloneDailyFaqSection(bad, sourceUrl, sourceText, 'Claude', context), '');
   }
@@ -54,6 +55,14 @@ test('scene FAQ rejects refusal, invented URLs, duplicate brand, unsupported pri
 test('a useful usage question may recommend the verified product without forcing membership into its title', () => {
   const draft = raw.replace('买了 Claude 会员，为什么改代码还得重新交代？', 'Claude 改代码为什么还得重新交代？');
   assert.ok(normalizeStandaloneDailyFaqSection(draft, sourceUrl, sourceText, 'Claude', context));
+});
+
+test('a finished account is not presented as a renewal for an existing account', () => {
+  const finished = { ...context, scene: { ...context.scene,
+    product: { ...context.scene.product, name: 'Claude Pro 成品号' } } };
+  assert.equal(normalizeStandaloneDailyFaqSection(raw, sourceUrl, sourceText, 'Claude', finished), '');
+  const valid = raw.replace('已有账号', '还没有账号').replace('Claude Pro 续费', 'Claude Pro 成品号');
+  assert.ok(normalizeStandaloneDailyFaqSection(valid, sourceUrl, sourceText, 'Claude', finished));
 });
 
 // Exercise the actual optional block with external operations stubbed, not a second publishing path.
