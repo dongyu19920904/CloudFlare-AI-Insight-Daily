@@ -128,7 +128,7 @@ test("daily prompt keeps FAQ optional, sourced, and commercially relevant", () =
   assert.match(prompt, /这是可选栏目/);
   assert.match(prompt, /优先输出 1 条/);
   assert.match(prompt, /证据不够时省略整个栏目/);
-  assert.match(prompt, /只有问题与当前目录中同一工具的账号、订阅、额度或开发工具入口直接相关时/);
+  assert.match(prompt, /推荐限当前目录里与同一工具直接相关的交付/);
   assert.match(prompt, /用户会真实搜索的具体问题/);
   assert.match(prompt, /爱窝啦·AI账号店/);
   assert.match(prompt, /已核实目录 URL/);

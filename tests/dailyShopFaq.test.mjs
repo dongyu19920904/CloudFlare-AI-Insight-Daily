@@ -8,11 +8,20 @@ import {
   loadDailyFaqSceneContext,
 } from '../src/dailyShopFaq.js';
 import { assembleDailySummaryMarkdown } from '../src/dailyMarkdownAssembly.js';
+import { getSystemPromptSummarizationStepOne } from '../src/prompt/summarizationPromptStepZero.js';
 
 const catalogUrl = 'https://www.aivora.cn/products';
 const sourceUrl = 'https://openai.com/index/chatgpt-update/';
 const selectedItems = [`News Title: ChatGPT 更新\nUrl: ${sourceUrl}\nContent Summary: 官方说明了功能变化。`];
 const sitemap = `<urlset><url><loc>${catalogUrl}</loc></url><url><loc>${catalogUrl}/chatgpt-pro-20x-account-monthly</loc></url></urlset>`;
+
+test('main system FAQ requires relevant recommendations even when optional rewriting cannot finish', () => {
+  const prompt = getSystemPromptSummarizationStepOne('2026-10-22');
+  const faq = prompt.split('## **❓ 相关问题**')[1].split('## 输出前自检')[0];
+  assert.match(faq, /每条问答.*相关商品/);
+  assert.match(faq, /免费.*付费/);
+  assert.doesNotMatch(faq, /优先使用[^\n]*国内怎么用|才可在回答末尾/);
+});
 
 function fakeFetch(url) {
   if (url.endsWith('/sitemap.xml')) {
