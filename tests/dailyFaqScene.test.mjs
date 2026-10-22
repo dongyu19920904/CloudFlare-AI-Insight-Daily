@@ -47,6 +47,9 @@ test('scene FAQ rejects refusal, invented URLs, duplicate brand, unsupported pri
     raw.replace('会员只是工具入口', '售价 99 元'), raw.replace('更贵的会员', '无限使用'),
     raw.replace('会员只是工具入口', '国内不限地区都可用'),
     raw.replace('会员只是工具入口', '数据本身没有加密'),
+    raw.replace('会员只是工具入口', '提供稳定账号'),
+    raw.replace('会员只是工具入口', '可以直接开始使用这项功能'),
+    raw.replace('会员只是工具入口', '这是一段过长的重复说明'.repeat(25)),
     raw.replace('已有账号', '爱窝啦·AI账号店已有账号'), raw.replace('AIVORA_PRODUCT_URL', context.scene.product.url)]) {
     assert.equal(normalizeStandaloneDailyFaqSection(bad, sourceUrl, sourceText, 'Claude', context), '');
   }
