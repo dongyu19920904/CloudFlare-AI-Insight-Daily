@@ -80,12 +80,14 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     const productPaths = urls
       .filter((url) => url.startsWith(`${CATALOG_URL}/`))
       .map((url) => new URL(url).pathname);
+    const products = catalogProducts(catalogHtml, urls);
     const topics = candidateTopics
-      .filter((topic) => productPaths.some((path) => topic.slug.test(path)))
+      .filter((topic) => productPaths.some((path) => topic.slug.test(path)) ||
+        products.some(({ name }) => topic.pattern.test(name)))
       .map((topic) => topic.name);
     return {
       ...(topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
-      products: catalogProducts(catalogHtml, urls),
+      products,
     };
   } catch (error) {
     return { ...empty, error: error?.message || String(error) };
@@ -98,8 +100,12 @@ export function formatDailyShopPromptContext(context) {
     '【已核实的主站商品目录，仅供相关问题选题】',
     `今天的资讯与当前 sitemap 中的这些公开商品类别有交集：${context.topics.join('、')}。`,
     `已核实的商品目录：${context.catalogUrl}。只允许引用这个目录 URL，不得猜测具体商品 URL。`,
+    `目录中的相关交付名称：${(context.products || []).filter(({name}) =>
+      TOPICS.some(topic => context.topics.includes(topic.name) && topic.pattern.test(name)) &&
+      !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name)).slice(0, 8).map(({name}) => name).join('；') || context.topics.join('、')}。`,
     '目录只证明店内公开展示这些商品类别，不证明库存或新闻中的新功能属于任一套餐，也不证明官方价格、额度、地区或政策。',
-    '如果正文中有同一工具的新闻，且输入里的原始来源能回答真实买家问题，优先写 1 条相关问题；先给有来源的直接答案，再自然提供一次目录入口。否则省略 FAQ 和主站链接。',
+    '正文有同一工具的新闻且原始来源能回答问题时，写 1 条相关问题：先用短句解决当天的具体困扰，再按使用需求推荐一个上面列出的相关交付。每条相关问题自然带一次爱窝啦·AI账号店的相关商品入口，使用已核实的目录 URL。不要只写功能说明而漏掉推荐，不要求问句包含购买或会员。',
+    'ChatGPT 场景优先；普通个人使用优先考虑 Plus，不把最贵套餐当默认选择。免费也有的功能必须照实说，不暗示购买才能解锁，不把新功能推送等同于地区限制取消。没有相关交付或可靠来源时不硬塞商品；不要添加固定广告尾巴。',
   ].join('\n');
 }
 
@@ -115,13 +121,11 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
   const hasInputSource = sourceLinks.some((url) => inputUrls.has(url) && article.includes(url));
   const visibleFaq = faq[0].replace(/\]\(https?:\/\/[^)]+\)/g, ']');
   const visibleArticle = article.replace(/\]\(https?:\/\/[^)]+\)/g, ']');
-  const faqQuestion = visibleFaq.match(/^###\s+([^\r\n]+)/m)?.[1] || '';
-  const buyerQuestion = /(?:买|选购|会员|订阅|充值|账号|额度|套餐|付费|支付|代配置|售后)/i.test(faqQuestion);
   const hasSameTopic = (context.topics || []).some((name) => {
     const topic = TOPICS.find((item) => item.name === name);
     return topic && topic.pattern.test(visibleFaq) && topic.pattern.test(visibleArticle);
   });
-  const allowShop = context.catalogUrl && hasInputSource && hasSameTopic && buyerQuestion;
+  const allowShop = context.catalogUrl && hasInputSource && hasSameTopic;
   const allowedUrls = new Set(allowShop ? [context.catalogUrl, context.scene?.product?.url].filter(Boolean) : []);
   let kept = 0;
   const cleanedFaq = faq[0].replace(DAILY_AIVORA_FAQ_CTA, '')
@@ -155,7 +159,7 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     const visible = text.replace(/^Url:.*$/gmi, '');
     return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible))
       .map((topic) => ({ topic: topic.name, sourceUrl: url, sourceText: text,
-        score: (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) + (/Claude Code/i.test(visible) ? 5 : 0),
+        score: (topic.name === 'ChatGPT' ? 20 : 0) + (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0),
       }));
   });
   const recent = context.recentFaqs || [];
@@ -168,7 +172,13 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
   const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);
   const product = (context.products || [])
     .filter(({ name }) => topicRule.pattern.test(name) && !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name))
-    .sort((a, b) => Number(/Pro.*充值|Plus.*充值|续费/.test(b.name)) - Number(/Pro.*充值|Plus.*充值|续费/.test(a.name)))[0];
+    .sort((a, b) => {
+      const rank = ({ name }) => (chosen.topic === 'ChatGPT' && /\bPlus\b/i.test(name) ? 20 : 0) +
+        (/续费|到期|充值/.test(chosen.sourceText)
+          ? Number(/续费|充值/.test(name)) * 5
+          : Number(/成品|独享/.test(name)) * 5);
+      return rank(b) - rank(a);
+    })[0];
   let verifiedProduct = null;
   let official = null;
   if (product) {

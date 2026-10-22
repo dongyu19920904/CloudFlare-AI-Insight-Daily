@@ -53,6 +53,43 @@ test('daily shop context fails closed without blocking generation', async () => 
   assert.equal(formatDailyShopPromptContext(failed), '');
 });
 
+test('ChatGPT Chinese SKU names reach the main FAQ prompt, not only the optional rewrite', async () => {
+  const productUrl = `${catalogUrl}/cheng-pin-hao-yue-ka`;
+  const context = await loadDailyShopContext(selectedItems, { fetchImpl: async (url) => ({ ok: true,
+    text: async () => url.endsWith('/sitemap.xml')
+      ? `<urlset><url><loc>${catalogUrl}</loc></url><url><loc>${productUrl}</loc></url></urlset>`
+      : `<link rel="canonical" href="${catalogUrl}"><a href="${productUrl}">ChatGPT Plus 成品号</a>`,
+  }) });
+  assert.deepEqual(context.topics, ['ChatGPT']);
+  assert.match(formatDailyShopPromptContext(context), /ChatGPT Plus 成品号/);
+  assert.match(formatDailyShopPromptContext(context), /每条相关问题/);
+  assert.doesNotMatch(formatDailyShopPromptContext(context), /否则省略 FAQ/);
+});
+
+test('a source-backed usage question keeps its related shop link without purchase words', () => {
+  const body = `## 新闻\n\n[ChatGPT 聊天锁](${sourceUrl})正在推送。\n\n## **❓ 相关问题**\n\n### ChatGPT 锁定聊天怎么用？\n\n[ChatGPT 聊天锁](${sourceUrl})也向免费用户开放。经常写稿的读者可看[爱窝啦·AI账号店的 ChatGPT 商品](${catalogUrl})。`;
+  const result = finalizeDailyShopFaq(body, {catalogUrl, topics:['ChatGPT'], sourceText:`Url: ${sourceUrl}`});
+  assert.match(result, /\]\(https:\/\/www.aivora.cn\/products\)/);
+  assert.equal(result.split('## **❓ 相关问题**')[0], body.split('## **❓ 相关问题**')[0]);
+});
+
+test('ChatGPT news takes priority over a Claude workflow and selects a normal Plus account', async () => {
+  const claude = 'https://github.com/example/skills';
+  const plus = `${catalogUrl}/plus-account`;
+  const context = await loadDailyFaqSceneContext(`[Claude 技能](${claude})\n[ChatGPT 更新](${sourceUrl})`, [
+    `Project Name: skills\nUrl: ${claude}\nDescription: Claude Code 工作流`,
+    `News Title: ChatGPT 聊天锁\nUrl: ${sourceUrl}\nContent Summary: ChatGPT 免费和付费用户逐步开放`,
+  ], {catalogUrl, topics:['ChatGPT','Claude'], products:[
+    {name:'ChatGPT Pro 充值续费',url:`${catalogUrl}/pro-renewal`},
+    {name:'ChatGPT Plus 成品号',url:plus},
+    {name:'Claude Pro 充值续费',url:`${catalogUrl}/claude-renewal`},
+  ]}, {fetchImpl:async url => ({ok:true,text:async () => url===plus
+    ? `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 成品号</h1>`
+    : '<h1>What is ChatGPT Plus?</h1><p>A subscription plan.</p>'})});
+  assert.equal(context.scene.topic, 'ChatGPT');
+  assert.equal(context.scene.product.url, plus);
+});
+
 test('a sourced FAQ drops guessed SKUs without appending a fixed advertising paragraph', async () => {
   const context = await loadDailyShopContext(selectedItems, { fetchImpl: fakeFetch });
   const body = `## **🔥 今日焦点 TOP 1**
@@ -150,7 +187,7 @@ test('FAQ enrichment verifies one named SKU and one official page, excludes quot
   assert.equal(result.scene.sourceUrl, source);
 });
 
-test('Chinese-only SKU names support the optional FAQ while main prompt context stays unchanged', async () => {
+test('Chinese-only SKU names support both main FAQ and optional scene rewriting', async () => {
   const source = 'https://github.com/example/skills';
   const productUrl = `${catalogUrl}/chong-zhi-xu-fei-yue-ka-2`;
   const items = [`Project Name: skills\nUrl: ${source}\nDescription: Claude Code 技能库`];
@@ -159,8 +196,8 @@ test('Chinese-only SKU names support the optional FAQ while main prompt context 
       ? `<urlset><url><loc>${catalogUrl}</loc></url><url><loc>${productUrl}</loc></url></urlset>`
       : `<link rel="canonical" href="${catalogUrl}"><a href="${productUrl}">Claude Pro 充值续费</a>`,
   }) });
-  assert.equal(formatDailyShopPromptContext(context), '');
-  assert.deepEqual(context.topics, []);
+  assert.match(formatDailyShopPromptContext(context), /Claude Pro 充值续费/);
+  assert.deepEqual(context.topics, ['Claude']);
   const enriched = await loadDailyFaqSceneContext(`[Claude Code](${source})`, items, context, {
     fetchImpl: async (url) => ({ ok: true, text: async () => url === productUrl
       ? `<link rel="canonical" href="${productUrl}"><h1>Claude Pro 充值续费</h1>`
@@ -168,8 +205,8 @@ test('Chinese-only SKU names support the optional FAQ while main prompt context 
   });
   assert.equal(enriched.scene.product.url, productUrl);
   assert.equal(enriched.catalogUrl, catalogUrl);
-  assert.deepEqual(context.topics, []);
-  assert.equal(formatDailyShopPromptContext(context), '');
+  assert.deepEqual(context.topics, ['Claude']);
+  assert.match(formatDailyShopPromptContext(context), /Claude Pro 充值续费/);
 });
 
 test('failed SKU and official checks keep only the verified catalog, not fabricated rights', async () => {
