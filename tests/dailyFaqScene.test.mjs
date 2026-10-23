@@ -27,7 +27,7 @@ test('scene FAQ can replace a generic FAQ and uses distinct news, official and d
   assert.match(input.prompt, /B 场景型/);
   assert.match(input.prompt, /120-180/);
   assert.match(input.prompt, /不重写新闻正文/);
-  assert.match(input.prompt, /AIVORA_PRODUCT_URL/);
+  assert.match(input.prompt, /商品推荐由发布代码/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /只输出/);
 });
 
@@ -98,6 +98,16 @@ test('optional fetch, model, invalid-output and deadline failures leave the read
     {generateContentWithTransportFallback: () => new Promise(() => {}),
       withDailyFaqDeadline: (task) => withDailyFaqDeadline(task, 5)},
   ]) assert.equal((await runOptional(overrides)(ready)).markdown, ready);
+});
+
+test('answer-only generation is accepted and deterministic delivery adds the product afterward', async () => {
+  const answer = `## **❓ 相关问题**\n\n### Claude 改代码为什么还要重新交代？\n\n**会员和工作方法是两回事。** 今天的[技能库](${sourceUrl})把反复交代的步骤整理成文件。先拿一个小任务跑通，再保留适合自己的规则，不需要每次把项目要求重新说一遍。用之前确认文件确实来自原项目，并把不适合自己的规则删掉。`;
+  const normalized = normalizeStandaloneDailyFaqSection(answer, sourceUrl, sourceText, 'Claude', context);
+  assert.equal(normalized, answer);
+  const shop = { ...context, products: [context.scene.product] };
+  const linked = await ensureDailyFaqProductLinks(article + normalized + '\n\n' + footer, shop);
+  assert.equal(linked.links.length, 1);
+  assert.ok(linked.markdown.includes(context.scene.product.url));
 });
 
 test('the actual final FAQ step adds the matching delivery even when optional model rewriting fails', async () => {
