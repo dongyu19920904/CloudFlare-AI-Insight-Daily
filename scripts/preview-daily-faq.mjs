@@ -1,7 +1,7 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
-import { loadDailyShopContext, loadDailyFaqSceneContext, finalizeDailyShopFaq } from '../src/dailyShopFaq.js';
+import { loadDailyShopContext, loadDailyFaqSceneContext, finalizeDailyShopFaq, ensureDailyFaqProductLinks } from '../src/dailyShopFaq.js';
 import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
   insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, loadRecentDailyFaqs } from '../src/dailyStandaloneFaq.js';
 import { callChatAPI, callChatAPIStream } from '../src/chatapi.js';
@@ -69,7 +69,7 @@ const run = vm.runInNewContext(`(async function(markdown, env, dateStr, faqSourc
   },
   withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, removeMarkdownCodeBlock,
   loadRecentDailyFaqs,
-  insertStandaloneDailyFaq, finalizeDailyShopFaq, validateGeneratedDaily,
+  insertStandaloneDailyFaq, finalizeDailyShopFaq, ensureDailyFaqProductLinks, validateGeneratedDaily,
   callChatAPIStream: async function* (...args) {
     modelCalls += 1;
     yield* callChatAPIStream(...args);
@@ -80,7 +80,7 @@ const section = result.markdown.match(faqPattern)?.[0]?.trim() || '';
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const report = {
   date, mode: 'faq-only', baseline: response.url, published: false,
-  inserted: Boolean(result.debug.dailyFaqSeparateGenerationInserted),
+  inserted: Boolean(result.debug.dailyFaqSeparateGenerationInserted || result.debug.dailyFaqProductLinks?.length),
   newsByteIdentical: withoutFaq(published) === withoutFaq(result.markdown),
   newsHashBefore: hash(withoutFaq(published)), newsHashAfter: hash(withoutFaq(result.markdown)),
   modelCalls, sourceCount: sourceItems.length,

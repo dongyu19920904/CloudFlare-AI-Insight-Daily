@@ -24,7 +24,7 @@ import {
     inferOpportunityReplaySignals,
 } from "../opportunityScoring.js";
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
-import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext, loadDailyFaqSceneContext } from '../dailyShopFaq.js';
+import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext, loadDailyFaqSceneContext, ensureDailyFaqProductLinks } from '../dailyShopFaq.js';
 import {
     buildStandaloneDailyFaqPromptInput,
     insertStandaloneDailyFaq,
@@ -1662,6 +1662,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     }
 
     if (validation.ok) {
+        let faqProductContext = dailyShopContext;
         try {
             const faqDraft = await withDailyFaqDeadline(async () => {
                 const recentFaqs = await loadRecentDailyFaqs(env.DATA_KV, dateStr);
@@ -1684,6 +1685,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             }, 30000);
             if (faqDraft) {
                 const { rawFaq, faqInput, sceneContext } = faqDraft;
+                faqProductContext = sceneContext;
                 const faqSection = normalizeStandaloneDailyFaqSection(
                     removeMarkdownCodeBlock(rawFaq),
                     faqInput.sourceUrl,
@@ -1711,6 +1713,22 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         } catch (error) {
             console.warn(`[Scheduled][Daily] Standalone FAQ generation failed: ${error.message}`);
             debugInfo.dailyFaqSeparateGenerationError = error.message;
+        }
+        try {
+            const linkedFaq = await withDailyFaqDeadline(
+                () => ensureDailyFaqProductLinks(dailySummaryMarkdownContent, faqProductContext), 4000
+            );
+            const linkedValidation = validateGeneratedDaily(outputOfCall3, linkedFaq.markdown);
+            if (linkedValidation.ok) {
+                dailySummaryMarkdownContent = linkedFaq.markdown;
+                validation = linkedValidation;
+                debugInfo.dailyFaqProductLinks = linkedFaq.links;
+                debugInfo.dailyFaqProductLinkRequests = linkedFaq.requests;
+                debugInfo.dailyFaqProductLinkSkipped = linkedFaq.skipped;
+            }
+        } catch (error) {
+            console.warn(`[Scheduled][Daily] FAQ product links skipped: ${error.message}`);
+            debugInfo.dailyFaqProductLinkError = error.message;
         }
     }
 

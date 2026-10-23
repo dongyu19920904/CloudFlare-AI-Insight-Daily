@@ -59,12 +59,25 @@ async function fetchText(fetchImpl, url, timeoutMs) {
   }
 }
 
+function selectProduct(topic, sourceText, products = []) {
+  return products.filter(({ name }) => topic.pattern.test(name) &&
+    !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name) &&
+    (!/教育|学生/.test(name) || /学生认证|教育(?:版|资格)|校园(?:认证|资格)/.test(sourceText)))
+    .sort((a, b) => {
+      const rank = ({ name }) => (topic.name === 'ChatGPT' && /\bPlus\b/i.test(name) ? 20 : 0) +
+        (/续费|到期|充值/.test(sourceText)
+          ? Number(/续费|充值/.test(name)) * 5
+          : Number(/成品|独享/.test(name)) * 5);
+      return rank(b) - rank(a);
+    })[0];
+}
+
 export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
   const sourceText = (selectedItems || []).join('\n');
   const visibleSourceText = sourceText.replace(/^Url:.*$/gmi, '');
   const candidateTopics = TOPICS.filter((topic) => topic.pattern.test(visibleSourceText));
   const empty = {
-    catalogUrl: '', topics: [], sourceText,
+    catalogUrl: '', topics: [], sourceText, sourceItems: selectedItems || [],
     candidateTopics: candidateTopics.map((topic) => topic.name),
   };
   if (candidateTopics.length === 0) return empty;
@@ -141,6 +154,72 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
   return content.slice(0, faq.index) + cleanedFaq + content.slice(faq.index + faq[0].length);
 }
 
+// Product delivery is a final FAQ field, not a second model's optional writing task.
+export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetchImpl = fetch, timeoutMs = 1500 } = {}) {
+  const content = String(markdown || '');
+  const result = { markdown: content, links: [], requests: 0, skipped: [] };
+  if (context.catalogUrl !== CATALOG_URL || !context.products?.length) return result;
+  const section = content.match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
+  if (!section) return result;
+  const article = content.slice(0, section.index) + content.slice(section.index + section[0].length);
+  const inputUrls = new Set([...String(context.sourceText || '').matchAll(/https?:\/\/[^\s)]+/g)].map(m => m[0]));
+  const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*)\r?$/gm)];
+  const verified = new Map();
+  let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
+  for (let index = 0; index < questions.length; index++) {
+    const question = questions[index];
+    const block = section[0].slice(question.index, questions[index + 1]?.index ?? section[0].length);
+    const title = (question[1] || question[2]).trim();
+    const sources = [...block.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)].map(m => m[1]);
+    const grounded = sources.filter(url => inputUrls.has(url) && article.includes(url));
+    const topic = TOPICS.find(item => context.topics?.includes(item.name) && item.pattern.test(title) &&
+      (context.sourceItems || [context.sourceText || '']).some(source =>
+        grounded.some(url => String(source).includes(url)) && item.pattern.test(String(source).replace(/^Url:.*$/gmi, ''))));
+    if (!topic || result.links.length >= 2) {
+      output += block;
+      continue;
+    }
+    const candidate = selectProduct(topic, title, context.products);
+    let product = candidate && verified.get(candidate.url);
+    if (candidate && !product) {
+      if (context.scene?.topic === topic.name && context.scene.product?.url === candidate.url) {
+        product = context.scene.product;
+      } else {
+        try {
+          result.requests++;
+          const html = await fetchText(fetchImpl, candidate.url, timeoutMs);
+          const name = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
+          if (extractCanonical(html) === candidate.url && topic.pattern.test(name)) product = { url: candidate.url, name };
+        } catch { /* Catalog/product failures leave the already-written news publishable. */ }
+      }
+      if (product) verified.set(product.url, product);
+    }
+    if (!product) {
+      result.skipped.push({ topic: topic.name, reason: candidate ? 'product-check-failed' : 'no-matching-product' });
+      output += block;
+      continue;
+    }
+    const label = `爱窝啦·AI账号店的 ${product.name.replace(/[\[\]\\\r\n]/g, ' ').trim()}`;
+    const link = `[${label}](${product.url})`;
+    let replaced = false;
+    const newline = block.includes('\r\n') ? '\r\n' : '\n';
+    let updated = block.replace(/^\*\*([^*\r\n]+[?？])\*\*(\r?\n|$)/, '### $1$2')
+      .replace(/\[([^\]]+)\]\(https?:\/\/(?:www\.)?aivora\.cn(?:[/?#][^\s)]*)?\)/gi, (_match, oldLabel) => {
+        if (replaced) return oldLabel;
+        replaced = true;
+        return link;
+      });
+    if (!replaced) {
+      const trailing = updated.match(/\s*$/)?.[0] || '';
+      updated = `${updated.trimEnd()}${newline}${newline}相关商品：${link}。${trailing}`;
+    }
+    result.links.push({ topic: topic.name, url: product.url, name: product.name });
+    output += updated;
+  }
+  result.markdown = content.slice(0, section.index) + output + content.slice(section.index + section[0].length);
+  return result;
+}
+
 // Enrich only the optional FAQ, after the news body has passed publication checks.
 export async function loadDailyFaqSceneContext(markdown, selectedItems, context = {}, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
   const namedTopics = TOPICS.filter((topic) =>
@@ -170,15 +249,7 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     .sort((a, b) => b.score - a.score)[0];
   if (!chosen) return context;
   const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);
-  const product = (context.products || [])
-    .filter(({ name }) => topicRule.pattern.test(name) && !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name))
-    .sort((a, b) => {
-      const rank = ({ name }) => (chosen.topic === 'ChatGPT' && /\bPlus\b/i.test(name) ? 20 : 0) +
-        (/续费|到期|充值/.test(chosen.sourceText)
-          ? Number(/续费|充值/.test(name)) * 5
-          : Number(/成品|独享/.test(name)) * 5);
-      return rank(b) - rank(a);
-    })[0];
+  const product = selectProduct(topicRule, chosen.sourceText, context.products);
   let verifiedProduct = null;
   let official = null;
   if (product) {

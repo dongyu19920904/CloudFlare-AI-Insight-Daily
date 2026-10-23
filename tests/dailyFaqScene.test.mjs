@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
   insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt,
   loadRecentDailyFaqs, rememberPublishedDailyFaq, isRepeatedDailyFaq } from '../src/dailyStandaloneFaq.js';
-import { finalizeDailyShopFaq } from '../src/dailyShopFaq.js';
+import { finalizeDailyShopFaq, ensureDailyFaqProductLinks } from '../src/dailyShopFaq.js';
 
 const sourceUrl = 'https://github.com/example/skills';
 const sourceText = `Project Name: skills\nUrl: ${sourceUrl}\nDescription: Claude Code 工作流技能库`;
@@ -74,15 +74,15 @@ const start = scheduled.indexOf('    if (validation.ok) {', scheduled.indexOf('c
 const end = scheduled.indexOf('    dailySummaryMarkdownContent = normalizeMarkdownImageSyntax', start);
 assert.ok(start >= 0 && end > start);
 function runOptional(overrides = {}) {
-  return vm.runInNewContext(`(async function(markdown) {
+  return vm.runInNewContext(`(async function(markdown, shopContext = {}) {
     let dailySummaryMarkdownContent = markdown; let validation = {ok:true}; const debugInfo = {};
     const env = {}; const dateStr = '2026-10-03'; const faqSourceItems = [];
-    const dailyShopContext = {}; const outputOfCall3 = ''; const options = {dryRun:true};
+    const dailyShopContext = shopContext; const outputOfCall3 = ''; const options = {dryRun:true};
     ${scheduled.slice(start, end)}
     return {markdown:dailySummaryMarkdownContent, debug:debugInfo};
   })`, {
     console: {warn() {}}, buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
-    insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, finalizeDailyShopFaq,
+    insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt, finalizeDailyShopFaq, ensureDailyFaqProductLinks,
     removeMarkdownCodeBlock: (text) => text, loadRecentDailyFaqs: async () => [], loadDailyFaqSceneContext: async () => context,
     generateContentWithTransportFallback: async () => raw,
     validateGeneratedDaily: () => ({ok:true}), ...overrides,
@@ -98,6 +98,26 @@ test('optional fetch, model, invalid-output and deadline failures leave the read
     {generateContentWithTransportFallback: () => new Promise(() => {}),
       withDailyFaqDeadline: (task) => withDailyFaqDeadline(task, 5)},
   ]) assert.equal((await runOptional(overrides)(ready)).markdown, ready);
+});
+
+test('the actual final FAQ step adds the matching delivery even when optional model rewriting fails', async () => {
+  const ready = article + raw.replace(/\[爱窝啦·AI账号店[^\]]+\]\(AIVORA_PRODUCT_URL\)/, '续费入口') + '\n\n' + footer;
+  const shop = { ...context, products: [context.scene.product] };
+  for (const generateContentWithTransportFallback of [
+    async () => { throw Error('model offline'); },
+    async () => '不合格的模型结果',
+    () => new Promise(() => {}),
+  ]) {
+    const result = await runOptional({ generateContentWithTransportFallback, loadDailyFaqSceneContext: async () => shop,
+      withDailyFaqDeadline: task => withDailyFaqDeadline(task, 20),
+      ensureDailyFaqProductLinks: (markdown, ctx) => ensureDailyFaqProductLinks(markdown, ctx, { fetchImpl: async url => ({ok:true,
+        text: async () => `<link rel="canonical" href="${url}"><h1>Claude Pro 充值续费</h1>`}) }),
+    })(ready, shop);
+    assert.ok(result.markdown.startsWith(article));
+    assert.equal(result.markdown.slice(-footer.length), footer);
+    assert.ok(result.markdown.includes(context.scene.product.url), JSON.stringify(result));
+    assert.equal(result.debug.dailyFaqProductLinks.length, 1);
+  }
 });
 
 test('published FAQ history excludes today, survives month rollover and treats failures as optional', async () => {
