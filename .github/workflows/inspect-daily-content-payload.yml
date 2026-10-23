@@ -6,11 +6,51 @@ on:
         description: inspect date
         required: true
         default: "2026-03-11"
+      diagnostics_only:
+        description: "Read one Worker response status without model calls or publication"
+        type: boolean
+        default: false
 jobs:
   inspect:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      TARGET_DATE: ${{ inputs.date }}
     steps:
+      - name: Inspect Worker HTTP status without changing data
+        if: inputs.diagnostics_only
+        run: |
+          python - <<'PY'
+          import json,os,re,urllib.request,urllib.error
+          date=os.environ['TARGET_DATE']
+          if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',date):
+              raise SystemExit('Invalid date')
+          url=f'https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date={date}'
+          try:
+              try:
+                  response=urllib.request.urlopen(url,timeout=30)
+              except urllib.error.HTTPError as error:
+                  response=error
+              with response:
+                  status=response.code
+                  content_type=response.headers.get('content-type','')
+                  body=response.read(2048).decode('utf-8',errors='replace')
+                  row={'url':url,'status':status,'contentType':content_type,
+                       'cfRay':response.headers.get('cf-ray'),
+                       'retryAfter':response.headers.get('retry-after'),
+                       'date':response.headers.get('date')}
+                  if status>=400 and 'application/json' not in content_type:
+                      row['errorExcerpt']=re.sub(r'<[^>]*>',' ',body).strip()[:500]
+          except Exception as error:
+              row={'url':url,'networkError':type(error).__name__}
+          with open('worker-http-status.json','w') as handle:
+              json.dump(row,handle,ensure_ascii=False,indent=2)
+          print(json.dumps(row,ensure_ascii=False))
+          PY
       - name: Fetch content payload
+        if: ${{ !inputs.diagnostics_only }}
         run: |
           set -euo pipefail
           DATE='${{ github.event.inputs.date }}'
@@ -38,6 +78,7 @@ jobs:
                       print('META_SOURCE_ITEM', json.dumps(item, ensure_ascii=False))
           PY
       - name: Verify published edition without writing
+        if: ${{ !inputs.diagnostics_only }}
         run: |
           python - <<'PY'
           import json,re,urllib.request
@@ -60,4 +101,5 @@ jobs:
           path: |
             payload.json
             public-check.json
+            worker-http-status.json
           retention-days: 3
