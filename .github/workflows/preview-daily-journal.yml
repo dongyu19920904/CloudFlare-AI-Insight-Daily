@@ -22,6 +22,10 @@ on:
         description: "Run this branch's complete daily code with read-only cached sources; never publish"
         type: boolean
         default: false
+      admin_source_cache:
+        description: "Read the same source cache through the authenticated Cloudflare management API"
+        type: boolean
+        default: false
 
 jobs:
   preview:
@@ -54,16 +58,26 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_CACHE_ACCESS: ${{ inputs.admin_source_cache && 'cloudflare-kv' || 'worker' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           mkdir -p artifacts
           python - <<'PY'
-          import json,tomllib
+          import json,os,tomllib
           with open('wrangler.toml','rb') as f:
               config=tomllib.load(f)
           with open('artifacts/worker-vars.json','w') as f:
               json.dump(config['vars'],f)
+          if os.environ['SOURCE_CACHE_ACCESS']=='cloudflare-kv':
+              namespace=next(item['id'] for item in config['kv_namespaces'] if item['binding']=='DATA_KV')
+              with open('artifacts/source-cache-namespace.txt','w') as f:
+                  f.write(namespace)
           PY
           npx --yes esbuild@0.25.12 src/handlers/scheduled.js --bundle --platform=node --format=esm --outfile=artifacts/scheduled-dry-run.mjs
+          if [[ "$SOURCE_CACHE_ACCESS" == "cloudflare-kv" ]]; then
+            export SOURCE_CACHE_NAMESPACE="$(cat artifacts/source-cache-namespace.txt)"
+          fi
           node scripts/preview-daily-grounding.mjs
       - uses: actions/upload-artifact@v4
         if: ${{ always() && inputs.source_grounding }}

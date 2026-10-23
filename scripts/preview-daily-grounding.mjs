@@ -8,9 +8,31 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('TARGET_DATE requir
 const dir = 'artifacts/grounding-preview';
 await mkdir(dir, { recursive: true });
 const originalFetch = globalThis.fetch;
-const response = await originalFetch(`https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${date}`, { signal: AbortSignal.timeout(45000) });
-if (!response.ok) throw new Error(`Source cache: HTTP ${response.status}`);
-const data = await response.json();
+const sourceCacheAccess = process.env.SOURCE_CACHE_ACCESS || 'worker';
+let data;
+if (sourceCacheAccess === 'cloudflare-kv') {
+  const { CLOUDFLARE_ACCOUNT_ID: account, CLOUDFLARE_API_TOKEN: token, SOURCE_CACHE_NAMESPACE: namespace } = process.env;
+  if (!token || !/^[a-f0-9]{32}$/.test(account || '') || !/^[a-f0-9]{32}$/.test(namespace || '')) {
+    throw new Error('Authenticated source cache configuration is missing or invalid');
+  }
+  data = { date };
+  for (const category of ['news', 'project', 'paper', 'socialMedia']) {
+    const key = encodeURIComponent(`${date}-${category}`);
+    const response = await originalFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces/${namespace}/values/${key}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30000), redirect: 'error',
+    });
+    if (response.status === 404) data[category] = [];
+    else {
+      if (!response.ok) throw new Error(`Authenticated source cache ${category}: HTTP ${response.status}`);
+      data[category] = await response.json();
+      if (!Array.isArray(data[category])) throw new Error(`Invalid cached array: ${category}`);
+    }
+  }
+} else if (sourceCacheAccess === 'worker') {
+  const response = await originalFetch(`https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${date}`, { signal: AbortSignal.timeout(45000) });
+  if (!response.ok) throw new Error(`Source cache: HTTP ${response.status}`);
+  data = await response.json();
+} else throw new Error('Unknown source cache access mode');
 const vars = withWorkerConfigDefaults(JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8')));
 // Reproduce production's recent-project exclusions instead of previewing with an empty KV.
 const recentProjects = [];
@@ -55,7 +77,7 @@ try {
   debug = await handleScheduledDaily({}, env, { waitUntil() {} }, date, { dryRun: true, preferCachedData: true });
 } finally { globalThis.fetch = originalFetch; }
 await writeFile(`${dir}/preview.md`, debug.dailyPreviewMarkdown || '');
-await writeFile(`${dir}/report.json`, JSON.stringify({ published: false, modelCalls, debug }, null, 2));
+await writeFile(`${dir}/report.json`, JSON.stringify({ published: false, sourceCacheAccess, modelCalls, debug }, null, 2));
 console.log(JSON.stringify({ published: false, modelCalls, wouldPublish: debug.dailyWouldPublish,
   grounding: debug.dailyArticleGrounding, issues: debug.dailyValidationIssues }, null, 2));
 if (!debug.dailyWouldPublish) throw new Error('Full daily dry-run did not pass existing validation');
