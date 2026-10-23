@@ -45,7 +45,7 @@ test('missing catalog, unrelated questions and unsupported source links cannot a
   }
 });
 
-test('HTTP failures, wrong canonical and wrong product title preserve the ready news', async () => {
+test('an unverified SKU uses only the current verified catalog and preserves the ready news', async () => {
   for (const fetchImpl of [
     async () => { throw Error('offline'); },
     async () => ({ ok: false, status: 404 }),
@@ -54,8 +54,11 @@ test('HTTP failures, wrong canonical and wrong product title preserve the ready 
   ]) {
     const original = news + question + footer;
     const result = await faq.ensureDailyFaqProductLinks(original, context, { fetchImpl });
-    assert.equal(result.markdown, original);
-    assert.equal(result.links.length, 0);
+    assert.ok(result.markdown.startsWith(news));
+    assert.ok(result.markdown.endsWith(footer));
+    assert.equal(result.links[0].url, catalogUrl);
+    assert.ok(result.markdown.includes(name));
+    assert.ok(!result.markdown.includes(`](${productUrl})`));
   }
 });
 

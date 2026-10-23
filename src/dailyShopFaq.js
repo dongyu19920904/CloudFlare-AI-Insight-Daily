@@ -196,8 +196,11 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     }
     if (!product) {
       result.skipped.push({ topic: topic.name, reason: candidate ? 'product-check-failed' : 'no-matching-product' });
-      output += block;
-      continue;
+      if (!candidate) {
+        output += block;
+        continue;
+      }
+      product = { name: candidate.name, url: CATALOG_URL };
     }
     const label = `爱窝啦·AI账号店的 ${product.name.replace(/[\[\]\\\r\n]/g, ' ').trim()}`;
     const link = `[${label}](${product.url})`;
