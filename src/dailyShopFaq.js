@@ -269,7 +269,11 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
       if (extractCanonical(html) === product.url && topicRule.pattern.test(title)) verifiedProduct = { ...product, name: title };
     } catch { /* A failed product check must not block the news or invent a SKU. */ }
   }
-  const officialUrl = chosen.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(chosen.sourceText)
+  const sourceUrl = new URL(chosen.sourceUrl);
+  const repository = sourceUrl.pathname.split('/').filter(Boolean);
+  const officialUrl = sourceUrl.hostname === 'github.com' && repository.length === 2
+    ? `https://raw.githubusercontent.com/${repository.map(encodeURIComponent).join('/')}/HEAD/README.md`
+    : chosen.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(chosen.sourceText)
     ? 'https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'
     : FAQ_OFFICIAL_PAGES[chosen.topic];
   if (officialUrl) {

@@ -93,8 +93,8 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
         `日期：${dateStr}。只重写日报末尾的一个“相关问题”，不重写新闻正文。`,
         `每天按当天新闻换具体问题，不只是换标题。最近已发布的问题（只用于避重，不作事实来源）：\n${(context.recentFaqs || []).map((item) => `${item.date}：${item.question}`).join('\n') || '暂无记录'}\n避开同一工具已经写过的问题场景。示范只学语言，不要每天都套“会员加 Skill”。`,
         `今天已经发布的线索：\n${scene.sourceText.slice(0, 1600)}`,
-        scene.official ? `已读取的官方资料，仅用于解释工具/订阅权益：${scene.official.url}\n${scene.official.text}` : '没有补充官方权益资料，不写套餐权限、模型可用性或额度结论。',
-        `采用 B 场景型写法，只输出 \`## **❓ 相关问题**\`、一个含“${scene.topic}”的 \`###\` 问句和一个自然段。正文只写 3 句、80-140 字，含链接文字最多 180 字。第一句直接回答并加粗，第二句给一个实用动作，末句给真正需要的人的选择；不展开教程、不堆条件。`,
+        scene.official ? `已读取的官方或原项目资料，只用于核实明确事实：${scene.official.url}\n${scene.official.text}` : '没有补充官方资料，不写套餐权限、模型可用性或额度结论。',
+        `采用 B 场景型写法，只输出 \`## **❓ 相关问题**\`、一个含“${scene.topic}”的 \`###\` 问句和一个自然段。正文只写 3 句、80-140 字，含链接文字最多 180 字。第一句直接回答并加粗，第二句说原文已明确的用途或适合谁，末句给真正需要的人的选择；不写文件名、命令、安装步骤或配置教程。`,
         `原新闻链接必须自然出现一次：${scene.sourceUrl}。它只证明今天的线索，不把社交实测升级为官方承诺。${scene.official ? `需要说明订阅权益时可另引用一次 ${scene.official.url}。` : ''}`,
         scene.product
           ? `本次已核实的交付是“${scene.product.name}”。在同一自然段里顺接一个简短、有条件的选择建议，用一次 [爱窝啦·AI账号店的 ${scene.product.name}](AIVORA_PRODUCT_URL)，你不得生成商品 URL。${/续费|充值/.test(scene.product.name) ? '这是已有可用账号的会员续费，不是新成品账号。' : /成品|独享/.test(scene.product.name) ? '这是另一个成品账号，不是给旧号续费。' : '只按交付名称描述，不推断其他服务。'}不另起“相关商品：”，也不要写购买/配置步骤。`

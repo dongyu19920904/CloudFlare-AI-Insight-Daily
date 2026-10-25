@@ -88,6 +88,17 @@ test('a useful tool workflow outranks a login incident for the optional buying F
   assert.equal(result.scene.sourceUrl,'https://example.org/workflow');
 });
 
+test('repository FAQs verify the project README rather than infer installation from a plan page', async () => {
+  const url='https://github.com/example/design-skill';
+  const item=`Project Name: Claude design skill\nUrl: ${url}`;
+  const requests=[];
+  const result=await faq.loadDailyFaqSceneContext(`[Claude](${url})`,[item],{
+    catalogUrl,topics:['Claude'],candidateTopics:['Claude'],products:[{name:'Claude Pro 续费',url:`${catalogUrl}/claude`}],
+  },{fetchImpl:async target=>{requests.push(target);return {ok:true,text:async()=>`<link rel="canonical" href="${target}"><h1>Claude Pro 续费</h1>Design skill documentation.`};}});
+  assert.ok(requests.includes('https://raw.githubusercontent.com/example/design-skill/HEAD/README.md'));
+  assert.equal(result.scene.official.url,'https://raw.githubusercontent.com/example/design-skill/HEAD/README.md');
+});
+
 test('missing catalog, unrelated questions and unsupported source links cannot add a recommendation', async () => {
   for (const [markdown, shop] of [
     [news + question, {}],
