@@ -30,6 +30,37 @@ test('product links are idempotent and never copied from another topic or guesse
   assert.equal(second.markdown, first.markdown);
   assert.equal((second.markdown.match(/\]\(https:\/\/www\.aivora\.cn\/products\//g) || []).length, 1);
   assert.doesNotMatch(second.markdown, /invented|chatgpt-account/);
+  assert.doesNotMatch(first.markdown, /相关商品[：:]/);
+});
+
+test('a native recommendation stays in its original sentence without another product tail', async () => {
+  const natural = question + ` 如果正准备另开一个账号，可以看看 [爱窝啦·AI账号店的 ${name}](${productUrl}) 的交付说明。`;
+  const result = await faq.ensureDailyFaqProductLinks(news + natural + footer, context, { fetchImpl: okFetch });
+  assert.ok(result.markdown.includes(`可以看看 [爱窝啦·AI账号店的 ${name}](${productUrl}) 的交付说明。`));
+  assert.doesNotMatch(result.markdown, /相关商品[：:]|如果你原本/);
+  assert.ok(result.markdown.startsWith(news));
+  assert.ok(result.markdown.endsWith(footer));
+});
+
+test('legacy product lines become an inline conditional suggestion and remain idempotent', async () => {
+  const legacy = question + `\r\n\r\n相关商品：[旧商品](${productUrl})。\r\n`;
+  const first = await faq.ensureDailyFaqProductLinks(news + legacy + footer, context, { fetchImpl: okFetch });
+  const second = await faq.ensureDailyFaqProductLinks(first.markdown, context, { fetchImpl: okFetch });
+  assert.equal(first.markdown, second.markdown);
+  assert.doesNotMatch(first.markdown, /相关商品[：:]|旧商品/);
+  assert.ok(first.markdown.includes('流程。 如果你原本就想另开一个 Gemini 账号'));
+  assert.equal(first.links.length, 1);
+});
+
+test('login trouble never turns the automatic purchase suggestion into a repair promise', async () => {
+  const body = (news + question).replaceAll('Gemini', 'ChatGPT').replace('导出网站需要什么账号', '登录不进去要重买账号吗');
+  const result = await faq.ensureDailyFaqProductLinks(body, { ...context, sourceText: context.sourceText.replaceAll('Gemini', 'ChatGPT') }, {
+    fetchImpl: async url => ({ ok: true, text: async () => `<link rel="canonical" href="${url}"><h1>ChatGPT Plus 成品号</h1>` }),
+  });
+  assert.equal(result.links.length, 1);
+  assert.match(result.markdown, /原本就想另开一个 ChatGPT 账号/);
+  assert.match(result.markdown, /购买不能代替登录排查/);
+  assert.doesNotMatch(result.markdown, /相关商品[：:]|购买.*(?:即可|就能).*登录/);
 });
 
 test('missing catalog, unrelated questions and unsupported source links cannot add a recommendation', async () => {
@@ -68,6 +99,13 @@ test('a verified current scene product can be reused without another network req
     { fetchImpl: async () => { throw Error('already verified'); } });
   assert.equal(result.requests, 0);
   assert.equal(result.links[0].url, productUrl);
+});
+
+test('shop listing separators do not make the prose link read like a catalog label', async () => {
+  const result = await faq.ensureDailyFaqProductLinks(news + question, context, { fetchImpl: async url => ({ok:true,
+    text:async () => `<link rel="canonical" href="${url}"><h1>Gemini Pro｜成品号【年卡】</h1>`}) });
+  assert.ok(result.markdown.includes('[爱窝啦·AI账号店的 Gemini Pro 成品号年卡]'));
+  assert.doesNotMatch(result.markdown, /【|】|｜/);
 });
 
 test('ChatGPT gets its matching Plus product, never a Gemini entry', async () => {

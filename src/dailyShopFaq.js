@@ -202,19 +202,25 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       }
       product = { name: candidate.name, url: CATALOG_URL };
     }
-    const label = `爱窝啦·AI账号店的 ${product.name.replace(/[\[\]\\\r\n]/g, ' ').trim()}`;
+    const label = `爱窝啦·AI账号店的 ${product.name.replace(/[\[\]\\\r\n|｜]/g, ' ').replace(/[【】]/g, '').replace(/\s+/g, ' ').trim()}`;
     const link = `[${label}](${product.url})`;
     let replaced = false;
-    const newline = block.includes('\r\n') ? '\r\n' : '\n';
+    const trailing = block.match(/\s*$/)?.[0] || '';
     let updated = block.replace(/^\*\*([^*\r\n]+[?？])\*\*(\r?\n|$)/, '### $1$2')
+      .replace(/^[ \t]*(?:相关商品|商品推荐)[：:][^\r\n]*\]\(https?:\/\/(?:www\.)?aivora\.cn[^)\r\n]*\)[^\r\n]*(?:\r?\n|$)/gm, '')
       .replace(/\[([^\]]+)\]\(https?:\/\/(?:www\.)?aivora\.cn(?:[/?#][^\s)]*)?\)/gi, (_match, oldLabel) => {
         if (replaced) return oldLabel;
         replaced = true;
         return link;
       });
     if (!replaced) {
-      const trailing = updated.match(/\s*$/)?.[0] || '';
-      updated = `${updated.trimEnd()}${newline}${newline}相关商品：${link}。${trailing}`;
+      const renewal = /续费|充值/.test(product.name);
+      const login = /登录|登入|Apple\s*ID|验证|打不开/i.test(title);
+      const need = renewal ? '已有账号可以正常使用、只是会员快到期' : `原本就想另开一个 ${topic.name} 账号`;
+      const suggestion = login
+        ? `如果你${need}，可以再看 ${link} 的交付说明；购买不能代替登录排查。`
+        : `如果你${need}，可以对照 ${link} 的交付说明，看看是否适合自己的用法。`;
+      updated = `${updated.trimEnd()} ${suggestion}${trailing}`;
     }
     result.links.push({ topic: topic.name, url: product.url, name: product.name });
     output += updated;

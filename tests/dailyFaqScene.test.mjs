@@ -27,7 +27,9 @@ test('scene FAQ can replace a generic FAQ and uses distinct news, official and d
   assert.match(input.prompt, /B 场景型/);
   assert.match(input.prompt, /120-180/);
   assert.match(input.prompt, /不重写新闻正文/);
-  assert.match(input.prompt, /商品推荐由发布代码/);
+  assert.match(input.prompt, /同一自然段里顺接/);
+  assert.match(input.prompt, /不得生成商品 URL/);
+  assert.match(input.prompt, /登录不通先排查原登录方式/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /只输出/);
 });
 
