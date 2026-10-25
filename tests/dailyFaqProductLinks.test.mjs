@@ -78,6 +78,16 @@ test('ChatGPT login scenes read official login troubleshooting instead of plan m
   assert.match(result.scene.official.text, /original sign-in method/);
 });
 
+test('a useful tool workflow outranks a login incident for the optional buying FAQ only', async () => {
+  const fault='News Title: ChatGPT Apple ID 登录异常\nUrl: https://example.org/login';
+  const workflow='News Title: Gemini 编程工作流\nUrl: https://example.org/workflow';
+  const result=await faq.loadDailyFaqSceneContext('[故障](https://example.org/login) [工具](https://example.org/workflow)', [fault,workflow], {
+    ...context,candidateTopics:['ChatGPT','Gemini'],
+  }, {fetchImpl:okFetch});
+  assert.equal(result.scene.topic,'Gemini');
+  assert.equal(result.scene.sourceUrl,'https://example.org/workflow');
+});
+
 test('missing catalog, unrelated questions and unsupported source links cannot add a recommendation', async () => {
   for (const [markdown, shop] of [
     [news + question, {}],

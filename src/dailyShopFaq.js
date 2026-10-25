@@ -247,7 +247,8 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     const visible = text.replace(/^Url:.*$/gmi, '');
     return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible))
       .map((topic) => ({ topic: topic.name, sourceUrl: url, sourceText: text,
-        score: (topic.name === 'ChatGPT' ? 20 : 0) + (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0),
+        score: (topic.name === 'ChatGPT' ? 20 : 0) + (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
+          (/登录|登入|OAuth|打不开|无法访问|封号/i.test(visible) ? 30 : 0),
       }));
   });
   const recent = context.recentFaqs || [];
