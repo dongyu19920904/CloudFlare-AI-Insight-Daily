@@ -63,6 +63,21 @@ test('login trouble never turns the automatic purchase suggestion into a repair 
   assert.doesNotMatch(result.markdown, /相关商品[：:]|购买.*(?:即可|就能).*登录/);
 });
 
+test('ChatGPT login scenes read official login troubleshooting instead of plan marketing', async () => {
+  const url = 'https://www.v2ex.com/t/example';
+  const item = `News Title: ChatGPT Apple ID 登录异常\nUrl: ${url}`;
+  const requests = [];
+  const result = await faq.loadDailyFaqSceneContext(`[新闻](${url})`, [item], {
+    catalogUrl, topics: ['ChatGPT'], candidateTopics: ['ChatGPT'], products: [context.products[0]],
+  }, { fetchImpl: async target => {
+    requests.push(target);
+    return {ok:true,text:async () => `<link rel="canonical" href="${target}"><h1>ChatGPT Plus 成品号</h1><p>General Troubleshooting Steps: use the original sign-in method.</p>`};
+  }});
+  assert.ok(requests.includes('https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'));
+  assert.ok(!requests.includes('https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus'));
+  assert.match(result.scene.official.text, /original sign-in method/);
+});
+
 test('missing catalog, unrelated questions and unsupported source links cannot add a recommendation', async () => {
   for (const [markdown, shop] of [
     [news + question, {}],

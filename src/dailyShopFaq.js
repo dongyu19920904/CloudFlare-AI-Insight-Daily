@@ -268,12 +268,14 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
       if (extractCanonical(html) === product.url && topicRule.pattern.test(title)) verifiedProduct = { ...product, name: title };
     } catch { /* A failed product check must not block the news or invent a SKU. */ }
   }
-  const officialUrl = FAQ_OFFICIAL_PAGES[chosen.topic];
+  const officialUrl = chosen.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(chosen.sourceText)
+    ? 'https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'
+    : FAQ_OFFICIAL_PAGES[chosen.topic];
   if (officialUrl) {
     try {
       const html = await fetchText(fetchImpl, officialUrl, timeoutMs);
       const text = readableText(html);
-      const start = text.search(/With Pro and Max plans|What is ChatGPT Plus\?|What is Claude Code\?|Choose your plan|Codex Pricing/i);
+      const start = text.search(/Troubleshooting login issues|General Troubleshooting Steps|With Pro and Max plans|What is ChatGPT Plus\?|What is Claude Code\?|Choose your plan|Codex Pricing/i);
       official = { url: officialUrl, text: text.slice(Math.max(0, start), Math.max(0, start) + 2500) };
     } catch { /* Without official evidence the FAQ cannot assert plan entitlements. */ }
   }
