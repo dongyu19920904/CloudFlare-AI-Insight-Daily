@@ -144,6 +144,21 @@ test('shop listing separators do not make the prose link read like a catalog lab
   assert.doesNotMatch(result.markdown, /【|】|｜/);
 });
 
+test('an inline renewal recommendation keeps its verified delivery even without renewal in the question', async () => {
+  const url = `${catalogUrl}/chatgpt-renewal`;
+  const product = {name:'ChatGPT Plus 充值续费',url};
+  const body = (news + question).replaceAll('Gemini', 'ChatGPT') +
+    ` 已有可用账号、会员快到期，可以看看 [爱窝啦·AI账号店的 ${product.name}](${url})。`;
+  const shop = {...context,sourceText:context.sourceText.replaceAll('Gemini','ChatGPT'),
+    products:[context.products[0],product],scene:{topic:'ChatGPT',product}};
+  const result = await faq.ensureDailyFaqProductLinks(body, shop,
+    {fetchImpl:async()=>{throw Error('already verified');}});
+  assert.equal(result.requests,0);
+  assert.equal(result.links[0].url,url);
+  assert.ok(result.markdown.includes(`[爱窝啦·AI账号店的 ${product.name}](${url})`));
+  assert.doesNotMatch(result.markdown,/chatgpt-account/);
+});
+
 test('ChatGPT gets its matching Plus product, never a Gemini entry', async () => {
   const body = (news + question).replaceAll('Gemini', 'ChatGPT');
   const result = await faq.ensureDailyFaqProductLinks(body, { ...context, sourceText: context.sourceText.replaceAll('Gemini', 'ChatGPT') }, { fetchImpl: async url => ({ ok: true,

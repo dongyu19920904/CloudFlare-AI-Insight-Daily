@@ -179,7 +179,9 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       output += block;
       continue;
     }
-    const candidate = selectProduct(topic, title, context.products);
+    const sceneProduct = context.scene?.topic === topic.name && context.scene.product;
+    const candidate = (sceneProduct && context.products.find(({ url }) => url === sceneProduct.url)) ||
+      selectProduct(topic, title, context.products);
     let product = candidate && verified.get(candidate.url);
     if (candidate && !product) {
       if (context.scene?.topic === topic.name && context.scene.product?.url === candidate.url) {
