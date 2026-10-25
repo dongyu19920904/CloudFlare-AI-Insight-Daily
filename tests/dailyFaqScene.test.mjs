@@ -31,6 +31,9 @@ test('scene FAQ can replace a generic FAQ and uses distinct news, official and d
   assert.match(input.prompt, /不得生成商品 URL/);
   assert.match(input.prompt, /登录不通先排查原登录方式/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /只输出/);
+  assert.match(getStandaloneDailyFaqSystemPrompt(), /80-140 字，链接文字也计入/);
+  assert.match(getStandaloneDailyFaqSystemPrompt(), /新闻摘要不是安装文档/);
+  assert.match(getStandaloneDailyFaqSystemPrompt(), /不把购买说成修复故障/);
 });
 
 test('normalization fills only a verified product URL and replacement preserves all non-FAQ bytes', () => {
