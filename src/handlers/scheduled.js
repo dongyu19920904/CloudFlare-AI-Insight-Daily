@@ -8,6 +8,7 @@ import { resolveFoloCookie } from './foloCookieAdmin.js';
 import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero.js";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree.js";
 import { getSystemPromptAiOpportunity } from "../prompt/aiOpportunityPrompt.js";
+import { normalizeOpportunityEditorialMarkdown } from '../opportunityEditorial.js';
 import { getSystemPromptAiAccountOpportunity } from "../prompt/aiAccountOpportunityPrompt.js";
 import {
     opportunityPlaybook,
@@ -2092,9 +2093,13 @@ async function generateOpportunityMarkdown(
         markdown = normalizeOpportunityAvoidSection(markdown, {
             hasRejectedCandidates: rejectedOpportunityCandidates.length > 0,
         });
-        markdown = normalizeOpportunityEvidenceBoundaryLanguage(markdown, {
-            observationMode,
+        // Opportunity-only editorial adapter; daily and account pipelines stay unchanged.
+        const editorial = normalizeOpportunityEditorialMarkdown(markdown, {
+            normalizeEvidence: (text) => normalizeOpportunityEvidenceBoundaryLanguage(text, { observationMode }),
         });
+        markdown = editorial.markdown;
+        debugInfo.opportunityEditorialVersion = editorial.version;
+        debugInfo.opportunityEditorialWarnings = editorial.warnings;
 
         const insertedAivoraLink = insertOpportunityAivoraLink(
             markdown,
