@@ -572,7 +572,7 @@ function buildDailyPromptCandidate(item) {
     case "project":
       itemText = `Project Name: ${item.title}\nSource: ${item.source || "Unknown"}\nPublished: ${item.published_date}\nUrl: ${item.url}\nOwner: ${item.details?.owner || "Unknown"}\nLanguage: ${item.details?.language || "Unknown"}\nStars Today: ${item.details?.starsToday || "Unknown"}\nTotal Stars: ${item.details?.totalStars || "Unknown"}\nDescription: ${truncatePromptText(item.description)}`;
       if (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) {
-        itemText += "\nPlacement Hint: This project is from today's GitHub daily trending list and may enter TOP only if it is clearly AI-related and not used in the last 7 days.";
+        itemText += "\nPlacement Hint: This project is from today's GitHub daily trending list. Reserve it exclusively for the open-source projects section, never the daily focus TOP. It must be clearly AI-related and not used in the last 7 days.";
       } else {
         itemText += "\nPlacement Hint: This project is not from today's GitHub daily trending list. Do not put it in TOP.";
       }

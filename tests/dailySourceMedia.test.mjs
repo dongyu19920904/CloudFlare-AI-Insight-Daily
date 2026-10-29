@@ -62,6 +62,21 @@ test('GitHub uses returned README branch, does not guess main, and inserts first
   assert.match(result.markdown, /README 展示图/);
 });
 
+test('a repository without README images stays text-only instead of fabricating a cover', async () => {
+  const url = 'https://github.com/elayadesign/ai-design-skills';
+  const markdown = `## **⌘ 开源 TOP 项目**\n\n### elayadesign/ai-design-skills：AI 设计技能\n\n[项目能力](${url})。`;
+  const calls = [];
+  const result = await enrichDailySourceMedia(markdown, {}, {}, { fetchImpl: async (target) => {
+    calls.push(target);
+    return Response.json({ download_url: 'https://raw.githubusercontent.com/elayadesign/ai-design-skills/main/README.md',
+      content: btoa('# AI Design Skills\nA collection of design skills.\n[Install](./skills/design/SKILL.md)') });
+  } });
+  assert.equal(result.markdown, markdown);
+  assert.equal(result.insertedCount, 0);
+  assert.equal(result.rows[0].status, 'no-verified-image');
+  assert.deepEqual(calls, ['https://api.github.com/repos/elayadesign/ai-design-skills/readme']);
+});
+
 test('404, nonimage and canonical mismatch skip only media and keep the complete article', async () => {
   const url = 'https://example.org/news';
   for (const response of [new Response('no',{status:404}),new Response('html',{headers:{'content-type':'text/html'}}),

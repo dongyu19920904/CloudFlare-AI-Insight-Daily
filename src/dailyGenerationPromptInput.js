@@ -109,9 +109,7 @@ function allocateDailyPromptItems(items = []) {
   };
   const reservableSocialItems = buckets.socialMedia.filter((item) => !isPriorityDailyModelLaunch(item));
   const reservableNewsItems = buckets.news.filter((item) => !isPriorityDailyModelLaunch(item));
-  const forcedProjectReserveCount = buckets.project.length > 0
-    ? Math.max(1, buckets.project.length - 1)
-    : 0;
+  const forcedProjectReserveCount = buckets.project.length;
   let reserveBudget = Math.max(
     0,
     primaryItems.length - DAILY_TOP_TARGET - forcedProjectReserveCount

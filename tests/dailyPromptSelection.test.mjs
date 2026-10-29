@@ -131,6 +131,8 @@ test("buildDailyPromptSelection reserves prompt slots for GitHub projects", () =
   assert.equal(result.selectedCounts.socialMedia, 1);
   assert.match(result.selectedContentItems.join("\n"), /Project Name:/);
   assert.match(result.selectedContentItems.join("\n"), /Source: GitHub Trending Daily/);
+  assert.match(result.selectedContentItems.join("\n"), /Reserve it exclusively for the open-source projects section, never the daily focus TOP/);
+  assert.doesNotMatch(result.selectedContentItems.join("\n"), /may enter TOP only if/);
   assert.match(result.selectedContentItems.join("\n"), /Stars Today:/);
   assert.deepEqual(result.allowedTopGithubProjectUrls.sort(), [
     "https://github.com/example/project-1",

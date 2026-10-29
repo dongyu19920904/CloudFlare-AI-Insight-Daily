@@ -783,7 +783,7 @@ function buildDailyRepairPrompt(basePromptInput, invalidMarkdown, validationIssu
         "- 今日焦点每条正文通常恰好用 `**...**` 标出 3 处：开头黄色短结论，加上 2 个来源支持的关键能力、精确数字、限制或反常结果；作者名、媒体名、情绪反应、空泛评价和来源标签不得染黄。较短专业栏目保留 2-3 处，每处 2-12 个字符，链接文字保持蓝色且不要同时加粗",
         "- 任何带有 `Placement Hint: This is a welfare/freebie item` 的素材，或明显属于福利/羊毛/免费额度/优惠/coupon/discount/free/credit 的素材，严禁进入今日焦点；没有官方说明或可复核步骤时直接不用",
         "- 任何带有 `Placement Hint: This is a low-evidence AI workflow pitch` 的素材，来自指定 Folo 源的低证据短视频/副业/带货/涨粉类强承诺内容，严禁进入 TOP；素材充足时直接不用",
-        "- 今日焦点最多 1 个 GitHub 项目；今日焦点和开源 TOP 中只要出现 GitHub 仓库链接，都必须来自 `Source: GitHub Trending Daily` 或对应 Placement Hint，媒体或社媒顺手提到的非日榜仓库不能使用",
+        "- 今日焦点不放 GitHub 仓库推荐；所有 Project Name 候选只写入开源 TOP 项目，焦点空位用非项目新闻和去重备用素材补足。开源候选仍须来自当天 GitHub Trending Daily 并符合 7 天去重；模型发布和编程观点不因提及 GitHub 就自动归为项目",
         "- FAQ 是可选栏目。有经核实的主站商品目录上下文、当天正文涉及同一工具，且输入原始来源能直接回答真实买家问题时，优先写 1 条；证据不足就省略，不能补通用问答。商品目录只证明公开展示的类别，不证明库存或新闻功能属于某套餐。主站链接只用输入中经核实的目录 URL，最多 1 个；不得猜测商品 URL 或价格",
         "- 允许从最近 2 天内补位，但不要解释日期过滤、候选编号、候选数量、淘汰原因或为什么条目变少",
         "- 不要写“我看了一下今天的素材”“今天新闻不够”“今日合格素材共几条”“TOP 候选几属于非 AI”“实际只能输出几条”“按照日期过滤规则”“根据容错机制”“素材质量参差不齐”这类句子",

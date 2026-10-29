@@ -31,9 +31,9 @@ test("daily prompt preserves date tolerance, dedupe, AI relevance, and GitHub sa
   assert.match(prompt, /Source: GitHub Trending Daily/);
   assert.match(prompt, /最近 7 天/);
   assert.match(prompt, /GitHub Search/);
-  assert.match(prompt, /今日焦点最多放 1 个 GitHub 项目/);
-  assert.match(prompt, /今日焦点和开源栏目中只要链接到 GitHub 仓库/);
-  assert.match(prompt, /非日榜仓库即使当天被报道，也不能进入今日焦点/);
+  assert.match(prompt, /今日焦点不放 GitHub 仓库推荐/);
+  assert.match(prompt, /仓库推荐只写入开源 TOP 项目栏目，不得进入今日焦点/);
+  assert.match(prompt, /GitHub Search、媒体报道或社媒顺手提到的仓库不能绕过当日日榜限制进入开源栏目/);
   assert.match(prompt, /进入当日日榜只证明项目当天获得关注/);
   assert.match(prompt, /不得写成“今日发布”“正式上线”或“开放使用”/);
   assert.match(prompt, /严格服从输入开头的“栏目候选预算”/);

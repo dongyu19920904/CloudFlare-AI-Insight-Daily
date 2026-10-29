@@ -118,7 +118,7 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
 
   assert.match(promptInput, /栏目候选预算/);
   assert.match(promptInput, /GitHub 当日日榜项目 3 个、社媒原帖 4 条/);
-  assert.match(promptInput, /为开源 TOP 项目单独预留 2 个/);
+  assert.match(promptInput, /为开源 TOP 项目单独预留 3 个/);
   assert.match(promptInput, /为社媒精选单独预留 3 条/);
   assert.match(promptInput, /今日焦点最多使用 2 条社媒/);
   assert.match(promptInput, /开源 TOP 项目专用候选素材/);
@@ -136,29 +136,52 @@ test("buildDailyGenerationPromptInput reserves rich project and social candidate
   assert.equal(countDailyTopEligiblePromptItems(selectedItems), 10);
   assert.deepEqual(getDailyPromptAllocationStats(selectedItems, [social(5), social(6)]), {
     topItems: 10,
-    reservedProjectItems: 2,
+    reservedProjectItems: 3,
     reservedSocialItems: 3,
     reservedPaperItems: 0,
-    reservedNewsItems: 2,
+    reservedNewsItems: 1,
   });
   assert.doesNotMatch(promptInput, /user-5\/status\/5/);
   assert.equal(promptInput.match(/user-6\/status\/6/g)?.length, 1);
   assert.doesNotMatch(promptInput, /AI趣闻专用候选素材/);
 });
 
-test("daily prompt allocation keeps at most one GitHub project in a low-volume TOP", () => {
+test("daily prompt allocation keeps every GitHub project out of a low-volume TOP", () => {
   const project = (index) => `Project Name: project-${index}\nUrl: https://github.com/example/project-${index}`;
   const social = (index) => `socialMedia Post by user-${index}\nUrl: https://x.com/user/status/${index}`;
   const news = (index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`;
   const selectedItems = [project(1), project(2), social(1), social(2), news(1), news(2), news(3), news(4)];
 
   assert.deepEqual(getDailyPromptAllocationStats(selectedItems), {
-    topItems: 7,
-    reservedProjectItems: 1,
+    topItems: 6,
+    reservedProjectItems: 2,
     reservedSocialItems: 0,
     reservedPaperItems: 0,
     reservedNewsItems: 0,
   });
+});
+
+test("all repository candidates stay in open-source while news still supplies ten focus items", async () => {
+  const { getSystemPromptSummarizationStepOne } = await import('../src/prompt/summarizationPromptStepZero.js');
+  for (const count of [1, 2, 4]) {
+    const projects = Array.from({ length: count }, (_, i) =>
+      `Project Name: skills-${i}\nSource: GitHub Trending Daily\nUrl: https://github.com/owner/skills-${i}`);
+    const news = Array.from({ length: 13 }, (_, i) =>
+      `News Title: AI product change ${i}\nUrl: https://example.com/news-${i}`);
+    news[0] = 'News Title: 阮一峰：AI 已永久改变编程\nUrl: https://t.me/scitech_fans/419';
+    news[1] = 'News Title: 官方发布新模型并公开 GitHub 代码\nUrl: https://example.org/model-release';
+    const prompt = buildDailyGenerationPromptInput([...projects, ...news]);
+    const top = prompt.split('【今日焦点候选素材】')[1].split('【开源 TOP 项目专用候选素材】')[0];
+    assert.equal(getDailyPromptAllocationStats([...projects, ...news]).reservedProjectItems, count);
+    assert.equal(countDailyTopEligiblePromptItems([...projects, ...news]), 10);
+    assert.doesNotMatch(top, /Project Name:|github\.com\/owner\//);
+    assert.match(top, /AI 已永久改变编程/);
+    assert.match(top, /官方发布新模型并公开 GitHub 代码/);
+    for (let i = 0; i < count; i++) assert.equal(prompt.split(`https://github.com/owner/skills-${i}`).length - 1, 1);
+  }
+  const system = getSystemPromptSummarizationStepOne('2026-10-29');
+  assert.match(system, /今日焦点不放 GitHub 仓库推荐/);
+  assert.doesNotMatch(system, /今日焦点最多放 1 个 GitHub 项目/);
 });
 
 test("the sole fresh project stays in open-source while distinct backups fill TOP", () => {
@@ -200,8 +223,8 @@ test("daily prompt fills low-volume TOP slots after reserving extra GitHub proje
   const openSourceCandidates = promptInput.match(/【开源 TOP 项目专用候选素材】[\s\S]*?(?=【|$)/)?.[0] || "";
 
   assert.match(topCandidates, /TOP 候选 10:/);
-  assert.equal((topCandidates.match(/^Project Name:/gm) || []).length, 1);
-  assert.equal((openSourceCandidates.match(/^Project Name:/gm) || []).length, 2);
+  assert.equal((topCandidates.match(/^Project Name:/gm) || []).length, 0);
+  assert.equal((openSourceCandidates.match(/^Project Name:/gm) || []).length, 3);
   assert.equal(countDailyTopEligiblePromptItems(selectedItems, backupItems), 10);
 });
 
@@ -212,7 +235,7 @@ test("daily prompt fills TOP before reserving an optional fun candidate", () => 
     project(1), project(2), project(3),
     ...Array.from({ length: 7 }, (_, index) => news(index + 1)),
   ];
-  const backupItems = [news(20), news(21)];
+  const backupItems = [news(20), news(21), news(22)];
 
   const promptInput = buildDailyGenerationPromptInput(selectedItems, backupItems);
 
