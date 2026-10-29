@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { marked } from "../src/marked.esm.js";
 
 import {
   countUsableDailyMedia,
@@ -14,6 +15,25 @@ function candidate(index, imageUrl) {
     placeholders: [`![image](${imageUrl})`],
   };
 }
+
+test("source enrichment keeps images separate from horizontal rules, not Setext headings", () => {
+  for (const newline of ["\n", "\r\n"]) {
+    const markdown = [
+      "## **⌘ 开源 TOP 项目**", "", "### example/repo：示例工具", "",
+      "**正文不改。** [项目展示](https://example.com/news-1)。", "", "---", "",
+      "## **😄 AI趣闻**", "", "### 一个真实趣闻", "", "趣闻原文。",
+    ].join(newline);
+    const media = [candidate(1, "https://cdn.example.com/demo.jpg")];
+    const result = ensureDailyMediaCoverage(markdown, media, 100, { coverEverySource: true });
+    const tokens = marked.lexer(result.markdown);
+    assert.equal(result.insertedCount, 1);
+    assert.equal(tokens.filter((token) => token.type === "heading" && token.depth === 2).length, 2);
+    assert.equal(tokens.filter((token) => token.type === "hr").length, 1);
+    assert.match(result.markdown, /正文不改/);
+    assert.match(result.markdown, /趣闻原文/);
+    assert.equal(ensureDailyMediaCoverage(result.markdown, media, 100, { coverEverySource: true }).markdown, result.markdown);
+  }
+});
 
 test("ensureDailyMediaCoverage inserts only source-matched media beside each item", () => {
   const markdown = `## **🔥 今日焦点 TOP 10**
