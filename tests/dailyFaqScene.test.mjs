@@ -188,3 +188,21 @@ test('published FAQ history records only canonical shop product links and preser
   assert.equal(history[0].question, '旧问题？');
   assert.equal(history[0].productUrls, undefined);
 });
+
+test('a Codex scene accepts its verified subscription name in the question without changing the delivery', async () => {
+  const url = 'https://example.org/codex';
+  const product = {name:'ChatGPT Plus 充值续费',url:'https://www.aivora.cn/products/plus-renewal'};
+  const ctx = {catalogUrl:context.catalogUrl,topics:['ChatGPT','Codex'],sourceText:`News Title: Codex 原型\nUrl: ${url}`,
+    products:[{name:'ChatGPT Plus 成品号',url:'https://www.aivora.cn/products/plus-account'},product],
+    scene:{topic:'Codex',sourceUrl:url,sourceText:'Codex 原型实验',product,official:{text:'ChatGPT Plus includes Codex.'}}};
+  const draft=`## **❓ 相关问题**\n\n### 想用 ChatGPT 辅助做语音小工具，怎么起步？\n\n**可以先从一个软件小功能试起。** [原型实验](${url})让 AI 参与软件设计，制造仍需多轮人工审核。已有可用账号、想继续试这些小任务，正要续费的可以看看[爱窝啦·AI账号店的 ChatGPT Plus 充值续费](AIVORA_PRODUCT_URL)。`;
+  const normalized=normalizeStandaloneDailyFaqSection(draft,url,ctx.scene.sourceText,'Codex',ctx);
+  assert.ok(normalized);
+  const article=`## 新闻\n\n[Codex 原型](${url})\n\n`;
+  const final=await ensureDailyFaqProductLinks(finalizeDailyShopFaq(article+normalized,ctx),ctx,
+    {fetchImpl:async()=>{throw Error('already verified');}});
+  assert.equal(final.links[0].url,product.url);
+  assert.equal(final.requests,0);
+  assert.doesNotMatch(final.markdown,/plus-account/);
+  assert.equal(normalizeStandaloneDailyFaqSection(draft.replace('想用 ChatGPT','想用 Gemini'),url,ctx.scene.sourceText,'Codex',ctx),'');
+});

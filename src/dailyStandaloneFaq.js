@@ -11,6 +11,11 @@ function faqQuestionKey(question) {
   return String(question || '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
 }
 
+export function matchesDailyFaqTopic(text, topic, product) {
+  return Boolean(topic) && (new RegExp(topic, 'i').test(text) ||
+    (topic === 'Codex' && /ChatGPT\s+(?:Plus|Pro)\b/i.test(product?.name || '') && /ChatGPT/i.test(text)));
+}
+
 export function getDailyFaqTheme(text) {
   if (/skill|技能|工作流|(?:重复|反复|重新).*交代|反复配置/i.test(text)) return 'workflow';
   if (/额度|次数|用完|不够用|限额/.test(text)) return 'quota';
@@ -171,7 +176,7 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
     if (links.some((url) => !allowed.has(url)) || links.filter((url) => url === sourceUrl).length !== 1) return '';
     const productSlots = (text.match(/\]\(AIVORA_PRODUCT_URL\)/g) || []).length;
     if (links.length > allowed.size || /aivora\.cn/i.test(text) || productSlots > 1) return '';
-    if ((text.match(/爱窝啦·AI账号店/g) || []).length !== productSlots || !new RegExp(topic, 'i').test(question)) return '';
+    if ((text.match(/爱窝啦·AI账号店/g) || []).length !== productSlots || !matchesDailyFaqTopic(question, topic, scene.product)) return '';
     if (visible.length < 80 || visible.length > 200 || /\n\s*\n/.test(answer) || !/^\*\*[^*\n]+\*\*/.test(answer)) return '';
     if (/准备比较当前公开|无法生成|请.*确认|系统指令|职权范围|无限(?:使用|额度)|保证|绝不|不限地区|国内(?:都|均|直接).*可用|售价|\d+\s*(?:元|美元|刀|次|额度)|封号率/.test(visible)) return '';
     if (/数据(?:本身)?(?:没有|未)加密/.test(visible)) return '';

@@ -1,7 +1,7 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls } from './opportunityAivoraLinkPolicy.js';
 import { stripHtml } from './helpers.js';
-import { getDailyFaqTheme } from './dailyStandaloneFaq.js';
+import { getDailyFaqTheme, matchesDailyFaqTopic } from './dailyStandaloneFaq.js';
 import { extractDailyMarkdownLinks } from './dailyMarkdownItems.js';
 import { dailyMediaSourceKey } from './dailySourceMedia.js';
 
@@ -68,7 +68,7 @@ async function fetchText(fetchImpl, url, timeoutMs) {
 
 function matchesProductTopic(topic, name) {
   return topic.pattern.test(name) ||
-    (topic.name === 'Codex' && /ChatGPT\s+(?:Plus|Pro)\b/i.test(name));
+    matchesDailyFaqTopic(name, topic.name, { name });
 }
 
 function eligibleProduct(topic, name, sourceText) {
@@ -161,7 +161,7 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
   const visibleArticle = article.replace(/\]\(https?:\/\/[^)]+\)/g, ']');
   const hasSameTopic = (context.topics || []).some((name) => {
     const topic = TOPICS.find((item) => item.name === name);
-    return topic && topic.pattern.test(visibleFaq) && topic.pattern.test(visibleArticle);
+    return topic && matchesDailyFaqTopic(visibleFaq, name, context.scene?.product) && topic.pattern.test(visibleArticle);
   });
   const allowShop = context.catalogUrl && hasInputSource && hasSameTopic;
   const allowedUrls = new Set(allowShop ? [context.catalogUrl, context.scene?.product?.url].filter(Boolean) : []);
@@ -198,7 +198,8 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     const title = (question[1] || question[2]).trim();
     const sources = [...block.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)].map(m => m[1]);
     const grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
-    const topic = TOPICS.find(item => context.topics?.includes(item.name) && item.pattern.test(title) &&
+    const topic = [TOPICS.find(item => item.name === context.scene?.topic), ...TOPICS].filter(Boolean)
+      .find(item => context.topics?.includes(item.name) && matchesDailyFaqTopic(title, item.name, context.scene?.product) &&
       (context.sourceItems || [context.sourceText || '']).some(source =>
         sourceUrlKeys(source).some(url => grounded.includes(url)) && item.pattern.test(String(source).replace(/^Url:.*$/gmi, ''))));
     if (!topic || result.links.length >= 2) {
