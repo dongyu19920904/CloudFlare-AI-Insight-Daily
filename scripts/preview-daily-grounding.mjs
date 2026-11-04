@@ -36,7 +36,7 @@ if (sourceCacheAccess === 'cloudflare-kv') {
 const vars = withWorkerConfigDefaults(JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8')));
 if (process.env.REFRESH_NEWS_CACHE === 'true') {
   if (!process.env.TEST_TRIGGER_SECRET) throw new Error('News cache refresh requires the existing trigger credential');
-  const refreshUrl = new URL('https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testFetchCategory');
+  const refreshUrl = new URL('/testFetchCategory', process.env.SOURCE_REFRESH_BASE_URL || 'https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev');
   for (const [key, value] of Object.entries({ key: process.env.TEST_TRIGGER_SECRET, date, category: 'news' })) refreshUrl.searchParams.set(key, value);
   const refreshed = await originalFetch(refreshUrl, { signal: AbortSignal.timeout(180000), redirect: 'error' });
   if (!refreshed.ok || !(await refreshed.json()).success) throw new Error(`News cache refresh failed: HTTP ${refreshed.status}`);

@@ -3,7 +3,7 @@ import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
-import { getDailyEditorialPriority, isMajorDailyProductUpdate, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from './dailyEditorialSignals.js';
+import { focusDailyDigestItem, getDailyEditorialPriority, isMajorDailyProductUpdate, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from './dailyEditorialSignals.js';
 import {
   getDailyPromptItemEventKey,
   isFirstPartyDailyModelLaunch,
@@ -729,7 +729,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
     .filter((item) => item?.type !== 'project').map((item) => Date.parse(item?.published_date)).filter(Number.isFinite));
 
   for (const items of Object.values(allUnifiedData || {})) {
-    for (const item of items || []) {
+    for (const originalItem of items || []) {
+      const item = focusDailyDigestItem(originalItem);
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
       if (excludedSourceUrls.has(normalizeReplayUrl(candidate.url))) continue;

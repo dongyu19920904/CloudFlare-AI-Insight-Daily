@@ -7,6 +7,19 @@ function titleOf(item) {
   return String(item?.title || '').replace(/\s+/g, ' ').trim();
 }
 
+export function focusDailyDigestItem(item) {
+  if (!/^AI\s*日报[:：]/i.test(titleOf(item))) return item;
+  const html = String(item?.details?.content_html || '');
+  const first = /<p\b[^>]*>\s*<strong\b[^>]*>\s*1[、.．][\s\S]*?<\/strong>\s*<\/p>/i.exec(html);
+  if (!first) return item;
+  const following = html.slice(first.index + first[0].length);
+  const next = /<p\b[^>]*>\s*<strong\b[^>]*>\s*2[、.．]/i.exec(following);
+  if (!next) return item;
+  const focusedHtml = first[0] + following.slice(0, next.index);
+  return { ...item, title: stripHtml(first[0]).replace(/^1[、.．]\s*/, ''),
+    description: stripHtml(focusedHtml), details: { ...item.details, content_html: focusedHtml } };
+}
+
 export function dailyItemBody(item) {
   return stripHtml(String(item?.details?.articleEvidence?.excerpt || item?.plainText || item?.details?.content_html || item?.description || '')
     .replace(/<img\b[^>]*>|<video\b[^>]*>[\s\S]*?<\/video>/gi, ''))

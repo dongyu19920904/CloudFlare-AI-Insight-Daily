@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getDailyEditorialPriority, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from '../src/dailyEditorialSignals.js';
+import { focusDailyDigestItem, getDailyEditorialPriority, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from '../src/dailyEditorialSignals.js';
 import { buildDailyPromptSelection, getDailyPublisherKey, inferDailyPromptSourceType } from '../src/dailyPromptSelection.js';
 import { buildDailyGenerationPromptInput } from '../src/dailyGenerationPromptInput.js';
 import { capNewsItemsWithPublisherDiversity } from '../src/newsSourceDiversity.js';
+import { ensureDailyMediaCoverage } from '../src/dailyMediaCoverage.js';
 
 const news = (title, url, text, extra = {}) => ({
   type: 'news', title, url, description: text, published_date: '2026-11-03T18:00:00Z',
@@ -52,6 +53,19 @@ test('news truncation protects real company updates before the fixed cache fills
   assert.ok(capped.includes(official));
 });
 
+test('a numbered daily digest supplies one complete event and its own image, not adjacent events', () => {
+  const digest = news('AI日报：Hyra 2.0；SenseNova 发布', 'https://www.aibase.com/zh/news/32056', '', {
+    details: { content_html: '<p>欢迎来到日报</p><p><strong>1、腾讯发布 Hyra 2.0</strong></p><p>三层 AI Agent 协作，支持科研工具研发。</p><p><img src="https://images.example.org/hyra.png"></p><p><strong>2、商汤发布 SenseNova</strong></p><p>另一个模型的记忆更新。</p><img src="https://images.example.org/sensenova.png">' },
+  });
+  const focused = focusDailyDigestItem(digest);
+  assert.match(focused.title, /腾讯发布 Hyra/);
+  assert.doesNotMatch(focused.details.content_html, /SenseNova|sensenova/);
+  assert.match(digest.details.content_html, /SenseNova/);
+  const result = buildDailyPromptSelection({ news: [digest] });
+  assert.match(result.selectedContentItems.join('\n'), /hyra\.png/);
+  assert.doesNotMatch(result.selectedContentItems.join('\n'), /sensenova/i);
+});
+
 test('Qiaomu and Guizang share one daily slot across X, Jike, main and fun pools', () => {
   const items = [
     news('Claude 辅助 Obsidian 记录的新工具', 'https://x.com/vista8/status/1', '编写本地程序保存选中文字与截图，展示具体操作。', { authors: '向阳乔木' }),
@@ -71,4 +85,16 @@ test('aging routine self-promotion loses priority, but missing likes are never t
   assert.ok(getDailyEditorialPriority(old, now) < getDailyEditorialPriority(fresh, now));
   assert.equal(getDailyEditorialPriority(fresh, now), getDailyEditorialPriority({ ...fresh, likes: undefined }, now));
   assert.equal(inferDailyPromptSourceType(old), 'socialMedia');
+});
+
+test('a known article image is restored even after other articles meet the global illustration target', () => {
+  const earlier = Array.from({ length: 6 }, (_, i) => `### ${i + 1}. 已有图片\n\n![图](https://images.example.org/${i}.png)\n\n---\n\n`).join('');
+  const article = '### 7. 腾讯 Hyra 更新\n\n[科研工具架构更新](https://www.aibase.com/zh/news/32056)。\n\n---\n\n';
+  const image = 'https://upload.chinaz.com/2026/1103/6392931979076550475830526.png';
+  const result = ensureDailyMediaCoverage(earlier + article, [{
+    url: 'https://www.aibase.com/zh/news/32056', title: 'Hyra 科研工具架构', placeholders: [`![Hyra](${image})`],
+  }], 6, { coverEverySource: true });
+  assert.equal(result.insertedCount, 1);
+  assert.ok(result.markdown.includes(image));
+  assert.match(result.markdown, /\.png "Hyra 科研工具架构"\)\n\n---/);
 });
