@@ -375,7 +375,7 @@ test("model launch wins the publisher's single slot over a separate policy story
   assert.match(result.selectedContentItems[0], /OpenAI 发布 GPT-6 Sol 与 Luna/);
   assert.match(result.selectedContentItems[1], /独立 AI 编辑器发布新版界面/);
   assert.doesNotMatch(result.selectedContentItems.join("\n"), /OpenAI 更新 GPT-6 Sol 企业数据政策/);
-  assert.ok(result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
+  assert.ok(!result.selectedContentItems.some((item) => item.includes("gemini-rumor")));
 });
 
 test("unverified subscription quota claims do not enter the daily source pool", () => {

@@ -3,6 +3,7 @@ import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
+import { getDailyEditorialPriority, isMajorDailyProductUpdate, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from './dailyEditorialSignals.js';
 import {
   getDailyPromptItemEventKey,
   isFirstPartyDailyModelLaunch,
@@ -108,6 +109,10 @@ function normalizeReplayUrl(url) {
 }
 
 export function getDailyPublisherKey(item) {
+  const identity = `${item?.authors || ''} ${item?.source || ''} ${item?.url || ''}`;
+  if (/向阳乔木|(?:归藏|歸藏)|https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/(?:vista8|op7418)\//i.test(identity)) {
+    return 'creators:qiaomu-guizang';
+  }
   try {
     const parsed = new URL(String(item?.url || '').trim());
     let host = parsed.hostname.toLowerCase().replace(/^(?:www|m|mobile)\./, '');
@@ -209,7 +214,7 @@ function isSameDailyPromptEventTitle(currentTitle, previousTitle) {
 }
 
 function scoreDailyPromptCandidate(candidate) {
-  let score = 0;
+  let score = candidate?.editorialPriority || 0;
   const sourceType = candidate?.sourceType || "";
 
   if (sourceType === "project") score += 30;
@@ -217,7 +222,7 @@ function scoreDailyPromptCandidate(candidate) {
   if (sourceType === "socialMedia") score += 16;
   if (sourceType === "paper") score += 12;
 
-  if (candidate?.itemHasMedia) score += 14;
+  if (candidate?.itemHasMedia) score += 4;
   if (candidate?.isOfficialMajorModelLaunch) score += 80;
   if (candidate?.isFirstPartyMajorModelLaunch) score += 55;
   if (candidate?.isWelfare) score += 10;
@@ -248,7 +253,7 @@ function scoreDailyPromptCandidate(candidate) {
 function scoreDailyPromptPresentation(candidate) {
   let score = Number(candidate?.score || 0);
 
-  if (candidate?.itemHasMedia) score += 10;
+  if (candidate?.itemHasMedia) score += 2;
   if (candidate?.isWelfare) score -= 30;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 60;
 
@@ -471,10 +476,7 @@ function isUnverifiedProviderQuotaChange(candidate) {
 
 function getDailyPromptEntityKey(candidate) {
   const fallbackText = [
-    candidate?.description || "",
-    candidate?.source || "",
-    candidate?.url || "",
-    candidate?.plainText || "",
+    String(candidate?.plainText || candidate?.description || '').slice(0, 200),
   ].join(" ").toLowerCase();
 
   const majorEntities = [
@@ -642,6 +644,8 @@ function buildDailyPromptCandidate(item) {
     isLowEvidenceAiWorkflowPitch: isLowEvidenceWorkflowPitch,
     isOfficialMajorModelLaunch,
     isFirstPartyMajorModelLaunch,
+    isMajorProductUpdate: isMajorDailyProductUpdate({ ...item, plainText: plainTextContent }),
+    published_date: item.published_date,
     isDailyTrendingProject:
       sourceType === "project" &&
       (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) &&
@@ -718,6 +722,10 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
   let itemsWithoutMedia = 0;
   let rejectedNonAiCount = 0;
   let rejectedUnverifiedQuotaCount = 0;
+  let rejectedTitleOnlyCount = 0;
+  let rejectedModelRumorCount = 0;
+  const referenceTime = Math.max(...Object.values(allUnifiedData || {}).flat()
+    .filter((item) => item?.type !== 'project').map((item) => Date.parse(item?.published_date)).filter(Number.isFinite));
 
   for (const items of Object.values(allUnifiedData || {})) {
     for (const item of items || []) {
@@ -730,12 +738,25 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
         rejectedNonAiCount += 1;
         continue;
       }
+      if (candidate.sourceType !== 'project' && isTitleOnlyDailyItem(candidate)) {
+        rejectedTitleOnlyCount += 1;
+        continue;
+      }
+      if (isUnconfirmedDailyModelRumor(candidate)) {
+        rejectedModelRumorCount += 1;
+        continue;
+      }
+      if (/代扣.{0,15}秒充|(?:全网最大|U投首选).{0,15}(?:信誉台|综合平台)|欢迎.{0,8}交流群|加我小号/.test(candidate.title || '')) {
+        rejectedNonAiCount += 1;
+        continue;
+      }
       if (isUnverifiedProviderQuotaChange(candidate)) {
         rejectedUnverifiedQuotaCount += 1;
         continue;
       }
       const telegramImage = extractTelegramDailyImageCandidate(item);
       if (telegramImage) telegramImageCandidates.push(telegramImage);
+      candidate.editorialPriority = getDailyEditorialPriority(candidate, referenceTime);
       candidate.score = scoreDailyPromptCandidate(candidate);
 
       if (!buckets.has(candidate.sourceType)) {
@@ -821,7 +842,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
 
   const priorityLaunches = [...buckets.values()]
     .flat()
-    .filter((candidate) => candidate.isOfficialMajorModelLaunch || candidate.isFirstPartyMajorModelLaunch)
+    .filter((candidate) => candidate.sourceType !== 'project' &&
+      (candidate.isOfficialMajorModelLaunch || candidate.isFirstPartyMajorModelLaunch || candidate.editorialPriority >= 45))
     .sort((left, right) => right.score - left.score);
   let selectedPriorityLaunches = 0;
   for (const candidate of priorityLaunches) {
@@ -887,7 +909,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
   const rankedDailyFunCandidates = selectDailyFunCandidates(buckets, orderedSourceTypes, dailyFunCandidateLimit);
   let reservedDailyFunCandidate = null;
   const hasFunCandidateOutsidePrimary = rankedDailyFunCandidates.some(
-    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey)
+    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey) && !isDuplicateDailyPromptCandidate(candidate, selectedCandidates)
   );
 
   if (!hasFunCandidateOutsidePrimary && rankedDailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
@@ -904,7 +926,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
     }
   }
   let dailyFunCandidates = rankedDailyFunCandidates.filter(
-    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey)
+    (candidate) => !selectedPublisherKeys.has(candidate.publisherKey) && !isDuplicateDailyPromptCandidate(candidate, selectedCandidates)
   );
 
   const candidateCounts = orderedSourceTypes.reduce((acc, sourceType) => {
@@ -984,6 +1006,8 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
       dailyFunCandidateSamples,
       rejectedNonAiCount,
       rejectedUnverifiedQuotaCount,
+      rejectedTitleOnlyCount,
+      rejectedModelRumorCount,
       publisherCandidatesDropped: totalCandidateCount - new Set(
         [...buckets.values()].flat().map((candidate) => candidate.publisherKey)
       ).size,

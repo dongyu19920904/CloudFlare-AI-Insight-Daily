@@ -1480,7 +1480,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     const cleanedOutput = repairDailyMediaReferences(outputOfCall2, mediaCandidates);
     outputOfCall2 = cleanedOutput.markdown;
     debugInfo.mismatchedTopImagesRemoved += cleanedOutput.correctedCount + cleanedOutput.removedCount;
-    const mediaCoverage = ensureDailyMediaCoverage(outputOfCall2, mediaCandidates);
+    const mediaCoverage = ensureDailyMediaCoverage(outputOfCall2, mediaCandidates, 6, { coverEverySource: true });
     outputOfCall2 = mediaCoverage.markdown;
     debugInfo.fallbackInserted = mediaCoverage.insertedCount > 0;
     debugInfo.mediaCoverageInserted = mediaCoverage.insertedCount;
@@ -1549,7 +1549,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         const cleanedRepairedOutput = repairDailyMediaReferences(repairedOutputOfCall2, mediaCandidates);
         repairedOutputOfCall2 = cleanedRepairedOutput.markdown;
         debugInfo.mismatchedTopImagesRemoved += cleanedRepairedOutput.correctedCount + cleanedRepairedOutput.removedCount;
-        const repairedMediaCoverage = ensureDailyMediaCoverage(repairedOutputOfCall2, mediaCandidates);
+        const repairedMediaCoverage = ensureDailyMediaCoverage(repairedOutputOfCall2, mediaCandidates, 6, { coverEverySource: true });
         repairedOutputOfCall2 = repairedMediaCoverage.markdown;
         debugInfo.mediaCoverageInserted = repairedMediaCoverage.insertedCount;
         debugInfo.mediaCoverageTarget = repairedMediaCoverage.targetCount;
