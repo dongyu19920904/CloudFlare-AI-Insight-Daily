@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { handleScheduledDaily } from '../artifacts/scheduled-dry-run.mjs';
 import { withWorkerConfigDefaults } from '../src/workerConfig.js';
 import { extractGithubTopProjectsFromMarkdown, RECENT_GITHUB_TOP_PROJECTS_KEY } from '../src/githubTopProjectDedupe.js';
+import { rememberPublishedDailyFaq } from '../src/dailyStandaloneFaq.js';
 
 const date = process.env.TARGET_DATE;
 if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('TARGET_DATE required');
@@ -49,6 +50,8 @@ if (process.env.REFRESH_NEWS_CACHE === 'true') {
 }
 // Reproduce production's recent-project exclusions instead of previewing with an empty KV.
 const recentProjects = [];
+const recentEditions = [];
+const faqHistory = new Map();
 for (let offset = 1; offset <= 7; offset++) {
   const previous = new Date(`${date}T00:00:00Z`);
   previous.setUTCDate(previous.getUTCDate() - offset);
@@ -56,7 +59,14 @@ for (let offset = 1; offset <= 7; offset++) {
   const history = await originalFetch(`https://raw.githubusercontent.com/dongyu19920904/Hextra-AI-Insight-Daily/main/daily/${day}.md`, { signal: AbortSignal.timeout(15000) });
   if (history.status === 404) continue;
   if (!history.ok) throw new Error(`Recent project history ${day}: HTTP ${history.status}`);
-  recentProjects.push(...extractGithubTopProjectsFromMarkdown(await history.text(), day));
+  const markdown = await history.text();
+  recentProjects.push(...extractGithubTopProjectsFromMarkdown(markdown, day));
+  recentEditions.push({day, markdown});
+}
+// Reuse the already-read editions; history preparation writes only to this in-memory map.
+for (const {day, markdown} of recentEditions.reverse()) {
+  await rememberPublishedDailyFaq({get: async key => faqHistory.get(key),
+    put: async (key, value) => {faqHistory.set(key, value);}}, day, markdown);
 }
 let modelCalls = 0;
 globalThis.fetch = async (url, options = {}) => {
@@ -76,6 +86,7 @@ const env = { ...vars, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, ANTHROP
   DATA_KV: {
     async get(key) {
       if (key === RECENT_GITHUB_TOP_PROJECTS_KEY) return JSON.stringify(recentProjects);
+      if (faqHistory.has(key)) return faqHistory.get(key);
       if (key.startsWith(`${date}-`)) {
         const category = key.slice(date.length + 1);
         if (Array.isArray(data[category])) return JSON.stringify(data[category]);

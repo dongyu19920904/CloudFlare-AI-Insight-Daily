@@ -116,7 +116,7 @@ test("AI fun remains source-driven and optional without blocking the daily", () 
   assert.match(prompt, /一个人 \+ 一个工具 \+ 一个动作 \+ 一个反常结果/);
   assert.match(prompt, /12-24 个中文字符/);
   assert.match(prompt, /Hook -> What -> Punchline/);
-  assert.match(prompt, /至少两个真实细节/);
+  assert.match(prompt, /两三个真实细节/);
   assert.match(prompt, /写不出完整、有来源、有真实细节的趣闻时，省略整个栏目/);
   assert.match(prompt, /缺少趣闻不得影响其他栏目发布/);
   assert.match(prompt, /不靠“离谱、笑死、太抽象”充当笑点/);

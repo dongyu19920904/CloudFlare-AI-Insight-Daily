@@ -25,13 +25,13 @@ test('scene FAQ can replace a generic FAQ and uses distinct news, official and d
   const input = buildStandaloneDailyFaqPromptInput('2026-10-03', article + oldFaq, [sourceText], context);
   assert.equal(input.topic, 'Claude');
   assert.match(input.prompt, /B 场景型/);
-  assert.match(input.prompt, /80-140/);
+  assert.match(input.prompt, /120-180/);
   assert.match(input.prompt, /不重写新闻正文/);
   assert.match(input.prompt, /同一自然段里顺接/);
   assert.match(input.prompt, /不得生成商品 URL/);
   assert.match(input.prompt, /登录不通先排查原登录方式/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /只输出/);
-  assert.match(getStandaloneDailyFaqSystemPrompt(), /80-140 字，链接文字也计入/);
+  assert.match(getStandaloneDailyFaqSystemPrompt(), /120-180 字、3-5 句，链接文字也计入/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /新闻摘要不是安装文档/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /不把购买说成修复故障/);
 });
@@ -173,4 +173,16 @@ test('successful optional runtime changes only FAQ and a late timed-out result c
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(late.markdown, ready);
   assert.equal(late.debug.dailyFaqSeparateGenerationInserted, undefined);
+});
+
+test('published FAQ history records only canonical shop product links and preserves old records', async () => {
+  let stored = JSON.stringify([{date:'2026-11-02',question:'旧问题？',topic:'Claude'}]);
+  const kv = {get:async () => stored,put:async (_key,value) => {stored=value;}};
+  const section = raw.replace('AIVORA_PRODUCT_URL', context.scene.product.url);
+  await rememberPublishedDailyFaq(kv, '2026-11-04', article + section);
+  const history = await loadRecentDailyFaqs(kv, '2026-11-05');
+  assert.equal(history.length, 2);
+  assert.deepEqual(history[1].productUrls, [context.scene.product.url]);
+  assert.equal(history[0].question, '旧问题？');
+  assert.equal(history[0].productUrls, undefined);
 });

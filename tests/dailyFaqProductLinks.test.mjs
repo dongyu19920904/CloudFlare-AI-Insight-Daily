@@ -179,3 +179,19 @@ test('separate questions match separate source records and keep at most two prod
   const wrong = await faq.ensureDailyFaqProductLinks(body.replace(`[ChatGPT 官方说明](${chatSource})`, `[错误来源](${source})`), shop, {fetchImpl:okFetch});
   assert.equal(wrong.links.length, 1);
 });
+
+test('a verified Codex scene retains its ChatGPT Plus delivery throughout final link checks', async () => {
+  const codex = 'https://example.org/codex-prototype';
+  const plus = {name:'ChatGPT Plus 成品号',url:`${catalogUrl}/plus`};
+  const before = `## 新闻\n\n[Codex 原型](${codex})\n\n`;
+  const faqSection = `## **❓ 相关问题**\n\n### Codex 能先做什么？\n\n[原型实验](${codex})介绍了软件设计。想动手试试，可看[爱窝啦·AI账号店的 ChatGPT Plus 成品号](${plus.url})。`;
+  const shop = {catalogUrl,topics:['Codex'],sourceText:`News Title: Codex 原型\nUrl: ${codex}`,
+    products:[plus],scene:{topic:'Codex',product:plus,official:{text:'ChatGPT Plus includes Codex.'}}};
+  const sanitized = faq.finalizeDailyShopFaq(before + faqSection + footer, shop);
+  const result = await faq.ensureDailyFaqProductLinks(sanitized, shop, {fetchImpl:async () => {throw Error('already verified');}});
+  assert.equal(result.requests, 0);
+  assert.equal(result.links[0].url, plus.url);
+  assert.ok(result.markdown.startsWith(before));
+  assert.ok(result.markdown.endsWith(footer));
+  assert.equal((result.markdown.match(/\]\(https:\/\/www\.aivora\.cn\/products\//g) || []).length, 1);
+});

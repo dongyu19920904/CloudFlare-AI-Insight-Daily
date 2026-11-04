@@ -253,3 +253,100 @@ test('FAQ link sanitation leaves news, images and footer byte-identical and allo
   assert.equal((result.match(/\]\(https:\/\/www.aivora.cn/g) || []).length, 1);
   assert.doesNotMatch(result, /products\/fake|准备比较当前公开/);
 });
+
+test('Codex-only news discovers a Chinese-named ChatGPT Plus SKU through the live catalog', async () => {
+  const plus = `${catalogUrl}/cheng-pin-hao-yue-ka`;
+  const items = ['News Title: Codex 语音原型\nUrl: https://example.org/prototype\nContent Summary: Codex 协助设计软件和外壳'];
+  const context = await loadDailyShopContext(items, { fetchImpl: async url => ({ok:true,
+    text: async () => url.endsWith('sitemap.xml')
+      ? `<urlset><url><loc>${catalogUrl}</loc></url><url><loc>${plus}</loc></url></urlset>`
+      : `<link rel="canonical" href="${catalogUrl}"><a href="/products/cheng-pin-hao-yue-ka">ChatGPT Plus 成品号</a>`,
+  }) });
+  assert.deepEqual(context.topics, ['Codex']);
+  assert.match(formatDailyShopPromptContext(context), /ChatGPT Plus 成品号/);
+});
+
+test('Codex scene matches a verified Plus subscription, not relay, verification or quota products', async () => {
+  const source = 'https://example.org/prototype';
+  const plus = `${catalogUrl}/current-plus`;
+  const result = await loadDailyFaqSceneContext(`[语音原型](${source})`, [
+    `News Title: Codex 语音原型\nUrl: ${source}\nContent Summary: Codex 协助设计软件和外壳`,
+  ], {catalogUrl, topics:['Codex'], products:[
+    {name:'Codex 接码',url:`${catalogUrl}/verification`},
+    {name:'Codex 中转额度包',url:`${catalogUrl}/relay`},
+    {name:'ChatGPT Plus 镜像',url:`${catalogUrl}/mirror`},
+    {name:'ChatGPT Go 成品号',url:`${catalogUrl}/go`},
+    {name:'ChatGPT Plus 成品号',url:plus},
+  ]}, {fetchImpl:async url => ({ok:true,text:async () => url === plus
+    ? `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 成品号</h1>`
+    : `<nav>${'Navigation '.repeat(600)}</nav><main><h1>Pricing</h1><p>ChatGPT Work and Codex are included in your ChatGPT Plus plan.</p></main>`})});
+  assert.equal(result.scene.product?.url, plus);
+  assert.match(result.scene.official.text, /Codex are included.*Plus/);
+  assert.doesNotMatch(result.scene.official.text, /Navigation/);
+});
+
+test('missing official plan evidence cannot turn a Codex scene into a Plus entitlement claim', async () => {
+  const source = 'https://example.org/prototype';
+  const plus = `${catalogUrl}/current-plus`;
+  const result = await loadDailyFaqSceneContext(`[原型](${source})`, [`News Title: Codex 原型\nUrl: ${source}`],
+    {catalogUrl, topics:['Codex'], products:[{name:'ChatGPT Plus 成品号',url:plus}]},
+    {fetchImpl:async url => {
+      if (url !== plus) throw Error('official unavailable');
+      return {ok:true,text:async () => `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 成品号</h1>`};
+    }});
+  assert.equal(result.scene.product, null);
+  assert.equal(result.scene.official, null);
+});
+
+test('a relevant scene with a deliverable outranks a higher-priority scene without one', async () => {
+  const chat = 'https://example.org/chatgpt';
+  const gemini = 'https://example.org/gemini';
+  const product = `${catalogUrl}/gemini-renewal`;
+  const result = await loadDailyFaqSceneContext(`[ChatGPT](${chat})\n[Gemini](${gemini})`, [
+    `News Title: ChatGPT 新功能\nUrl: ${chat}`,
+    `News Title: Gemini 文档整理\nUrl: ${gemini}`,
+  ], {catalogUrl, topics:['ChatGPT','Gemini'], products:[{name:'Gemini Pro 充值续费',url:product}]},
+    {fetchImpl:async url => ({ok:true,text:async () => url === product
+      ? `<link rel="canonical" href="${product}"><h1>Gemini Pro 充值续费</h1>` : '<main>Google AI plans</main>'})});
+  assert.equal(result.scene.topic, 'Gemini');
+  assert.equal(result.scene.product.url, product);
+});
+
+test('actual product URLs rotate across Codex and ChatGPT aliases within the same history', async () => {
+  const source = 'https://example.org/new-codex';
+  const used = `${catalogUrl}/plus-account`;
+  const next = `${catalogUrl}/plus-renewal`;
+  const result = await loadDailyFaqSceneContext(`[Codex](${source})`, [`News Title: Codex 原型\nUrl: ${source}`], {
+    catalogUrl, topics:['Codex'], recentFaqs:[{date:'2026-11-03',topic:'ChatGPT',question:'ChatGPT 怎么选？',productUrls:[used]}],
+    products:[{name:'ChatGPT Plus 成品号',url:used},{name:'ChatGPT Plus 充值续费',url:next}],
+  }, {fetchImpl:async url => ({ok:true,text:async () => url === next
+    ? `<link rel="canonical" href="${next}"><h1>ChatGPT Plus 充值续费</h1>`
+    : '<main>ChatGPT Plus includes Codex.</main>'})});
+  assert.equal(result.scene.product?.url, next);
+});
+
+test('navigation keywords and negative plan statements do not establish Codex subscription support', async () => {
+  const source = 'https://example.org/prototype';
+  const plus = `${catalogUrl}/plus`;
+  for (const official of [
+    '<nav>ChatGPT Plus Codex included</nav><main>Account settings</main>',
+    '<main>ChatGPT Plus does not include Codex.</main>',
+  ]) {
+    const result = await loadDailyFaqSceneContext(`[原型](${source})`, [`News Title: Codex 原型\nUrl: ${source}`],
+      {catalogUrl,topics:['Codex'],products:[{name:'ChatGPT Plus 成品号',url:plus}]},
+      {fetchImpl:async url => ({ok:true,text:async () => url === plus
+        ? `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 成品号</h1>` : official})});
+    assert.equal(result.scene.product, null);
+  }
+});
+
+test('current pricing cards supply the actual Codex plan context without requiring an old page heading', async () => {
+  const source = 'https://example.org/prototype';
+  const plus = `${catalogUrl}/plus`;
+  const result = await loadDailyFaqSceneContext(`[Codex](${source})`, [`News Title: Codex 原型\nUrl: ${source}`],
+    {catalogUrl,topics:['Codex'],products:[{name:'ChatGPT Plus 成品号',url:plus}]},
+    {fetchImpl:async url => ({ok:true,text:async () => url === plus
+      ? `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 成品号</h1>`
+      : '<main><h1>Pricing</h1><p>ChatGPT Work and Codex share usage.</p><h2>Plus</h2><p>Codex on the web, in the CLI, in the IDE extension.</p></main>'})});
+  assert.equal(result.scene.product?.url, plus);
+});

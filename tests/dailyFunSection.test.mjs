@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DAILY_FUN_WRITING_GUIDANCE,
   buildStandaloneDailyFunPromptInput,
   insertDailyFunSection,
   normalizeStandaloneDailyFunSection,
   selectStandaloneDailyFunCandidates,
 } from "../src/dailyFunSection.js";
+import { getSystemPromptSummarizationStepOne } from "../src/prompt/summarizationPromptStepZero.js";
 
 test("selectStandaloneDailyFunCandidates excludes sources used in the published page", () => {
   const publishedMarkdown = [
@@ -67,6 +69,17 @@ test("normalizeStandaloneDailyFunSection rejects source-less output", () => {
   ].join("\n");
 
   assert.equal(normalizeStandaloneDailyFunSection(sourceLess), "");
+});
+
+test("main and standalone fun writers share the same concrete, source-faithful style guidance", () => {
+  const main = getSystemPromptSummarizationStepOne("2026-11-04");
+  const standalone = buildStandaloneDailyFunPromptInput("2026-11-04", ["News Title: 实验\nUrl: https://example.org/fun"]);
+  for (const prompt of [main, standalone]) {
+    assert.ok(prompt.includes(DAILY_FUN_WRITING_GUIDANCE));
+    assert.match(prompt, /两三个真实细节/);
+    assert.match(prompt, /不编造人物对白、心理或实际胜负/);
+    assert.match(prompt, /不挪用事实或每天套同一句结尾/);
+  }
 });
 
 test("insertDailyFunSection places valid section before trend prediction", () => {

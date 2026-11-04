@@ -19,7 +19,7 @@ const TOPICS = [
 const FAQ_OFFICIAL_PAGES = {
   Claude: 'https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan',
   ChatGPT: 'https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus',
-  Codex: 'https://developers.openai.com/codex/pricing/',
+  Codex: 'https://learn.chatgpt.com/docs/pricing',
   Cursor: 'https://cursor.com/docs/account/pricing',
   Gemini: 'https://one.google.com/about/google-ai-plans/',
   Grok: 'https://x.ai/grok',
@@ -59,12 +59,31 @@ async function fetchText(fetchImpl, url, timeoutMs) {
   }
 }
 
-function selectProduct(topic, sourceText, products = []) {
-  return products.filter(({ name }) => topic.pattern.test(name) &&
+function matchesProductTopic(topic, name) {
+  return topic.pattern.test(name) ||
+    (topic.name === 'Codex' && /ChatGPT\s+(?:Plus|Pro)\b/i.test(name));
+}
+
+function eligibleProduct(topic, name, sourceText) {
+  return matchesProductTopic(topic, name) &&
     !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name) &&
-    (!/教育|学生/.test(name) || /学生认证|教育(?:版|资格)|校园(?:认证|资格)/.test(sourceText)))
+    (!/教育|学生/.test(name) || /学生认证|教育(?:版|资格)|校园(?:认证|资格)/.test(sourceText));
+}
+
+function hasSubscriptionEvidence(topic, product, official) {
+  if (topic.pattern.test(product.name)) return true;
+  const plan = product.name.match(/\b(Plus|Pro)\b/i)?.[1];
+  const text = String(official?.text || '');
+  return Boolean(plan) && /\bCodex\b/i.test(text) && /\bChatGPT\b/i.test(text) &&
+    new RegExp(`\\b${plan}\\b`, 'i').test(text) &&
+    !new RegExp(`\\b${plan}\\b[^.!?。！？]{0,60}\\b(?:does not include|doesn't include|without access to)\\s+Codex\\b`, 'i').test(text);
+}
+
+function selectProduct(topic, sourceText, products = [], recentFaqs = []) {
+  const used = new Set(recentFaqs.flatMap(item => item.productUrls || []));
+  return products.filter(({ name, url }) => eligibleProduct(topic, name, sourceText) && !used.has(url))
     .sort((a, b) => {
-      const rank = ({ name }) => (topic.name === 'ChatGPT' && /\bPlus\b/i.test(name) ? 20 : 0) +
+      const rank = ({ name }) => (/^(?:ChatGPT|Codex)$/.test(topic.name) && /\bPlus\b/i.test(name) ? 20 : 0) +
         (/续费|到期|充值/.test(sourceText)
           ? Number(/续费|充值/.test(name)) * 5
           : Number(/成品|独享/.test(name)) * 5);
@@ -96,7 +115,7 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     const products = catalogProducts(catalogHtml, urls);
     const topics = candidateTopics
       .filter((topic) => productPaths.some((path) => topic.slug.test(path)) ||
-        products.some(({ name }) => topic.pattern.test(name)))
+        products.some(({ name }) => matchesProductTopic(topic, name)))
       .map((topic) => topic.name);
     return {
       ...(topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
@@ -114,7 +133,7 @@ export function formatDailyShopPromptContext(context) {
     `今天的资讯与当前 sitemap 中的这些公开商品类别有交集：${context.topics.join('、')}。`,
     `已核实的商品目录：${context.catalogUrl}。只允许引用这个目录 URL，不得猜测具体商品 URL。`,
     `目录中的相关交付名称：${(context.products || []).filter(({name}) =>
-      TOPICS.some(topic => context.topics.includes(topic.name) && topic.pattern.test(name)) &&
+      TOPICS.some(topic => context.topics.includes(topic.name) && matchesProductTopic(topic, name)) &&
       !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name)).slice(0, 8).map(({name}) => name).join('；') || context.topics.join('、')}。`,
     '目录只证明店内公开展示这些商品类别，不证明库存或新闻中的新功能属于任一套餐，也不证明官方价格、额度、地区或政策。',
     '正文有同一工具的新闻且原始来源能回答问题时，写 1 条相关问题：先用短句解决当天的具体困扰，再按使用需求推荐一个上面列出的相关交付。每条相关问题自然带一次爱窝啦·AI账号店的相关商品入口，使用已核实的目录 URL。不要只写功能说明而漏掉推荐，不要求问句包含购买或会员。',
@@ -181,7 +200,12 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     }
     const sceneProduct = context.scene?.topic === topic.name && context.scene.product;
     const candidate = (sceneProduct && context.products.find(({ url }) => url === sceneProduct.url)) ||
-      selectProduct(topic, title, context.products);
+      selectProduct(topic, title, context.products, context.recentFaqs);
+    if (candidate && !hasSubscriptionEvidence(topic, candidate, context.scene?.official)) {
+      result.skipped.push({ topic: topic.name, reason: 'missing-subscription-evidence' });
+      output += block;
+      continue;
+    }
     let product = candidate && verified.get(candidate.url);
     if (candidate && !product) {
       if (context.scene?.topic === topic.name && context.scene.product?.url === candidate.url) {
@@ -191,7 +215,7 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
           result.requests++;
           const html = await fetchText(fetchImpl, candidate.url, timeoutMs);
           const name = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
-          if (extractCanonical(html) === candidate.url && topic.pattern.test(name)) product = { url: candidate.url, name };
+          if (extractCanonical(html) === candidate.url && eligibleProduct(topic, name, title)) product = { url: candidate.url, name };
         } catch { /* Catalog/product failures leave the already-written news publishable. */ }
       }
       if (product) verified.set(product.url, product);
@@ -235,7 +259,7 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
 export async function loadDailyFaqSceneContext(markdown, selectedItems, context = {}, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
   const namedTopics = TOPICS.filter((topic) =>
     context.candidateTopics?.includes(topic.name) &&
-    (context.products || []).some(({ name }) => topic.pattern.test(name)))
+    (context.products || []).some(({ name }) => matchesProductTopic(topic, name)))
     .map((topic) => topic.name);
   if (namedTopics.length) context = {
     ...context, catalogUrl: context.catalogUrl || CATALOG_URL,
@@ -249,7 +273,7 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     const visible = text.replace(/^Url:.*$/gmi, '');
     return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible))
       .map((topic) => ({ topic: topic.name, sourceUrl: url, sourceText: text,
-        score: (topic.name === 'ChatGPT' ? 20 : 0) + (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
+        score: (/^(?:ChatGPT|Codex)$/.test(topic.name) ? 20 : 0) + (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
           (/登录|登入|OAuth|打不开|无法访问|封号/i.test(visible) ? 30 : 0),
       }));
   });
@@ -258,17 +282,20 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     item.sourceUrls?.includes(candidate.sourceUrl) ||
     (item.topic?.toLowerCase() === candidate.topic.toLowerCase() && item.theme &&
       item.theme === getDailyFaqTheme(candidate.sourceText))))
-    .sort((a, b) => b.score - a.score)[0];
+    .map(candidate => ({ ...candidate, product: selectProduct(
+      TOPICS.find(topic => topic.name === candidate.topic), candidate.sourceText, context.products, recent,
+    ) }))
+    .sort((a, b) => Number(Boolean(b.product)) - Number(Boolean(a.product)) || b.score - a.score)[0];
   if (!chosen) return context;
   const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);
-  const product = selectProduct(topicRule, chosen.sourceText, context.products);
+  const { product, ...scene } = chosen;
   let verifiedProduct = null;
   let official = null;
   if (product) {
     try {
       const html = await fetchText(fetchImpl, product.url, timeoutMs);
       const title = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
-      if (extractCanonical(html) === product.url && topicRule.pattern.test(title)) verifiedProduct = { ...product, name: title };
+      if (extractCanonical(html) === product.url && eligibleProduct(topicRule, title, chosen.sourceText)) verifiedProduct = { ...product, name: title };
     } catch { /* A failed product check must not block the news or invent a SKU. */ }
   }
   const sourceUrl = new URL(chosen.sourceUrl);
@@ -281,10 +308,13 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
   if (officialUrl) {
     try {
       const html = await fetchText(fetchImpl, officialUrl, timeoutMs);
-      const text = readableText(html);
-      const start = text.search(/Troubleshooting login issues|General Troubleshooting Steps|With Pro and Max plans|What is ChatGPT Plus\?|What is Claude Code\?|Choose your plan|Codex Pricing/i);
+      const body = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ||
+        html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || html;
+      const text = readableText(body.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, ''));
+      const start = text.search(/Troubleshooting login issues|General Troubleshooting Steps|With Pro and Max plans|What is ChatGPT Plus\?|What is Claude Code\?|Choose your plan|Codex Pricing|ChatGPT Work and Codex are included|ChatGPT Plus includes Codex/i);
       official = { url: officialUrl, text: text.slice(Math.max(0, start), Math.max(0, start) + 2500) };
     } catch { /* Without official evidence the FAQ cannot assert plan entitlements. */ }
   }
-  return { ...context, scene: { ...chosen, product: verifiedProduct, official } };
+  if (verifiedProduct && !hasSubscriptionEvidence(topicRule, verifiedProduct, official)) verifiedProduct = null;
+  return { ...context, scene: { ...scene, product: verifiedProduct, official } };
 }

@@ -1,5 +1,6 @@
 import { DAILY_TOP_TARGET } from "../dailyContentRules.js";
 import { getTransparentGeoWritingRules } from "../geoCitationPolicy.js";
+import { DAILY_FUN_WRITING_GUIDANCE } from "../dailyFunSection.js";
 
 export function getSystemPromptSummarizationStepOne(reportDate = null) {
     const normalizedDate = typeof reportDate === "string" && reportDate.trim() ? reportDate.trim() : null;
@@ -156,7 +157,7 @@ ${getTransparentGeoWritingRules()}
 
 - 只选能写出“一个人 + 一个工具 + 一个动作 + 一个反常结果”的真实素材。
 - 标题必须二次创作，12-24 个中文字符，使用纯文本，不得加入链接；正文在真实细节附近放置 1 个描述性原始来源链接。
-- 正文 100-180 个中文字符，按 Hook -> What -> Punchline 写：先给具体场景，再交代至少两个真实细节，最后一句轻轻一抖。
+${DAILY_FUN_WRITING_GUIDANCE}
 - 面向 90 后、00 后 AI 爱好者和程序员，可以借鉴老派单口相声一本正经铺垫、最后错位的结构；不模仿口音和台词。
 - 不写“这说明了”“值得关注”“未来可期”，不靠“离谱、笑死、太抽象”充当笑点。
 - 笑点用比喻或明确的设想，不编造真实公司的组织设置、产品状态或故障来收尾。
