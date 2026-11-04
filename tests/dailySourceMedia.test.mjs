@@ -22,6 +22,13 @@ test('article scopes real media, supports lazy loading and poster, never takes s
   assert.deepEqual(images.map((item) => item.url), ['https://example.org/real.jpg','https://example.org/og.jpg','https://example.org/cover.jpg']);
 });
 
+test('social avatar crops and default site OG images are not article illustrations', () => {
+  const avatar = 'https://cdnv2.ruguoapp.com/profile.jpg?imageMogr2/auto-orient/thumbnail/!120x120r/gravity/Center/crop/!120x120a0a0';
+  const html = `<meta property="og:image" content="${avatar}"><meta property="og:image" content="https://example.org/media/og-default.png"><article><img src="https://cdnv2.ruguoapp.com/actual.png?imageMogr2/auto-orient" width="1000"></article>`;
+  assert.deepEqual(extractSourcePageImages(html, 'https://m.okjike.com/originalPosts/1').map(item => item.url),
+    ['https://cdnv2.ruguoapp.com/actual.png?imageMogr2/auto-orient']);
+});
+
 test('public source normalization removes tracking only, not article query IDs', () => {
   assert.equal(dailyMediaSourceKey('https://www.example.org/a?id=1&utm_source=folo#top'), 'https://example.org/a?id=1');
   assert.notEqual(dailyMediaSourceKey('https://example.org/a?id=1'), dailyMediaSourceKey('https://example.org/a?id=2'));

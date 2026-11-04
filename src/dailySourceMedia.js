@@ -35,7 +35,8 @@ function attributes(tag) {
 
 function usefulImage(value, base, alt = '') {
   let url = publicUrl(value, base);
-  if (!url || !isUsableDailyMediaUrl(url) || /badge|shield|sponsor|avatar|favicon|tracking|pixel|loading|default[-_]og|site[-_]logo/i.test(`${url} ${alt}`) ||
+  if (!url || !isUsableDailyMediaUrl(url) || /badge|shield|sponsor|avatar|favicon|tracking|pixel|loading|default[-_]og|og[-_]default|site[-_]logo/i.test(`${url} ${alt}`) ||
+      (/ruguoapp\.com$/i.test(new URL(url).hostname) && /thumbnail\/!120x120r\/gravity\/Center\/crop\/!120x120/i.test(url)) ||
       /(?:^|\/)(?:logo|icon)[^/]*\.(?:svg|png|webp)/i.test(new URL(url).pathname)) return '';
   const github = url.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\/(.+)$/);
   if (github) url = `https://raw.githubusercontent.com/${github[1]}/${github[2]}`;
