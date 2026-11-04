@@ -724,7 +724,8 @@ async function generateContentWithTransportFallback(env, userPrompt, systemPromp
         return output;
     } catch (error) {
         const message = String(error?.message || error);
-        if (!/(524|timeout|timed out)/i.test(message)) {
+        const closedConnection = ['ECONNRESET', 'UND_ERR_SOCKET'].includes(error?.cause?.code || error?.code);
+        if (!/(524|timeout|timed out)/i.test(message) && !closedConnection) {
             throw error;
         }
         console.warn(`[Scheduled] Stream generation failed, retrying non-stream: ${message}`);
