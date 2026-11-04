@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { handleScheduledDaily, fetchAndTransformDataForType, setFetchDate, resolveFoloCookie } from '../artifacts/scheduled-dry-run.mjs';
+import { handleScheduledDaily } from '../artifacts/scheduled-dry-run.mjs';
 import { withWorkerConfigDefaults } from '../src/workerConfig.js';
 import { extractGithubTopProjectsFromMarkdown, RECENT_GITHUB_TOP_PROJECTS_KEY } from '../src/githubTopProjectDedupe.js';
 
@@ -34,20 +34,18 @@ if (sourceCacheAccess === 'cloudflare-kv') {
   data = await response.json();
 } else throw new Error('Unknown source cache access mode');
 const vars = withWorkerConfigDefaults(JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8')));
-if (process.env.READ_ONLY_REFRESH_NEWS === 'true') {
-  if (sourceCacheAccess !== 'cloudflare-kv') throw new Error('Read-only source refresh requires the authenticated cache path');
-  const { CLOUDFLARE_ACCOUNT_ID: account, CLOUDFLARE_API_TOKEN: token, SOURCE_CACHE_NAMESPACE: namespace } = process.env;
-  const cookieResponse = await originalFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces/${namespace}/values/${encodeURIComponent(vars.FOLO_COOKIE_KV_KEY || 'folo_auth_cookie')}`, {
-    headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30000), redirect: 'error',
-  });
-  if (!cookieResponse.ok) throw new Error(`Read-only Folo credential access: HTTP ${cookieResponse.status}`);
-  const storedCookie = await cookieResponse.text();
-  const { cookie } = await resolveFoloCookie({ ...vars, DATA_KV: { async get() { return storedCookie; } } });
-  if (!cookie) throw new Error('The configured Folo credential is empty');
-  setFetchDate(date);
-  data.news = await fetchAndTransformDataForType('news', vars, cookie);
+if (process.env.REFRESH_NEWS_CACHE === 'true') {
+  if (!process.env.TEST_TRIGGER_SECRET) throw new Error('News cache refresh requires the existing trigger credential');
+  const refreshUrl = new URL('https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/testFetchCategory');
+  for (const [key, value] of Object.entries({ key: process.env.TEST_TRIGGER_SECRET, date, category: 'news' })) refreshUrl.searchParams.set(key, value);
+  const refreshed = await originalFetch(refreshUrl, { signal: AbortSignal.timeout(180000), redirect: 'error' });
+  if (!refreshed.ok || !(await refreshed.json()).success) throw new Error(`News cache refresh failed: HTTP ${refreshed.status}`);
+  const snapshot = await originalFetch(`https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev/getContent?date=${date}`, { signal: AbortSignal.timeout(45000) });
+  if (!snapshot.ok) throw new Error(`Refreshed source snapshot: HTTP ${snapshot.status}`);
+  data.news = (await snapshot.json()).news;
+  if (!Array.isArray(data.news)) throw new Error('Invalid refreshed news array');
   await writeFile(`${dir}/refreshed-news.json`, JSON.stringify(data.news, null, 2));
-  console.log(`Read-only refresh: ${data.news.length} news items; production KV unchanged`);
+  console.log(`Existing Worker refreshed the news cache: ${data.news.length} items; articles unchanged`);
 }
 // Reproduce production's recent-project exclusions instead of previewing with an empty KV.
 const recentProjects = [];

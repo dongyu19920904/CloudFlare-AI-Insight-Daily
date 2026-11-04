@@ -59,7 +59,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_CACHE_ACCESS: ${{ inputs.admin_source_cache && 'cloudflare-kv' || 'worker' }}
-          READ_ONLY_REFRESH_NEWS: ${{ inputs.refresh_sources }}
+          REFRESH_NEWS_CACHE: ${{ inputs.refresh_sources }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -75,7 +75,7 @@ jobs:
               with open('artifacts/source-cache-namespace.txt','w') as f:
                   f.write(namespace)
           PY
-          npx --yes esbuild@0.25.12 scripts/daily-preview-entry.mjs --bundle --platform=node --format=esm --outfile=artifacts/scheduled-dry-run.mjs
+          npx --yes esbuild@0.25.12 src/handlers/scheduled.js --bundle --platform=node --format=esm --outfile=artifacts/scheduled-dry-run.mjs
           if [[ "$SOURCE_CACHE_ACCESS" == "cloudflare-kv" ]]; then
             export SOURCE_CACHE_NAMESPACE="$(cat artifacts/source-cache-namespace.txt)"
           fi
