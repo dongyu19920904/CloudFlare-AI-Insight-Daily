@@ -1,3 +1,5 @@
+import { dailyItemBody, getDailyEditorialPriority } from './dailyEditorialSignals.js';
+
 function toBoolean(value) {
     const normalized = String(value ?? '').trim().toLowerCase();
     return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
@@ -39,7 +41,16 @@ export function resolveLinuxDoPolicy(env) {
 export function applyLinuxDoPolicy(items, policy = {}) {
     const maxItems = normalizeMaxItems(policy.maxItems, 2);
     const stripMedia = policy.stripMedia !== false;
-    let linuxCount = 0;
+    const linuxItems = (items || []).filter((item) => isLinuxDoUrl(item?.url));
+    const referenceTime = Math.max(...linuxItems.map((item) => Date.parse(item.published_date)).filter(Number.isFinite));
+    const selected = new Set(linuxItems.map((item) => {
+        const text = `${item.title || ''} ${dailyItemBody(item)}`;
+        const isQuestion = /[?？]\s*$/.test(item.title || '') && /求推荐|推荐哪个|求助|请问/.test(item.title || '');
+        const priority = getDailyEditorialPriority(item, referenceTime)
+            + (/\b(?:AI|LLM|GPT|Claude|Codex|Gemini|DeepSeek|Agent|Cursor)\b|人工智能|大模型|推理|开源/i.test(text) ? 12 : 0)
+            + Math.min(10, Math.floor(dailyItemBody(item).length / 100)) - (isQuestion ? 80 : 0);
+        return { item, priority };
+    }).sort((a, b) => b.priority - a.priority).slice(0, maxItems).map(({ item }) => item));
     const output = [];
 
     for (const item of items || []) {
@@ -50,8 +61,7 @@ export function applyLinuxDoPolicy(items, policy = {}) {
             continue;
         }
 
-        linuxCount += 1;
-        if (linuxCount > maxItems) continue;
+        if (!selected.has(item)) continue;
 
         if (!stripMedia || !item.details || typeof item.details.content_html !== 'string') {
             output.push(item);

@@ -4,7 +4,8 @@ import { getDailyEditorialPriority } from './dailyEditorialSignals.js';
 export function capNewsItemsWithPublisherDiversity(items, maxItems) {
   if (items.length <= maxItems) return items;
   const referenceTime = Math.max(...items.map((item) => Date.parse(item.published_date)).filter(Number.isFinite));
-  items = [...items].sort((a, b) => getDailyEditorialPriority(b, referenceTime) - getDailyEditorialPriority(a, referenceTime));
+  items = items.map((item) => ({ item, priority: getDailyEditorialPriority(item, referenceTime) }))
+    .sort((a, b) => b.priority - a.priority).map(({ item }) => item);
   const diversitySlots = Math.min(15, Math.max(1, Math.floor(maxItems * 0.3)));
   const selected = new Set(items.slice(0, maxItems - diversitySlots));
   const publishers = new Set([...selected].map(getDailyPublisherKey));

@@ -5,10 +5,29 @@ import { buildDailyPromptSelection, getDailyPublisherKey, inferDailyPromptSource
 import { buildDailyGenerationPromptInput } from '../src/dailyGenerationPromptInput.js';
 import { capNewsItemsWithPublisherDiversity } from '../src/newsSourceDiversity.js';
 import { ensureDailyMediaCoverage } from '../src/dailyMediaCoverage.js';
+import { applyLinuxDoPolicy } from '../src/sourcePolicies.js';
 
 const news = (title, url, text, extra = {}) => ({
   type: 'news', title, url, description: text, published_date: '2026-11-03T18:00:00Z',
   details: { content_html: `<p>${text}</p>` }, ...extra,
+});
+
+test('Linux.do chooses useful candidates before its unchanged two-item cap, not the first two questions', () => {
+  const questions = [1, 2].map((i) => news(`请问 AI 新人推荐哪个平台${i}？`, `https://linux.do/t/topic/${i}`, '想写小说，请问推荐哪个平台？'));
+  const update = news('Claude Code 新增会话恢复功能', 'https://linux.do/t/topic/3', '官方新功能已经开放，记录升级版本和恢复会话的完整步骤。');
+  const experiment = news('本地大模型推理部署实测', 'https://linux.do/t/topic/4', '记录模型、硬件、内存占用和完整测试命令。'.repeat(8), {
+    details: { content_html: '<p>记录模型、硬件、内存占用和完整测试命令。</p><img src="https://linux.do/uploads/test.png">' },
+  });
+  const other = news('其它来源文章', 'https://news.example.org/post', '保持其它来源。');
+  const items = [...questions, update, experiment, other];
+  const result = applyLinuxDoPolicy(items, { maxItems: 2 });
+  assert.equal(result.filter((item) => item.url.includes('linux.do')).length, 2);
+  assert.ok(result.some((item) => item.url === update.url));
+  assert.ok(result.some((item) => item.url === experiment.url));
+  assert.ok(result.includes(other));
+  assert.doesNotMatch(result.find((item) => item.url === experiment.url).details.content_html, /<img/);
+  assert.match(experiment.details.content_html, /<img/);
+  assert.equal(applyLinuxDoPolicy(items, { maxItems: 0 }).length, 1);
 });
 
 test('an image-only teaser with channel footer is not a news or fun candidate', () => {

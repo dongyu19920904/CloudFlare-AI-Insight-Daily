@@ -1538,6 +1538,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         console.warn(
             `[Scheduled][Daily] First draft needs repair, retrying: ${repairIssues.join(' | ')}`
         );
+        try {
         let repairedOutputOfCall2 = await generateContentWithTransportFallback(
             dailyBodyGenerationEnv,
             buildDailyRepairPrompt(outputOfCall2User, outputOfCall2, repairIssues, dateStr),
@@ -1605,6 +1606,13 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         debugInfo.dailyRepairMetQualityTargets = repairedQualityTargetWarnings.length === 0;
         debugInfo.dailyRepairIssues = repairedValidation.issues;
         debugInfo.dailyRepairWarnings = repairedValidation.warnings || [];
+        } catch (error) {
+            if (!initialValidation.ok) throw error;
+            debugInfo.dailyRepairAttempted = true;
+            debugInfo.dailyRepairAdopted = false;
+            debugInfo.dailyRepairError = error.message;
+            console.warn(`[Scheduled][Daily] Optional polish failed; retaining the validated complete draft: ${error.message}`);
+        }
     }
 
     const funStatsBeforeStandaloneGeneration = getDailyFunSectionStats(dailySummaryMarkdownContent);
