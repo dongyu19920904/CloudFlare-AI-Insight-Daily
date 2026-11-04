@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDailyEditorialPriority, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from '../src/dailyEditorialSignals.js';
-import { buildDailyPromptSelection, getDailyPublisherKey } from '../src/dailyPromptSelection.js';
+import { buildDailyPromptSelection, getDailyPublisherKey, inferDailyPromptSourceType } from '../src/dailyPromptSelection.js';
 import { buildDailyGenerationPromptInput } from '../src/dailyGenerationPromptInput.js';
 import { capNewsItemsWithPublisherDiversity } from '../src/newsSourceDiversity.js';
 
@@ -70,4 +70,5 @@ test('aging routine self-promotion loses priority, but missing likes are never t
   const now = Date.parse('2026-11-04T01:00:00Z');
   assert.ok(getDailyEditorialPriority(old, now) < getDailyEditorialPriority(fresh, now));
   assert.equal(getDailyEditorialPriority(fresh, now), getDailyEditorialPriority({ ...fresh, likes: undefined }, now));
+  assert.equal(inferDailyPromptSourceType(old), 'socialMedia');
 });

@@ -1,7 +1,7 @@
 import { stripHtml } from './helpers.js';
 
-const MAJOR_PRODUCT = /\b(?:openai|chatgpt|gpt[\s-]?\d|codex|anthropic|claude|opus|sonnet|fable|gemini|deepmind|deepseek|qwen|kimi|grok|nvidia|hyra|sensenova|longcat)\b|混元|讯飞|星火|商汤|智谱|豆包|通义|英伟达/i;
-const UPDATE = /发布|推出|上线|开放|开源|更新|新增|支持|现在可以|已经可以|已可|停用|下线|降价|涨价|introduc|announc|launch|release|roll(?:ing)? out|now (?:available|support)/i;
+const MAJOR_PRODUCT = /\b(?:openai|chatgpt|gpt[\s-]?\d|codex|anthropic|claude|opus|sonnet|fable|google|gemini|deepmind|deepseek|qwen|kimi|grok|nvidia|hyra|sensenova|longcat)\b|混元|讯飞|星火|商汤|智谱|豆包|通义|英伟达/i;
+const UPDATE = /发布|推出|上线|开放|开源|更新|新增|支持|现在可以|已经可以|已可|停用|下线|关闭|禁用|降价|涨价|introduc|announc|launch|release|roll(?:ing)? out|now (?:available|support)/i;
 
 function titleOf(item) {
   return String(item?.title || '').replace(/\s+/g, ' ').trim();
@@ -44,7 +44,8 @@ export function isOfficialDailyPublisher(value) {
 export function isMajorDailyProductUpdate(item) {
   const title = titleOf(item);
   const lead = `${title} ${dailyItemBody(item).slice(0, 220)}`;
-  return MAJOR_PRODUCT.test(lead) && UPDATE.test(lead) && !isUnconfirmedDailyModelRumor(item);
+  const productSubject = MAJOR_PRODUCT.test(title) || (/模型|model|官方|团队版|企业版/i.test(title) && MAJOR_PRODUCT.test(lead));
+  return productSubject && UPDATE.test(lead) && !isUnconfirmedDailyModelRumor(item);
 }
 
 // Editorial influence comes before illustration availability; missing popularity is not zero popularity.

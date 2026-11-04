@@ -80,7 +80,8 @@ function isDirectSocialPostUrl(url) {
       .toLowerCase()
       .replace(/^www\./, "")
       .replace(/^mobile\./, "");
-    return hostname === "x.com" || hostname === "twitter.com" || hostname === "reddit.com";
+    return hostname === "x.com" || hostname === "twitter.com" || hostname === "reddit.com"
+      || hostname === 'okjike.com' || hostname === 'm.okjike.com';
   } catch {
     return false;
   }

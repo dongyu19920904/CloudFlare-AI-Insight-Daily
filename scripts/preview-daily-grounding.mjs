@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { handleScheduledDaily } from '../artifacts/scheduled-dry-run.mjs';
+import { handleScheduledDaily, fetchAndTransformDataForType, setFetchDate, resolveFoloCookie } from '../artifacts/scheduled-dry-run.mjs';
 import { withWorkerConfigDefaults } from '../src/workerConfig.js';
 import { extractGithubTopProjectsFromMarkdown, RECENT_GITHUB_TOP_PROJECTS_KEY } from '../src/githubTopProjectDedupe.js';
 
@@ -34,6 +34,21 @@ if (sourceCacheAccess === 'cloudflare-kv') {
   data = await response.json();
 } else throw new Error('Unknown source cache access mode');
 const vars = withWorkerConfigDefaults(JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8')));
+if (process.env.READ_ONLY_REFRESH_NEWS === 'true') {
+  if (sourceCacheAccess !== 'cloudflare-kv') throw new Error('Read-only source refresh requires the authenticated cache path');
+  const { CLOUDFLARE_ACCOUNT_ID: account, CLOUDFLARE_API_TOKEN: token, SOURCE_CACHE_NAMESPACE: namespace } = process.env;
+  const cookieResponse = await originalFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces/${namespace}/values/${encodeURIComponent(vars.FOLO_COOKIE_KV_KEY || 'folo_auth_cookie')}`, {
+    headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30000), redirect: 'error',
+  });
+  if (!cookieResponse.ok) throw new Error(`Read-only Folo credential access: HTTP ${cookieResponse.status}`);
+  const storedCookie = await cookieResponse.text();
+  const { cookie } = await resolveFoloCookie({ ...vars, DATA_KV: { async get() { return storedCookie; } } });
+  if (!cookie) throw new Error('The configured Folo credential is empty');
+  setFetchDate(date);
+  data.news = await fetchAndTransformDataForType('news', vars, cookie);
+  await writeFile(`${dir}/refreshed-news.json`, JSON.stringify(data.news, null, 2));
+  console.log(`Read-only refresh: ${data.news.length} news items; production KV unchanged`);
+}
 // Reproduce production's recent-project exclusions instead of previewing with an empty KV.
 const recentProjects = [];
 for (let offset = 1; offset <= 7; offset++) {
