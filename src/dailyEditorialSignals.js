@@ -24,6 +24,7 @@ export function dailyItemBody(item) {
   return stripHtml(String(item?.details?.articleEvidence?.excerpt || item?.plainText || item?.details?.content_html || item?.description || '')
     .replace(/<img\b[^>]*>|<video\b[^>]*>[\s\S]*?<\/video>/gi, ''))
     .replace(/\[图片:[^\]]*\]/g, '')
+    .replace(/Article URL:\s*https?:\/\/\S+|Comments URL:\s*https?:\/\/\S+|Points:\s*\d+|#\s*Comments:\s*\d+/gi, '')
     .replace(/AI探索\s*\|[\s\S]*$/i, '')
     .replace(/\s+/g, ' ').trim();
 }

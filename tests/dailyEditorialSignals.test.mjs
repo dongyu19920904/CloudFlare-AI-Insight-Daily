@@ -19,7 +19,8 @@ test('Linux.do chooses useful candidates before its unchanged two-item cap, not 
     details: { content_html: '<p>记录模型、硬件、内存占用和完整测试命令。</p><img src="https://linux.do/uploads/test.png">' },
   });
   const other = news('其它来源文章', 'https://news.example.org/post', '保持其它来源。');
-  const items = [...questions, update, experiment, other];
+  const giveaway = news('抽 Gemini 会员优惠链接', 'https://linux.do/t/topic/5', '活动已经开放，截止后关闭回帖。'.repeat(20));
+  const items = [...questions, giveaway, update, experiment, other];
   const result = applyLinuxDoPolicy(items, { maxItems: 2 });
   assert.equal(result.filter((item) => item.url.includes('linux.do')).length, 2);
   assert.ok(result.some((item) => item.url === update.url));
@@ -39,8 +40,28 @@ test('an image-only teaser with channel footer is not a news or fun candidate', 
   assert.equal(result.selectedContentItems.length, 0);
   assert.equal(result.dailyFunContentItems.length, 0);
   assert.equal(result.selectionDiagnostics.rejectedTitleOnlyCount, 1);
+  assert.equal(isTitleOnlyDailyItem(news('AI debt grows', 'https://news.example.org/debt',
+    'Article URL: https://news.example.org/debt Comments URL: https://news.ycombinator.com/item?id=1 Points: 276 # Comments: 122')), true);
   assert.equal(isTitleOnlyDailyItem(news('发布了: DeepSeek 刚刚服务中断，谁还记得上次之后发生了什么？',
     'https://m.okjike.com/originalPosts/outage', 'DeepSeek 刚刚服务中断，谁还记得上次之后发生了什么？')), true);
+});
+
+test('an AI-named repository without a description cannot invite guessed capabilities', () => {
+  const result = buildDailyPromptSelection({ project: [{ type: 'project', title: 'portal-ai-plugins',
+    url: 'https://github.com/spotify/portal-ai-plugins', description: '', source: 'GitHub Trending Daily',
+    details: { sourceKind: 'trending-daily' } }] });
+  assert.equal(result.selectedContentItems.length, 0);
+});
+
+test('a concrete retro-computing contrast is reserved for fun instead of an ordinary tool announcement', () => {
+  const contrast = news('现代 AI 棋引擎装进老电脑，能打赢昔日冠军吗？', 'https://experiment.example.org/chess',
+    '作者用奔腾旧电脑运行现代 AI 算法，与旧引擎实际对弈并记录胜率。算法进步让老电脑获得了新棋力。');
+  const ordinary = news('本地文档编辑器新增 AI 审阅', 'https://www.v2ex.com/t/new-editor', '开发者介绍了自动保护代码、检索文档和撤销修改的功能。');
+  const topics = ['医学影像辅助诊断', '农业病虫害识别', '道路巡检缺陷检测', '工厂设备异常预测', '语音识别口音适配', '图像压缩效率测试', '光学字符识别升级', '蛋白质结构生成', '遥感森林覆盖评估', '手语动作翻译', '智能仓储调度', '无障碍网页检测', '气象降雨预测', '芯片电路布局'];
+  const others = topics.map((topic, i) => news(`AI ${topic}`, `https://publisher${i}.example.org/post`, `记录${topic}的人工智能应用进展和可复现测试步骤。`));
+  const result = buildDailyPromptSelection({ news: [...others, contrast, ordinary] });
+  assert.ok(result.dailyFunContentItems.some((item) => item.includes(contrast.url)));
+  assert.ok(!result.selectedContentItems.some((item) => item.includes(contrast.url)));
 });
 
 test('model leak speculation is omitted without inventing a debunk', () => {

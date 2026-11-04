@@ -430,7 +430,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
     `另为产品/行业栏目预留 ${allocation.reserved.news.length} 条新闻，为前沿研究预留 ${allocation.reserved.paper.length} 篇论文；专用区素材不得提前写进今日焦点。`,
     `在完成以上预留后，再从剩余候选中写满今日焦点 TOP ${DAILY_TOP_TARGET}；不得重复使用同一事件。`,
     `TOP 候选已经过程序化 AI 相关性筛选；如果其中仍有明显泛生活内容，只能用去重替换素材替换。明确 TOP 候选达到 ${DAILY_TOP_TARGET} 条时必须逐条写满 ${DAILY_TOP_TARGET} 条，不得凭主观判断自行减为 6-9 条；只有明确候选确实不足时才按实际数量输出，且不得挪用专用区素材凑数。`,
-    "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。",
+    "候选编号、筛选数量、淘汰原因和补位过程只用于内部选择，绝不能写进最终正文。TOP 按下面给出的候选顺序写，不要把尾部的个人体验或小工具提升为第一条；替换素材放在被替换的位置。",
   ].join("\n");
   const numberedTopCandidates = topCandidateItems
     .map((item, index) => [`TOP 候选 ${index + 1}:`, item].join("\n"))

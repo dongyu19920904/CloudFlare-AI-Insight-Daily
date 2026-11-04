@@ -46,9 +46,10 @@ export function applyLinuxDoPolicy(items, policy = {}) {
     const selected = new Set(linuxItems.map((item) => {
         const text = `${item.title || ''} ${dailyItemBody(item)}`;
         const isQuestion = /[?？]\s*$/.test(item.title || '') && /求推荐|推荐哪个|求助|请问/.test(item.title || '');
+        const isGiveaway = /福利|羊毛|抽奖|抽.{0,10}(?:优惠链接|会员|奖)|签到|优惠码/.test(item.title || '');
         const priority = getDailyEditorialPriority(item, referenceTime)
             + (/\b(?:AI|LLM|GPT|Claude|Codex|Gemini|DeepSeek|Agent|Cursor)\b|人工智能|大模型|推理|开源/i.test(text) ? 12 : 0)
-            + Math.min(10, Math.floor(dailyItemBody(item).length / 100)) - (isQuestion ? 80 : 0);
+            + Math.min(10, Math.floor(dailyItemBody(item).length / 100)) - (isQuestion || isGiveaway ? 80 : 0);
         return { item, priority };
     }).sort((a, b) => b.priority - a.priority).slice(0, maxItems).map(({ item }) => item));
     const output = [];

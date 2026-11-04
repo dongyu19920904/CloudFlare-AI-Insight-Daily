@@ -292,6 +292,8 @@ function scoreDailyFunCandidate(candidate) {
   }
   if (candidate?.isWelfare) score -= 20;
   if (candidate?.isLowEvidenceAiWorkflowPitch) score -= 45;
+  if (/旧电脑|老电脑|古董|上世纪|奔腾|Pentium|怀旧|复古/i.test(text)
+    && /现代|modern|AI|模型|人工智能/i.test(text)) score += 90;
 
   return score;
 }
@@ -383,6 +385,7 @@ function hasNonAiTopicNoise(text) {
 
 function isAiRelevantDailyPromptCandidate(candidate) {
   if (candidate?.sourceType === "project") {
+    if (!String(candidate.description || candidate.plainText || '').trim()) return false;
     return isDailyTrendingProjectCandidate(candidate) && hasAiRelevanceSignal([
       candidate?.title || "",
       candidate?.description || "",
@@ -921,8 +924,14 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
   const hasFunCandidateOutsidePrimary = rankedDailyFunCandidates.some(
     (candidate) => !selectedPublisherKeys.has(candidate.publisherKey) && !isDuplicateDailyPromptCandidate(candidate, selectedCandidates)
   );
+  const bestFun = rankedDailyFunCandidates[0];
+  const bestOutsideFun = rankedDailyFunCandidates.find((candidate) =>
+    !selectedPublisherKeys.has(candidate.publisherKey) && !isDuplicateDailyPromptCandidate(candidate, selectedCandidates));
+  const shouldReserveStrongerFun = bestFun && selectedCandidates.includes(bestFun)
+    && scoreDailyFunCandidate(bestFun) >= 150
+    && scoreDailyFunCandidate(bestFun) > scoreDailyFunCandidate(bestOutsideFun) + 40;
 
-  if (!hasFunCandidateOutsidePrimary && rankedDailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
+  if ((!hasFunCandidateOutsidePrimary || shouldReserveStrongerFun) && rankedDailyFunCandidates.length > 0 && selectedCandidates.length > 10) {
     const reserveCandidate =
       rankedDailyFunCandidates.find(
         (candidate) => selectedCandidates.includes(candidate) && candidate.sourceType !== "project" && !candidate.isWelfare
