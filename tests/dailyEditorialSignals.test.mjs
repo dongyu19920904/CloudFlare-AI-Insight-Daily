@@ -20,6 +20,8 @@ test('an image-only teaser with channel footer is not a news or fun candidate', 
   assert.equal(result.selectedContentItems.length, 0);
   assert.equal(result.dailyFunContentItems.length, 0);
   assert.equal(result.selectionDiagnostics.rejectedTitleOnlyCount, 1);
+  assert.equal(isTitleOnlyDailyItem(news('发布了: DeepSeek 刚刚服务中断，谁还记得上次之后发生了什么？',
+    'https://m.okjike.com/originalPosts/outage', 'DeepSeek 刚刚服务中断，谁还记得上次之后发生了什么？')), true);
 });
 
 test('model leak speculation is omitted without inventing a debunk', () => {
@@ -76,6 +78,17 @@ test('Qiaomu and Guizang share one daily slot across X, Jike, main and fun pools
   const result = buildDailyPromptSelection({ news: items });
   const combined = [...result.selectedContentItems, ...result.dailyFunContentItems];
   assert.equal(combined.length, 1);
+});
+
+test('an unattributed Telegram copy cannot bypass the combined creator limit', () => {
+  const text = '玩一下 GPT image 2.0 吧！这个提示词能让咖啡照片变成杯子组成的门店插画。告诉模型具体咖啡豆产地后加入了云南风味，还有很多店员在里面工作。上传饮品照片，保留包装主体轮廓和品牌颜色，生成等轴测插画并拼接对比图。';
+  const original = news('饮品照片生成门店插画', 'https://m.okjike.com/originalPosts/1', text, { authors: '歸藏' });
+  const copied = news('🖼 玩一下 GPT image 2.0 吧！', 'https://t.me/channel/2', text);
+  const jot = news('AI 开发本地笔记工具', 'https://x.com/vista8/status/3', '用快捷键把灵感与截图收进日记。', { authors: '向阳乔木' });
+  const result = buildDailyPromptSelection({ news: [copied, original, jot] });
+  const combined = [...result.selectedContentItems, ...result.dailyFunContentItems].join('\n');
+  assert.doesNotMatch(combined, /t\.me\/channel\/2/);
+  assert.equal((combined.match(/Url:/g) || []).length, 1);
 });
 
 test('aging routine self-promotion loses priority, but missing likes are never treated as zero', () => {

@@ -4,7 +4,7 @@ const MAJOR_PRODUCT = /\b(?:openai|chatgpt|gpt[\s-]?\d|codex|anthropic|claude|op
 const UPDATE = /发布|推出|上线|开放|开源|更新|新增|支持|现在可以|已经可以|已可|停用|下线|关闭|禁用|降价|涨价|introduc|announc|launch|release|roll(?:ing)? out|now (?:available|support)/i;
 
 function titleOf(item) {
-  return String(item?.title || '').replace(/\s+/g, ' ').trim();
+  return String(item?.title || '').replace(/^发布了[:：]\s*/, '').replace(/\s+/g, ' ').trim();
 }
 
 export function focusDailyDigestItem(item) {
@@ -28,17 +28,23 @@ export function dailyItemBody(item) {
     .replace(/\s+/g, ' ').trim();
 }
 
+export function dailySocialContentFingerprint(item) {
+  if (!/^https?:\/\/(?:www\.|m\.)?(?:x\.com|twitter\.com|t\.me|okjike\.com)\//i.test(item?.url || '')) return '';
+  const body = dailyItemBody(item).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  return body.length >= 80 ? body.slice(0, 80) : '';
+}
+
 export function isTitleOnlyDailyItem(item) {
-  const compact = (value) => String(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const compact = (value) => String(value).replace(/&#(?:x[\da-f]+|\d+);/gi, '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   const title = compact(titleOf(item));
   const body = compact(dailyItemBody(item));
-  return Boolean(title && (!body || (body.length < 55 && body.startsWith(title) && body.slice(title.length).length < 3)));
+  return Boolean(title && (!body || (body.startsWith(title) && body.slice(title.length).length < 3)));
 }
 
 export function isUnconfirmedDailyModelRumor(item) {
   const title = titleOf(item);
   return /(?:模型|fable\s*\d|gpt[\s-]?\d|opus\s*\d|sonnet\s*\d|gemini\s*\d)/i.test(title)
-    && /泄露|传闻|猜测|据传|疑似|leak|rumou?r/i.test(title)
+    && /泄露|传闻|猜测|据传|疑似|leak|rumou?r|尚未.{0,8}发布|还没有正式|未正式发布/i.test(`${title} ${dailyItemBody(item).slice(0, 300)}`)
     && !isOfficialDailyPublisher(item?.url);
 }
 

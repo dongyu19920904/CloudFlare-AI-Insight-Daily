@@ -3,7 +3,7 @@ import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
 import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
-import { focusDailyDigestItem, getDailyEditorialPriority, isMajorDailyProductUpdate, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from './dailyEditorialSignals.js';
+import { dailySocialContentFingerprint, focusDailyDigestItem, getDailyEditorialPriority, isMajorDailyProductUpdate, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from './dailyEditorialSignals.js';
 import {
   getDailyPromptItemEventKey,
   isFirstPartyDailyModelLaunch,
@@ -401,6 +401,7 @@ function isAiRelevantDailyPromptCandidate(candidate) {
     candidate?.description || "",
   ].join(" ");
   const headline = candidate?.title || "";
+  if (/[?？]\s*$/.test(headline) && /求推荐|推荐哪个|求助|请问/.test(headline)) return false;
 
   if (/^(?:[🖼🎬🔁\s]*)?(?:现在[，,]?它|太强了|叹为观止)/.test(headline) &&
       /(?:震惊|太强了|叹为观止)/.test(headline) &&
@@ -676,6 +677,8 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
     if (candidateUrlKey && existingUrlKey && candidateUrlKey === existingUrlKey) {
       return true;
     }
+    const fingerprint = dailySocialContentFingerprint(candidate);
+    if (fingerprint && fingerprint === dailySocialContentFingerprint(existingCandidate)) return true;
     if (candidateEventKey && candidateEventKey === getCandidateEventKey(existingCandidate)) {
       return true;
     }
@@ -727,10 +730,15 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
   let rejectedModelRumorCount = 0;
   const referenceTime = Math.max(...Object.values(allUnifiedData || {}).flat()
     .filter((item) => item?.type !== 'project').map((item) => Date.parse(item?.published_date)).filter(Number.isFinite));
+  const knownCreatorFingerprints = new Set(Object.values(allUnifiedData || {}).flat()
+    .filter((item) => getDailyPublisherKey(item) === 'creators:qiaomu-guizang')
+    .map(dailySocialContentFingerprint).filter(Boolean));
 
   for (const items of Object.values(allUnifiedData || {})) {
     for (const originalItem of items || []) {
       const item = focusDailyDigestItem(originalItem);
+      if (getDailyPublisherKey(item) !== 'creators:qiaomu-guizang'
+        && knownCreatorFingerprints.has(dailySocialContentFingerprint(item))) continue;
       const candidate = buildDailyPromptCandidate(item);
       if (!candidate) continue;
       if (excludedSourceUrls.has(normalizeReplayUrl(candidate.url))) continue;
