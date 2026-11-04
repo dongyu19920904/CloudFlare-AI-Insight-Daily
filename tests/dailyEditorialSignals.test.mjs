@@ -53,6 +53,19 @@ test('an AI-named repository without a description cannot invite guessed capabil
   assert.equal(result.selectedContentItems.length, 0);
 });
 
+test('a freenode URL and authorship credit are not mistaken for free AI credits', () => {
+  for (const item of [
+    news('AI 安全研究中的内核漏洞进展', 'https://freenode.net/article/security', '介绍人工智能集群的安全维护与修复版本。'),
+    news('AI 研究实习岗位说明', 'https://m.okjike.com/originalPosts/jobs', '研究方向是模型推理，根据实际贡献共享 credit，可以参与论文实验。'),
+  ]) {
+    const result = buildDailyPromptSelection({ news: [item] });
+    assert.equal(result.selectedContentItems.length, 1);
+    assert.doesNotMatch(result.selectedContentItems[0], /This is a welfare/);
+  }
+  const offer = buildDailyPromptSelection({ news: [news('Free AI credits giveaway', 'https://offers.example.org/post', '领取免费 API 试用额度。')] });
+  assert.match(offer.selectedContentItems.join('\n'), /This is a welfare/);
+});
+
 test('a concrete retro-computing contrast is reserved for fun instead of an ordinary tool announcement', () => {
   const contrast = news('现代 AI 棋引擎装进老电脑，能打赢昔日冠军吗？', 'https://experiment.example.org/chess',
     '作者用奔腾旧电脑运行现代 AI 算法，与旧引擎实际对弈并记录胜率。算法进步让老电脑获得了新棋力。');
