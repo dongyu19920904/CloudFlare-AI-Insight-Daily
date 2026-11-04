@@ -2,6 +2,8 @@ import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls } from './opportunityAivoraLinkPolicy.js';
 import { stripHtml } from './helpers.js';
 import { getDailyFaqTheme } from './dailyStandaloneFaq.js';
+import { extractDailyMarkdownLinks } from './dailyMarkdownItems.js';
+import { dailyMediaSourceKey } from './dailySourceMedia.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
 const CATALOG_URL = 'https://www.aivora.cn/products';
@@ -28,6 +30,11 @@ const FAQ_OFFICIAL_PAGES = {
 
 function readableText(html) {
   return stripHtml(String(html || '').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ''));
+}
+
+function sourceUrlKeys(text) {
+  return [...String(text || '').matchAll(/https?:\/\/[^\s)]+/g)]
+    .map(match => dailyMediaSourceKey(match[0])).filter(Boolean);
 }
 
 function catalogProducts(html, urls) {
@@ -146,11 +153,10 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
   const faq = content.match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
   if (!faq) return content;
   const article = content.slice(0, faq.index) + content.slice(faq.index + faq[0].length);
-  const sourceLinks = [...faq[0].matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)]
-    .map((match) => match[1]);
-  const inputUrls = new Set([...String(context.sourceText || '').matchAll(/https?:\/\/[^\s)]+/g)]
-    .map((match) => match[0]));
-  const hasInputSource = sourceLinks.some((url) => inputUrls.has(url) && article.includes(url));
+  const sourceLinks = extractDailyMarkdownLinks(faq[0]).map(link => dailyMediaSourceKey(link.url));
+  const inputUrls = new Set(sourceUrlKeys(context.sourceText));
+  const articleUrls = new Set(extractDailyMarkdownLinks(article).map(link => dailyMediaSourceKey(link.url)));
+  const hasInputSource = sourceLinks.some((url) => inputUrls.has(url) && articleUrls.has(url));
   const visibleFaq = faq[0].replace(/\]\(https?:\/\/[^)]+\)/g, ']');
   const visibleArticle = article.replace(/\]\(https?:\/\/[^)]+\)/g, ']');
   const hasSameTopic = (context.topics || []).some((name) => {
@@ -181,7 +187,8 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
   const section = content.match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
   if (!section) return result;
   const article = content.slice(0, section.index) + content.slice(section.index + section[0].length);
-  const inputUrls = new Set([...String(context.sourceText || '').matchAll(/https?:\/\/[^\s)]+/g)].map(m => m[0]));
+  const inputUrls = new Set(sourceUrlKeys(context.sourceText));
+  const articleUrls = new Set(extractDailyMarkdownLinks(article).map(link => dailyMediaSourceKey(link.url)));
   const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*)\r?$/gm)];
   const verified = new Map();
   let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
@@ -190,10 +197,10 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     const block = section[0].slice(question.index, questions[index + 1]?.index ?? section[0].length);
     const title = (question[1] || question[2]).trim();
     const sources = [...block.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)].map(m => m[1]);
-    const grounded = sources.filter(url => inputUrls.has(url) && article.includes(url));
+    const grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
     const topic = TOPICS.find(item => context.topics?.includes(item.name) && item.pattern.test(title) &&
       (context.sourceItems || [context.sourceText || '']).some(source =>
-        grounded.some(url => String(source).includes(url)) && item.pattern.test(String(source).replace(/^Url:.*$/gmi, ''))));
+        sourceUrlKeys(source).some(url => grounded.includes(url)) && item.pattern.test(String(source).replace(/^Url:.*$/gmi, ''))));
     if (!topic || result.links.length >= 2) {
       output += block;
       continue;
@@ -266,10 +273,12 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     topics: [...new Set([...(context.topics || []), ...namedTopics])],
   };
   if (!context.catalogUrl || !context.topics?.length) return context;
+  const publishedUrls = new Map(extractDailyMarkdownLinks(markdown).map(link => [dailyMediaSourceKey(link.url), link.url]));
   const candidates = (selectedItems || []).flatMap((item) => {
     const text = String(item);
-    const url = text.match(/^Url:\s*(https?:\/\/\S+)/im)?.[1];
-    if (!url || !markdown.includes(url)) return [];
+    const sourceUrl = text.match(/^Url:\s*(https?:\/\/\S+)/im)?.[1];
+    const url = publishedUrls.get(dailyMediaSourceKey(sourceUrl));
+    if (!url) return [];
     const visible = text.replace(/^Url:.*$/gmi, '');
     return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible))
       .map((topic) => ({ topic: topic.name, sourceUrl: url, sourceText: text,
@@ -279,7 +288,7 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
   });
   const recent = context.recentFaqs || [];
   const chosen = candidates.filter((candidate) => !recent.some((item) =>
-    item.sourceUrls?.includes(candidate.sourceUrl) ||
+    item.sourceUrls?.some(url => dailyMediaSourceKey(url) === dailyMediaSourceKey(candidate.sourceUrl)) ||
     (item.topic?.toLowerCase() === candidate.topic.toLowerCase() && item.theme &&
       item.theme === getDailyFaqTheme(candidate.sourceText))))
     .map(candidate => ({ ...candidate, product: selectProduct(

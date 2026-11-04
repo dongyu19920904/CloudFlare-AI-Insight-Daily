@@ -350,3 +350,28 @@ test('current pricing cards supply the actual Codex plan context without requiri
       : '<main><h1>Pricing</h1><p>ChatGPT Work and Codex share usage.</p><h2>Plus</h2><p>Codex on the web, in the CLI, in the IDE extension.</p></main>'})});
   assert.equal(result.scene.product?.url, plus);
 });
+
+test('tracking removal does not hide the actual Codex news or drop its related product link', async () => {
+  const plain = 'https://www.bestblogs.dev/en/status/123';
+  const tracked = `${plain}?utm_source=rss&entry=rss_article_item`;
+  const plus = `${catalogUrl}/plus-renewal`;
+  const items = [`News Title: Codex 语音原型\nUrl: ${tracked}\nContent Summary: Codex 软件设计`];
+  const article = `## 新闻\n\n[Codex 原型](${plain})\n\n`;
+  const context = await loadDailyFaqSceneContext(article, items, {catalogUrl,topics:['Codex'],sourceItems:items,
+    sourceText:items.join('\n'),products:[{name:'ChatGPT Plus 充值续费',url:plus}]},
+    {fetchImpl:async url => ({ok:true,text:async () => url === plus
+      ? `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 充值续费</h1>`
+      : '<main>ChatGPT Plus includes Codex.</main>'})});
+  assert.equal(context.scene.sourceUrl, plain);
+  const section = `## **❓ 相关问题**\n\n### Codex 可以做语音小工具吗？\n\n[原型实验](${plain})展示了软件设计。已有账号可以看[爱窝啦·AI账号店的 ChatGPT Plus 充值续费](${plus})。`;
+  const cleaned = finalizeDailyShopFaq(article + section, context);
+  assert.ok(cleaned.includes(`](${plus})`));
+});
+
+test('tracking normalization never confuses two different article query IDs', async () => {
+  const result = await loadDailyFaqSceneContext('[Codex](https://news.ycombinator.com/item?id=2)', [
+    'News Title: Codex 原型\nUrl: https://news.ycombinator.com/item?id=1&utm_source=rss',
+  ], {catalogUrl,topics:['Codex'],products:[{name:'ChatGPT Plus',url:`${catalogUrl}/plus`}]},
+    {fetchImpl:async () => {throw Error('must not fetch');}});
+  assert.equal(result.scene, undefined);
+});
