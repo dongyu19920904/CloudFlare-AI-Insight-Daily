@@ -81,6 +81,7 @@ const hash = (value) => createHash('sha256').update(value).digest('hex');
 const report = {
   date, mode: 'faq-only', baseline: response.url, published: false,
   inserted: Boolean(result.debug.dailyFaqSeparateGenerationInserted || result.debug.dailyFaqProductLinks?.length),
+  rewritten: result.debug.dailyFaqSeparateGenerationInserted === true,
   newsByteIdentical: withoutFaq(published) === withoutFaq(result.markdown),
   newsHashBefore: hash(withoutFaq(published)), newsHashAfter: hash(withoutFaq(result.markdown)),
   modelCalls, sourceCount: sourceItems.length,
@@ -97,6 +98,6 @@ console.log(JSON.stringify({ ...report, scene: report.scene ? {
   product: report.scene.product, officialUrl: report.scene.official?.url,
 } : null }, null, 2));
 console.log('--- FAQ-ONLY PREVIEW ---\n' + section);
-if (!report.inserted || !report.newsByteIdentical || report.mainSiteLinks !== 1 || !report.validation.ok) {
+if (!report.rewritten || !report.newsByteIdentical || report.mainSiteLinks !== 1 || !report.validation.ok) {
   throw new Error('FAQ preview did not satisfy the acceptance checks; publication was not attempted');
 }

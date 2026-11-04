@@ -25,13 +25,14 @@ test('scene FAQ can replace a generic FAQ and uses distinct news, official and d
   const input = buildStandaloneDailyFaqPromptInput('2026-10-03', article + oldFaq, [sourceText], context);
   assert.equal(input.topic, 'Claude');
   assert.match(input.prompt, /B 场景型/);
-  assert.match(input.prompt, /100-140/);
+  assert.match(input.prompt, /80-110/);
   assert.match(input.prompt, /不重写新闻正文/);
   assert.match(input.prompt, /同一自然段里顺接/);
   assert.match(input.prompt, /不得生成商品 URL/);
   assert.match(input.prompt, /登录不通先排查原登录方式/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /只输出/);
-  assert.match(getStandaloneDailyFaqSystemPrompt(), /100-140 字、最多 3 句，链接文字和商品名也计入/);
+  assert.match(getStandaloneDailyFaqSystemPrompt(), /80-110 个可见字符/);
+  assert.match(getStandaloneDailyFaqSystemPrompt(), /商品名和链接文字也计入/);
   assert.match(input.prompt, /不问某套餐是否够用/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /新闻摘要不是安装文档/);
   assert.match(getStandaloneDailyFaqSystemPrompt(), /不把购买说成修复故障/);
