@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           umask 077
           grep -q '^ANTHROPIC_API_BASE_URL = "https://www.runtoken.ai"$' bioai-worker/wrangler.toml
-          grep -q '^DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"$' bioai-worker/wrangler.toml
+          grep -q '^DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"$' bioai-worker/wrangler.toml
           grep -q '^DEFAULT_ANTHROPIC_BACKUP_MODEL = "claude-opus-4-8"$' bioai-worker/wrangler.toml
 
           secrets_file="$RUNNER_TEMP/bioai-worker-ai-secrets.json"
@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           for route in primary backup; do
             if [[ "$route" == "primary" ]]; then
-              expected_model="claude-sonnet-5"
+              expected_model="claude-sonnet-5-5"
             else
               expected_model="claude-opus-4-8"
             fi
