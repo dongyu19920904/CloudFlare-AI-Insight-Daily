@@ -84,6 +84,60 @@ test('a repository without README images stays text-only instead of fabricating 
   assert.deepEqual(calls, ['https://api.github.com/repos/elayadesign/ai-design-skills/readme']);
 });
 
+test('eight early news pages cannot consume the README budget of three late repositories', async () => {
+  const news = Array.from({length:8}, (_, index) => row(`https://news.example.org/${index}`));
+  const repos = Array.from({length:3}, (_, index) => row(`https://github.com/owner/project-${index}`));
+  const markdown = `## TOP\n\n${news.map((item, index) => `### ${index + 1}. News\n\n[Source](${item.url})`).join('\n\n')}\n\n## 开源 TOP 项目\n\n${repos.map((item, index) => `### owner/project-${index}\n\n[Repository](${item.url})`).join('\n\n')}`;
+  const calls = [];
+  const result = await enrichDailySourceMedia(markdown, {news, project:repos}, {}, {fetchImpl:async target => {
+    calls.push(target);
+    const repo = target.match(/^https:\/\/api.github.com\/repos\/owner\/(project-\d)\/readme$/);
+    if (repo) return Response.json({download_url:`https://raw.githubusercontent.com/owner/${repo[1]}/main/README.md`,content:btoa('![Demo](demo.png)')});
+    if (target.endsWith('/demo.png')) return imageResponse();
+    return new Response('<article>No image</article>', {headers:{'content-type':'text/html'}});
+  }});
+  assert.equal(result.insertedCount, 3);
+  for (const repo of repos) assert.equal(result.rows.find(item => item.sourceUrl === repo.url)?.status, 'verified');
+  assert.equal(result.pageCount, 8);
+  assert.ok(result.requestCount <= 18);
+  assert.ok(calls.slice(0,3).every(url => url.endsWith('/readme')));
+});
+
+test('an image-free README can use one directly linked same-repository document without forwarding credentials', async () => {
+  const url = 'https://github.com/owner/repo';
+  const calls = [];
+  const result = await enrichDailySourceMedia(article(url), {}, {GITHUB_TOKEN:'test-token'}, {fetchImpl:async (target, options) => {
+    calls.push(target);
+    if (target.endsWith('/readme')) return Response.json({download_url:'https://raw.githubusercontent.com/owner/repo/dev/README.md',
+      content:btoa('[External](https://external.example.org/docs/intro.md)\n[Why](docs/why.md)\n[Other](docs/other.md)')});
+    assert.equal(options.headers.Authorization, undefined);
+    if (target.endsWith('/docs/why.md')) return new Response('![Contribution chart](images/activity.png)\n[More](more.md)');
+    assert.equal(target, 'https://raw.githubusercontent.com/owner/repo/dev/docs/images/activity.png');
+    return imageResponse();
+  }});
+  assert.equal(result.insertedCount, 1);
+  assert.equal(result.pageCount, 2);
+  assert.match(result.markdown, /项目文档原图/);
+  assert.equal(result.rows[0].documentUrl, 'https://raw.githubusercontent.com/owner/repo/dev/docs/why.md');
+  assert.equal(result.rows[0].origin, 'project-doc');
+  assert.equal(calls.length, 3);
+});
+
+test('README document discovery is one-hop, same-repository only, and remains optional', async () => {
+  const url = 'https://github.com/owner/repo';
+  const calls = [];
+  const result = await enrichDailySourceMedia(article(url), {}, {}, {fetchImpl:async target => {
+    calls.push(target);
+    if (target.endsWith('/readme')) return Response.json({download_url:'https://raw.githubusercontent.com/owner/repo/dev/README.md',
+      content:btoa('[Other repo](https://raw.githubusercontent.com/other/repo/dev/docs/intro.md)\n[Private](https://127.0.0.1/docs/intro.md)\n[Guide](docs/guide.md)\n[Next](docs/next.md)')});
+    assert.equal(target, 'https://raw.githubusercontent.com/owner/repo/dev/docs/guide.md');
+    return new Response('[Nested](nested.md)\nNo image.');
+  }});
+  assert.equal(result.markdown, article(url));
+  assert.equal(result.insertedCount, 0);
+  assert.equal(calls.length, 2);
+});
+
 test('404, nonimage and canonical mismatch skip only media and keep the complete article', async () => {
   const url = 'https://example.org/news';
   for (const response of [new Response('no',{status:404}),new Response('html',{headers:{'content-type':'text/html'}}),

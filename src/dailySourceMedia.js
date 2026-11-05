@@ -117,6 +117,9 @@ export async function enrichDailySourceMedia(markdown, allUnifiedData, env = {},
     targets.push({ link, item: bySource.get(dailyMediaSourceKey(link.url)),
       title: match[0].match(/^###\s+(?:\d+\.\s*)?([^\r\n]+)/)?.[1] || '原文配图' });
   }
+  // Late project sections must share the bounded page budget with earlier news.
+  const isRepository = target => /^https:\/\/github\.com\/[^/]+\/[^/?#]+\/?$/.test(target.link.url);
+  targets.sort((a, b) => Number(isRepository(b)) - Number(isRepository(a)));
   async function request(value, headers = {}) {
     let url = publicUrl(value);
     if (!url) throw new Error('non-public-source-url');
@@ -181,6 +184,20 @@ export async function enrichDailySourceMedia(markdown, allUnifiedData, env = {},
           const text = new TextDecoder().decode(Uint8Array.from(atob(String(readme.content || '').replace(/\s/g, '')), (char) => char.charCodeAt(0)));
           if (!readme.download_url?.startsWith(`https://raw.githubusercontent.com/${repo[1]}/`)) throw new Error('unverified-readme-base');
           images = extractSourcePageImages(text, readme.download_url, { readme: true });
+          if (!images.length) {
+            for (const match of text.matchAll(/(?<!!)\[[^\]]+\]\(([^\s)]+\.md(?:#[^\s)]*)?)\)/g)) {
+              const documentUrl = publicUrl(match[1], readme.download_url);
+              if (!documentUrl?.startsWith(`https://raw.githubusercontent.com/${repo[1]}/`) ||
+                  !new URL(documentUrl).pathname.includes('/docs/')) continue;
+              if (pageCount >= 8) break;
+              pageCount += 1;
+              const document = await request(documentUrl);
+              images = extractSourcePageImages(await boundedText(document), documentUrl, { readme: true })
+                .map(image => ({ ...image, origin: 'project-doc' }));
+              row.documentUrl = documentUrl;
+              break;
+            }
+          }
         } else {
           const response = await request(link.url);
           if (!/text\/html/i.test(response.headers.get('content-type') || '')) throw new Error('source-not-html');
@@ -194,7 +211,7 @@ export async function enrichDailySourceMedia(markdown, allUnifiedData, env = {},
       for (const image of images.slice(0, 2)) {
         try {
           if (!await imageWorks(image.url)) continue;
-          const caption = `${title.replace(/[\[\]"'\r\n]+/g, ' ').slice(0, 45)} · ${image.origin === 'readme' ? 'README 展示图' : image.origin === 'article-cover' ? '原文封面' : '原文配图'}`;
+          const caption = `${title.replace(/[\[\]"'\r\n]+/g, ' ').slice(0, 45)} · ${image.origin === 'readme' ? 'README 展示图' : image.origin === 'project-doc' ? '项目文档原图' : image.origin === 'article-cover' ? '原文封面' : '原文配图'}`;
           candidates.push({ url: link.url, title: caption, placeholders: [`![${caption}](${image.url} "${caption}")`] });
           row.status = 'verified'; row.imageUrl = image.url; row.origin = image.origin;
           return;
