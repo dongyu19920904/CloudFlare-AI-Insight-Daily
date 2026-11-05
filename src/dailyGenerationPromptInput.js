@@ -1,5 +1,6 @@
 import {
   DAILY_OPEN_SOURCE_MIN,
+  DAILY_OPEN_SOURCE_TARGET,
   DAILY_SOCIAL_MIN,
   DAILY_SOCIAL_TARGET,
   DAILY_TOP_TARGET,
@@ -102,7 +103,12 @@ function isPriorityDailyModelLaunch(item) {
 }
 
 function allocateDailyPromptItems(items = []) {
-  const primaryItems = (items || []).filter(Boolean);
+  let projectCount = 0;
+  const primaryItems = (items || []).filter((item) => {
+    if (!item) return false;
+    if (classifyDailyPromptItem(item) !== "project") return true;
+    return projectCount++ < DAILY_OPEN_SOURCE_TARGET;
+  });
   const buckets = {
     project: primaryItems.filter((item) => classifyDailyPromptItem(item) === "project"),
     socialMedia: primaryItems.filter((item) => classifyDailyPromptItem(item) === "socialMedia"),

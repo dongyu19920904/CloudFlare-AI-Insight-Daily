@@ -161,9 +161,9 @@ test("daily prompt allocation keeps every GitHub project out of a low-volume TOP
   });
 });
 
-test("all repository candidates stay in open-source while news still supplies ten focus items", async () => {
+test("repository writing candidates respect the section cap and never enter the ten focus items", async () => {
   const { getSystemPromptSummarizationStepOne } = await import('../src/prompt/summarizationPromptStepZero.js');
-  for (const count of [1, 2, 4]) {
+  for (const count of [1, 2, 3, 4, 5]) {
     const projects = Array.from({ length: count }, (_, i) =>
       `Project Name: skills-${i}\nSource: GitHub Trending Daily\nUrl: https://github.com/owner/skills-${i}`);
     const news = Array.from({ length: 13 }, (_, i) =>
@@ -172,16 +172,33 @@ test("all repository candidates stay in open-source while news still supplies te
     news[1] = 'News Title: 官方发布新模型并公开 GitHub 代码\nUrl: https://example.org/model-release';
     const prompt = buildDailyGenerationPromptInput([...projects, ...news]);
     const top = prompt.split('【今日焦点候选素材】')[1].split('【开源 TOP 项目专用候选素材】')[0];
-    assert.equal(getDailyPromptAllocationStats([...projects, ...news]).reservedProjectItems, count);
+    const reservedCount = Math.min(count, 3);
+    assert.equal(getDailyPromptAllocationStats([...projects, ...news]).reservedProjectItems, reservedCount);
     assert.equal(countDailyTopEligiblePromptItems([...projects, ...news]), 10);
     assert.doesNotMatch(top, /Project Name:|github\.com\/owner\//);
     assert.match(top, /AI 已永久改变编程/);
     assert.match(top, /官方发布新模型并公开 GitHub 代码/);
-    for (let i = 0; i < count; i++) assert.equal(prompt.split(`https://github.com/owner/skills-${i}`).length - 1, 1);
+    for (let i = 0; i < count; i++) {
+      assert.equal(prompt.split(`https://github.com/owner/skills-${i}`).length - 1, i < reservedCount ? 1 : 0);
+    }
   }
   const system = getSystemPromptSummarizationStepOne('2026-10-29');
   assert.match(system, /今日焦点不放 GitHub 仓库推荐/);
   assert.doesNotMatch(system, /今日焦点最多放 1 个 GitHub 项目/);
+});
+
+test("extra project candidates neither reduce ten news slots nor inflate other section reserves", () => {
+  const project = index => `Project Name: project-${index}\nSource: GitHub Trending Daily\nUrl: https://github.com/example/project-${index}`;
+  for (const newsCount of [10, 13]) {
+    const news = Array.from({ length: newsCount }, (_, index) => `News Title: AI news ${index}\nUrl: https://example.com/news-${index}`);
+    const firstThree = [project(0), project(1), project(2), ...news];
+    const withExtra = [project(0), project(1), project(2), project(3), project(4), ...news];
+    const before = [...withExtra];
+    assert.deepEqual(getDailyPromptAllocationStats(withExtra), getDailyPromptAllocationStats(firstThree));
+    assert.equal(countDailyTopEligiblePromptItems(withExtra), 10);
+    assert.equal(buildDailyGenerationPromptInput(withExtra), buildDailyGenerationPromptInput(firstThree));
+    assert.deepEqual(withExtra, before);
+  }
 });
 
 test("the sole fresh project stays in open-source while distinct backups fill TOP", () => {
