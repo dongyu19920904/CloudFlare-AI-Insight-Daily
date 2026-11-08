@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import source, { PAPERS_COOL_FEED, parsePapersCoolAtom } from '../src/dataSources/papers-cool.js';
 import { setFetchDate } from '../src/helpers.js';
 import { getArxivPaperId, selectDailyPaperCandidates, filterRecentlyPublishedPapers,
-  rememberPublishedDailyPapers, RECENT_DAILY_PAPERS_KEY } from '../src/dailyPaperPolicy.js';
+  rememberPublishedDailyPapers, RECENT_DAILY_PAPERS_KEY, requiredDailyResearchItems } from '../src/dailyPaperPolicy.js';
 
 const summary = 'We evaluate AI coding agents on a reproducible benchmark. Experiments compare task completion against a baseline, with a measured limitation on the test dataset.';
 const entry = (id, options = {}) => `<entry><id>https://papers.cool/arxiv/${id}</id>
@@ -99,4 +99,19 @@ test('paper history is read only for daily and written only after the successful
   assert.ok(daily.indexOf('await rememberPublishedDailyPapers') > daily.indexOf('await commitDailyOutputs'));
   assert.ok(daily.indexOf('await rememberPublishedDailyPapers') > daily.indexOf('Dry-run completed successfully'));
   assert.doesNotMatch(code.slice(end), /applyDailyPaperDedupe: true|rememberPublishedDailyPapers\(/);
+});
+
+test('new optional papers cannot introduce a main-daily publication gate', () => {
+  const paper = 'Papers Title: Agent benchmark\nSource: arXiv via papers.cool\nUrl: https://arxiv.org/abs/2611.08452';
+  assert.equal(requiredDailyResearchItems([paper, paper], 2), 0);
+  assert.equal(requiredDailyResearchItems(['News Title: Ordinary AI news'], 0), 0);
+  assert.equal(requiredDailyResearchItems([paper, 'Papers Title: Existing HF paper\nSource: huggingface-papers'], 2), 1);
+});
+
+test('optional research does not increase the existing topic-section publication gate', async () => {
+  const code = await readFile(new URL('../src/handlers/scheduled.js', import.meta.url), 'utf8');
+  assert.match(code, /minimumResearchItems = requiredDailyResearchItems/);
+  const potential = code.slice(code.indexOf('const potentialTopicSections ='), code.indexOf('const minimumTopicSections ='));
+  assert.match(potential, /minimumResearchItems > 0/);
+  assert.doesNotMatch(potential, /reservedPaperItems > 0/);
 });

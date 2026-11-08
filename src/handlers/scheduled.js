@@ -45,7 +45,7 @@ import {
 } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
-import { filterRecentlyPublishedPapers, loadPublishedDailyPapers, rememberPublishedDailyPapers } from '../dailyPaperPolicy.js';
+import { filterRecentlyPublishedPapers, loadPublishedDailyPapers, rememberPublishedDailyPapers, requiredDailyResearchItems } from '../dailyPaperPolicy.js';
 import { groundDailyNewsSources } from '../dailyNewsGrounding.js';
 import { selectAlternateDailySources } from '../dailyAlternateSelection.js';
 import {
@@ -2917,11 +2917,11 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         dailyPromptAllocation.reservedSocialItems,
         DAILY_SOCIAL_MIN
     );
-    const minimumResearchItems = Math.min(dailyPromptAllocation.reservedPaperItems, 1);
+    const minimumResearchItems = requiredDailyResearchItems(selectedContentItems, dailyPromptAllocation.reservedPaperItems);
     const minimumIndustryItems = dailyPromptAllocation.reservedNewsItems >= 2 ? 1 : 0;
     const potentialTopicSections =
         Math.min(dailyPromptAllocation.reservedNewsItems, 2) +
-        (dailyPromptAllocation.reservedPaperItems > 0 ? 1 : 0) +
+        (minimumResearchItems > 0 ? 1 : 0) +
         (dailyPromptAllocation.reservedProjectItems > 0 ? 1 : 0) +
         (dailyPromptAllocation.reservedSocialItems > 0 ? 1 : 0);
     const minimumTopicSections = Math.min(potentialTopicSections, 3);

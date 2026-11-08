@@ -2,6 +2,12 @@ import { getFromKV, storeInKV } from './kv.js';
 
 export const RECENT_DAILY_PAPERS_KEY = 'daily-papers:published:recent';
 
+export function requiredDailyResearchItems(promptItems = [], reservedCount = 0) {
+  const hasExistingPaperSource = promptItems.some(item => /^Papers Title:/m.test(item)
+    && !/^Source: arXiv via papers\.cool$/m.test(item));
+  return hasExistingPaperSource ? Math.min(reservedCount, 1) : 0;
+}
+
 export function getArxivPaperId(value) {
   try {
     const url = new URL(String(value || '').trim());

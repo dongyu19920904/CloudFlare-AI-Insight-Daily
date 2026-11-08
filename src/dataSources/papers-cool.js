@@ -51,6 +51,7 @@ async function readBounded(response) {
 const PapersCoolDataSource = {
   type: 'papers-cool',
   async fetch() {
+    const date = getFetchDate();
     const controller = new AbortController();
     let timer;
     try {
@@ -59,7 +60,7 @@ const PapersCoolDataSource = {
           const response = await fetch(PAPERS_COOL_FEED, { headers: { Accept: 'application/atom+xml',
             'User-Agent': 'Aivora-AI-Daily-Worker/1.0' }, signal: controller.signal, redirect: 'error' });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          return parsePapersCoolAtom(await readBounded(response));
+          return parsePapersCoolAtom(await readBounded(response), date);
         })(),
         new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('papers-cool-timeout')); }, 5000); }),
       ]);
