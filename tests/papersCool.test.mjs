@@ -122,3 +122,11 @@ test('practical reproduction research outranks a generic frontier claim without 
   const practical = { ...base, title: 'ReproBridge: reproducibility of software experiments', url: 'https://arxiv.org/abs/2611.00002' };
   assert.equal(selectDailyPaperCandidates([generic, practical], 1)[0].url, practical.url);
 });
+
+test('registered paper source preserves the manual selection renderer contract and escapes abstracts', () => {
+  const html = source.generateHtml({ title: 'Paper <script>', description: '<img src=x onerror=alert(1)>',
+    url: 'https://arxiv.org/abs/2611.08452', source: 'arXiv', published_date: '2026-11-06' });
+  assert.match(html, /https:\/\/arxiv\.org\/abs\/2611\.08452/);
+  assert.match(html, /&lt;img/);
+  assert.doesNotMatch(html, /<script>|<img/);
+});

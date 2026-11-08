@@ -71,6 +71,12 @@ const PapersCoolDataSource = {
     } finally { clearTimeout(timer); controller.abort(); }
   },
   transform(rawData) { return rawData?.items || []; },
+  generateHtml(item) {
+    return `<strong>${escapeHtml(item.title)}</strong><br>
+      <small>${escapeHtml(item.source)} | ${escapeHtml(item.published_date)}</small>
+      <div class="content-html">${escapeHtml(item.description)}</div>
+      <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">阅读原论文</a>`;
+  },
 };
 
 export default PapersCoolDataSource;
