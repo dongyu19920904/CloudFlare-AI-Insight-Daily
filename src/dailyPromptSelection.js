@@ -679,7 +679,9 @@ function buildDailyPromptCandidate(item) {
 function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
   const candidateUrlKey = normalizeReplayUrl(candidate?.url);
   const candidateTitle = candidate?.title || "";
-  const getCandidateEventKey = (value) => getDailyPromptItemEventKey([
+  const getCandidateEventKey = (value) => value?.sourceType === 'paper'
+    ? getDailyPromptItemEventKey(`Papers Title: ${value.title || ''}\nUrl: ${value.url || ''}`)
+    : getDailyPromptItemEventKey([
     `Title: ${value?.title || ""}`,
     value?.description || "",
     value?.plainText || "",
