@@ -83,3 +83,15 @@ test('a paper evaluating Jev or GPT is not merged into a vendor launch or vendor
   assert.equal(result.selectedCounts.paper, 2);
   assert.equal(getDailyPromptAllocationStats(result.selectedContentItems).reservedPaperItems, 2);
 });
+
+test('repository benchmarks and training-free research are not project promotions or freebie ads', () => {
+  const projects = Array.from({ length: 4 }, (_, i) => ({ type: 'project', title: `AI project ${i}`,
+    description: 'AI agent workflow tool', url: `https://github.com/team-${i}/tool-${i}`,
+    source: 'GitHub Trending Daily', details: { sourceKind: 'trending-daily' } }));
+  const repository = { ...first, description: `${first.description} We report results on repository migration.` };
+  const trainingFree = { ...second, description: `${second.description} Training-free inference does not change the model weights.` };
+  const result = buildDailyPromptSelection({ news: news.slice(0, 10), project: projects, paper: [repository, trainingFree] });
+  assert.equal(result.selectedCounts.paper, 2);
+  assert.equal(getDailyPromptAllocationStats(result.selectedContentItems).reservedPaperItems, 2);
+  for (const item of result.selectedContentItems.filter(item => item.startsWith('Papers Title:'))) assert.doesNotMatch(item, /welfare\/freebie/);
+});

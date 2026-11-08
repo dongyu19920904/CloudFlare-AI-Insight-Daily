@@ -523,6 +523,7 @@ function getDailyPromptEntityCountKey(candidate) {
 }
 
 function isProjectLikeDailyPromptCandidate(candidate) {
+  if (candidate?.sourceType === 'paper' && getArxivPaperId(candidate.url)) return false;
   const text = [
     candidate?.sourceType || "",
     candidate?.title || "",
@@ -628,7 +629,7 @@ function buildDailyPromptCandidate(item) {
     item.url,
     plainTextContent,
   ].join(" ");
-  const isWelfare = isWelfareCandidateText(welfareText);
+  const isWelfare = !(sourceType === 'paper' && getArxivPaperId(item.url)) && isWelfareCandidateText(welfareText);
   if (isWelfare) {
     itemText += "\nPlacement Hint: This is a welfare/freebie item. Put at most one such item in 值得关注, not TOP.";
   }
