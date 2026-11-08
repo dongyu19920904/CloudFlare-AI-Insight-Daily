@@ -35,7 +35,8 @@ export function dailyPaperScore(item) {
   const text = `${item.title || ''} ${item.description || ''}`;
   return (dailyPaperTopic(item) !== 'other' ? 4 : 0)
     + (/benchmark|evaluat|experiment|baseline|dataset|实验|评测/i.test(text) ? 2 : 0)
-    + (/code|reproduc|open.source|开源|复现/i.test(text) ? 1 : 0);
+    + (/code|reproduc|open.source|开源|复现/i.test(text) ? 1 : 0)
+    + (/reproduc|migration|memory|inference|coding|software|robot|sensor|复现|迁移|记忆|推理|编程|传感器/i.test(item.title || '') ? 3 : 0);
 }
 
 export function selectDailyPaperCandidates(items = [], limit = 8) {

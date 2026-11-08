@@ -501,7 +501,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (allocation.reserved.paper.length > 0) {
     promptParts.push([
       "【前沿研究专用候选素材】",
-      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`。每篇各写一条，默认精选两篇，不因同在 arXiv 或 papers.cool 而省略；只说明作者摘要支持的结论、实验范围和实际影响。沿用素材的实际发表日期，不能把最近七天的阅读精选写成今日发布。",
+      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`，不能再写进 TOP、摘要式补位或其他栏目。每篇各写一条，正文 90-130 个中文字符、3-4 个短句，只取一个主要结果并交代实验范围和实际影响；不因同在 arXiv 或 papers.cool 而省略。沿用素材的实际发表日期，不能把最近七天的阅读精选写成今日发布。不写来源未证明的首次、审稿状态或普适能力。",
       "",
       allocation.reserved.paper
         .map((item, index) => [`研究候选 ${index + 1}:`, item].join("\n"))

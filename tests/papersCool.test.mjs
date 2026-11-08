@@ -115,3 +115,10 @@ test('optional research does not increase the existing topic-section publication
   assert.match(potential, /minimumResearchItems > 0/);
   assert.doesNotMatch(potential, /reservedPaperItems > 0/);
 });
+
+test('practical reproduction research outranks a generic frontier claim without fabricated popularity', () => {
+  const base = { description: 'The authors evaluate AI agents on a reproducible experiment benchmark.', published_date: '2026-11-05' };
+  const generic = { ...base, title: 'Scientist World for AI scientists', url: 'https://arxiv.org/abs/2611.00001' };
+  const practical = { ...base, title: 'ReproBridge: reproducibility of software experiments', url: 'https://arxiv.org/abs/2611.00002' };
+  assert.equal(selectDailyPaperCandidates([generic, practical], 1)[0].url, practical.url);
+});
