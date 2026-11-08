@@ -65,3 +65,21 @@ test('papers retain topic diversity and overlapping research teams do not occupy
   assert.ok(result.selectedContentItems.some(item => item.includes(visual.url)));
   assert.ok(!(result.selectedContentItems.some(item => item.includes(first.url)) && result.selectedContentItems.some(item => item.includes(second.url))));
 });
+
+test('adding optional papers leaves ten sufficient news candidates and their TOP order unchanged', () => {
+  const baseline = buildDailyPromptSelection({ news: news.slice(0, 10) });
+  const added = buildDailyPromptSelection({ news: news.slice(0, 10), paper: [first, second] });
+  const topHeadlines = result => [...buildDailyGenerationPromptInput(result.selectedContentItems)
+    .split('【今日焦点候选素材】')[1].split('【前沿研究专用候选素材】')[0]
+    .matchAll(/^News Title: (.+)$/gm)].map(match => match[1]);
+  assert.equal(topHeadlines(added).length, 10);
+  assert.deepEqual(topHeadlines(added), topHeadlines(baseline));
+});
+
+test('a paper evaluating Jev or GPT is not merged into a vendor launch or vendor quota', () => {
+  const benchmark = { ...first, description: `${first.description} We evaluate Jev and GPT-6 Sol on independent benchmark tasks.` };
+  const launch = { ...news[0], title: 'Jev model release adds typed decisions', description: 'Jev is an AI decision model with a new API.' };
+  const result = buildDailyPromptSelection({ news: [launch], paper: [benchmark, second] });
+  assert.equal(result.selectedCounts.paper, 2);
+  assert.equal(getDailyPromptAllocationStats(result.selectedContentItems).reservedPaperItems, 2);
+});

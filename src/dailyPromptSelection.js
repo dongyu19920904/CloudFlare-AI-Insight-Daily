@@ -510,6 +510,7 @@ function getDailyPromptEntityKey(candidate) {
 }
 
 function getDailyPromptEntityCountKey(candidate) {
+  if (candidate?.sourceType === 'paper') return '';
   const entityKey = getDailyPromptEntityKey(candidate);
   if (!entityKey) return "";
 

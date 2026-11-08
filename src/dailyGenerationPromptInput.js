@@ -6,6 +6,7 @@ import {
   DAILY_TOP_TARGET,
 } from "./dailyContentRules.js";
 import { isMajorDailyProductUpdate, promptItemEditorialData } from './dailyEditorialSignals.js';
+import { getArxivPaperId } from './dailyPaperPolicy.js';
 
 function isDailyWelfarePromptItem(item) {
   const text = String(item || "");
@@ -237,6 +238,10 @@ function getDailyPromptItemFingerprint(item) {
 
 export function getDailyPromptItemEventKey(item) {
   const raw = String(item || "");
+  if (/^Papers Title:/m.test(raw)) {
+    const id = getArxivPaperId(raw.match(/^Url:\s*(\S+)/m)?.[1]);
+    return id ? `paper:${id}` : '';
+  }
   const text = raw.toLowerCase();
   const modelEventKey = getDailyModelReleaseEventKey(raw);
   if (modelEventKey) return modelEventKey;
@@ -501,7 +506,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (allocation.reserved.paper.length > 0) {
     promptParts.push([
       "【前沿研究专用候选素材】",
-      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`，不能再写进 TOP、摘要式补位或其他栏目。每篇各写一条，正文 90-130 个中文字符、3-4 个短句，只取一个主要结果并交代实验范围和实际影响；不因同在 arXiv 或 papers.cool 而省略。沿用素材的实际发表日期，不能把最近七天的阅读精选写成今日发布。不写来源未证明的首次、审稿状态或普适能力。",
+      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`，不能再写进 TOP、摘要式补位或其他栏目。每篇各写一条，正文 90-130 个中文字符、3-4 个短句：一个实际问题、一个主要结果及实验范围、一个用途。不要复述并列列表，最多解释两个术语；链接用可验证的结果短语融入句子，不用论文 ID 当链接文字。不因同在 arXiv 或 papers.cool 而省略。沿用实际发表日期，不写未经来源证明的首次、今日发布、审稿状态或普适能力。",
       "",
       allocation.reserved.paper
         .map((item, index) => [`研究候选 ${index + 1}:`, item].join("\n"))
