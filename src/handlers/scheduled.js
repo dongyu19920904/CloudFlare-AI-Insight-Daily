@@ -45,6 +45,7 @@ import {
 } from '../contentUtils.js';
 import { createOrUpdateGitHubFile, getGitHubFileContent, getGitHubFileSha } from '../github.js';
 import { buildDailyPromptSelection } from '../dailyPromptSelection.js';
+import { filterRecentlyPublishedPapers, loadPublishedDailyPapers, rememberPublishedDailyPapers } from '../dailyPaperPolicy.js';
 import { groundDailyNewsSources } from '../dailyNewsGrounding.js';
 import { selectAlternateDailySources } from '../dailyAlternateSelection.js';
 import {
@@ -1393,6 +1394,13 @@ async function loadScheduledContext(env, dateStr, debugInfo, options = {}) {
         }
     }
     debugInfo.sourceItemCountsAfterReplayFilter = countUnifiedDataItems(allUnifiedData);
+
+    if (options.applyDailyPaperDedupe && Array.isArray(allUnifiedData.paper)) {
+        const before = allUnifiedData.paper.length;
+        allUnifiedData.paper = filterRecentlyPublishedPapers(allUnifiedData.paper,
+            await loadPublishedDailyPapers(env.DATA_KV), dateStr);
+        debugInfo.recentPaperFiltered = before - allUnifiedData.paper.length;
+    }
 
     if (options.applyGithubTopProjectDedupe && Array.isArray(allUnifiedData.project)) {
         const recentGithubTopProjects = await loadRecentGithubTopProjects(env.DATA_KV);
@@ -2884,6 +2892,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     } = await loadScheduledContext(env, dateStr, debugInfo, {
         preferCachedData: options.preferCachedData !== false,
         applyGithubTopProjectDedupe: true,
+        applyDailyPaperDedupe: true,
         skipSourceCacheWrite: dryRun,
         groundDailyNews: true,
     });
@@ -3098,6 +3107,7 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
         console.warn(`[Scheduled][Daily] Telegram image archive skipped: ${error.message}`);
     }
     await commitDailyOutputs(env, dateStr, publicationMarkdown);
+    await rememberPublishedDailyPapers(env.DATA_KV, dateStr, publicationMarkdown);
     await rememberPublishedDailyFaq(env.DATA_KV, dateStr, publicationMarkdown);
     await storePublishedDailyGithubTopProjects(env, dateStr, publicationMarkdown, debugInfo);
     debugInfo.dailyPublished = true;

@@ -9,6 +9,8 @@ import XinzhiyuanDataSource from './dataSources/xinzhiyuan.js';
 import XiaohuDataSource from './dataSources/xiaohu.js';
 import GithubTrendingDataSource from './dataSources/github-trending.js';
 import PapersDataSource from './dataSources/papers.js';
+import PapersCoolDataSource from './dataSources/papers-cool.js';
+import { selectDailyPaperCandidates } from './dailyPaperPolicy.js';
 import HuggingfacePapersDataSource from './dataSources/huggingface-papers.js';
 import TwitterDataSource from './dataSources/twitter.js';
 import RedditDataSource from './dataSources/reddit.js';
@@ -21,7 +23,7 @@ export const dataSources = {
     // news 下支持多个可选 Folo feed/list 源：只要在环境变量中配置对应 *_FEED_ID 或 LIST_ID 即可自动生效
     news: { name: '新闻', sources: [RssNewsDataSource, NewsAggregatorDataSource, FoloMultiFeedsDataSource, AibaseDataSource, JiqizhixinDataSource, QbitDataSource, XinzhiyuanDataSource, XiaohuDataSource] },
     project: { name: '项目', sources: [GithubTrendingDataSource] },
-    paper: { name: '论文', sources: [PapersDataSource, HuggingfacePapersDataSource] },
+    paper: { name: '论文', sources: [PapersCoolDataSource, PapersDataSource, HuggingfacePapersDataSource] },
     socialMedia: { name: '社交平台', sources: [TwitterDataSource, RedditDataSource] },
     // Add new data sources here as arrays, e.g.,
     // newType: { name: '新类型', sources: [NewTypeDataSource1, NewTypeDataSource2] },
@@ -69,6 +71,11 @@ export async function fetchAndTransformDataForType(sourceType, env, foloCookie) 
         if (allUnifiedDataForType.length !== beforeCount) {
             console.log(`Applied linux.do policy: ${beforeCount} -> ${allUnifiedDataForType.length} items (max=${linuxPolicy.maxItems}, stripMedia=${linuxPolicy.stripMedia}).`);
         }
+    }
+
+    if (sourceType === 'paper') {
+        const cap = Number.parseInt(env.MAX_ITEMS_PAPER || '8', 10);
+        return selectDailyPaperCandidates(allUnifiedDataForType, Number.isFinite(cap) && cap > 0 ? Math.min(cap, 12) : 8);
     }
 
     // Sort by published_date in descending order for each type

@@ -37,6 +37,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install locked runtime dependencies
+        run: npm ci --ignore-scripts --no-fund
+
       - name: Verify both configured models before changing production
         env:
           AI_PROVIDER_API_KEY: ${{ secrets.RUNTOKEN_API_KEY }}

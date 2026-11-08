@@ -1,6 +1,9 @@
 {
   "private": true,
   "type": "module",
+  "dependencies": {
+    "fast-xml-parser": "5.12.0"
+  },
   "scripts": {
     "test": "node --test tests/*.mjs",
     "deploy": "wrangler deploy"

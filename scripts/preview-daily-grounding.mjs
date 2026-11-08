@@ -3,6 +3,9 @@ import { handleScheduledDaily } from '../artifacts/scheduled-dry-run.mjs';
 import { withWorkerConfigDefaults } from '../src/workerConfig.js';
 import { extractGithubTopProjectsFromMarkdown, RECENT_GITHUB_TOP_PROJECTS_KEY } from '../src/githubTopProjectDedupe.js';
 import { rememberPublishedDailyFaq } from '../src/dailyStandaloneFaq.js';
+import PapersCoolDataSource from '../src/dataSources/papers-cool.js';
+import { selectDailyPaperCandidates, extractPublishedDailyPapers, RECENT_DAILY_PAPERS_KEY } from '../src/dailyPaperPolicy.js';
+import { setFetchDate } from '../src/helpers.js';
 
 const date = process.env.TARGET_DATE;
 if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('TARGET_DATE required');
@@ -35,6 +38,12 @@ if (sourceCacheAccess === 'cloudflare-kv') {
   data = await response.json();
 } else throw new Error('Unknown source cache access mode');
 const vars = withWorkerConfigDefaults(JSON.parse(await readFile('artifacts/worker-vars.json', 'utf8')));
+// Exercise the new public paper source without refreshing production caches.
+setFetchDate(date);
+const coolPapers = (await PapersCoolDataSource.fetch()).items;
+data.paper = selectDailyPaperCandidates([...coolPapers, ...(data.paper || [])], 8);
+await writeFile(`${dir}/papers-cool.json`, JSON.stringify(coolPapers, null, 2));
+console.log(`Read-only papers.cool candidates: ${coolPapers.length}; merged paper pool: ${data.paper.length}`);
 if (process.env.REFRESH_NEWS_CACHE === 'true') {
   if (!process.env.TEST_TRIGGER_SECRET) throw new Error('News cache refresh requires the existing trigger credential');
   const refreshUrl = new URL('/testFetchCategory', process.env.SOURCE_REFRESH_BASE_URL || 'https://cloudflare-ai-lnsight-daily.sabrinamisan090.workers.dev');
@@ -50,6 +59,7 @@ if (process.env.REFRESH_NEWS_CACHE === 'true') {
 }
 // Reproduce production's recent-project exclusions instead of previewing with an empty KV.
 const recentProjects = [];
+const recentPapers = [];
 const recentEditions = [];
 const faqHistory = new Map();
 for (let offset = 1; offset <= 7; offset++) {
@@ -61,6 +71,7 @@ for (let offset = 1; offset <= 7; offset++) {
   if (!history.ok) throw new Error(`Recent project history ${day}: HTTP ${history.status}`);
   const markdown = await history.text();
   recentProjects.push(...extractGithubTopProjectsFromMarkdown(markdown, day));
+  recentPapers.push(...extractPublishedDailyPapers(markdown, day));
   recentEditions.push({day, markdown});
 }
 // Reuse the already-read editions; history preparation writes only to this in-memory map.
@@ -86,6 +97,7 @@ const env = { ...vars, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, ANTHROP
   DATA_KV: {
     async get(key) {
       if (key === RECENT_GITHUB_TOP_PROJECTS_KEY) return JSON.stringify(recentProjects);
+      if (key === RECENT_DAILY_PAPERS_KEY) return JSON.stringify(recentPapers);
       if (faqHistory.has(key)) return faqHistory.get(key);
       if (key.startsWith(`${date}-`)) {
         const category = key.slice(date.length + 1);

@@ -104,8 +104,10 @@ function isPriorityDailyModelLaunch(item) {
 
 function allocateDailyPromptItems(items = []) {
   let projectCount = 0;
+  let paperCount = 0;
   const primaryItems = (items || []).filter((item) => {
     if (!item) return false;
+    if (classifyDailyPromptItem(item) === 'paper') return paperCount++ < 2;
     if (classifyDailyPromptItem(item) !== "project") return true;
     return projectCount++ < DAILY_OPEN_SOURCE_TARGET;
   });
@@ -120,12 +122,12 @@ function allocateDailyPromptItems(items = []) {
   const forcedProjectReserveCount = buckets.project.length;
   let reserveBudget = Math.max(
     0,
-    primaryItems.length - DAILY_TOP_TARGET - forcedProjectReserveCount
+    primaryItems.length - DAILY_TOP_TARGET - forcedProjectReserveCount - buckets.paper.length
   );
   const reserveCounts = {
     project: forcedProjectReserveCount,
     socialMedia: 0,
-    paper: 0,
+    paper: buckets.paper.length,
     news: 0,
   };
   const reserveOne = (sourceType, limit) => {
@@ -499,7 +501,7 @@ export function buildDailyGenerationPromptInput(selectedContentItems = [], daily
   if (allocation.reserved.paper.length > 0) {
     promptParts.push([
       "【前沿研究专用候选素材】",
-      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`，说明结论、证据边界和实际影响。",
+      "下面论文已从今日焦点候选中移出，只能写进 `## **🧪 前沿研究**`。每篇各写一条，默认精选两篇，不因同在 arXiv 或 papers.cool 而省略；只说明作者摘要支持的结论、实验范围和实际影响。沿用素材的实际发表日期，不能把最近七天的阅读精选写成今日发布。",
       "",
       allocation.reserved.paper
         .map((item, index) => [`研究候选 ${index + 1}:`, item].join("\n"))

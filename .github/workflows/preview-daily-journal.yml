@@ -47,6 +47,9 @@ jobs:
         if: ${{ inputs.faq_only || inputs.media_only || inputs.source_grounding }}
         with:
           node-version: 22
+      - name: Install locked runtime dependencies
+        if: ${{ inputs.faq_only || inputs.media_only || inputs.source_grounding }}
+        run: npm ci --ignore-scripts --no-fund
       - name: Preview only the optional FAQ
         if: ${{ inputs.faq_only && !inputs.media_only && !inputs.source_grounding }}
         env:

@@ -1,6 +1,7 @@
 import { normalizeMarkdownMediaUrl, stripHtml } from "./helpers.js";
 import { isUsableDailyMediaUrl } from "./dailySectionSanitizer.js";
 import { normalizeGithubProjectUrl } from "./githubTopProjectDedupe.js";
+import { getArxivPaperId, selectDailyPaperCandidates } from './dailyPaperPolicy.js';
 import { isOfficialAccountOpportunityUrl } from "./accountOpportunityUtils.js";
 import { extractTelegramDailyImageCandidate } from "./dailyTelegramImageArchive.js";
 import { dailySocialContentFingerprint, focusDailyDigestItem, getDailyEditorialPriority, isMajorDailyProductUpdate, isTitleOnlyDailyItem, isUnconfirmedDailyModelRumor } from './dailyEditorialSignals.js';
@@ -110,6 +111,13 @@ function normalizeReplayUrl(url) {
 }
 
 export function getDailyPublisherKey(item) {
+  if (item?.type === 'paper') {
+    const authors = Array.isArray(item.authors) ? item.authors.join(', ') : String(item.authors || '');
+    const author = authors.split(/[,，;]/)[0].trim().normalize('NFKC').toLowerCase();
+    if (author && author !== 'unknown') return `paper-team:${author}`;
+    const id = getArxivPaperId(item.url);
+    if (id) return `paper:${id}`;
+  }
   const identity = `${item?.authors || ''} ${item?.source || ''} ${item?.url || ''}`;
   if (/向阳乔木|(?:归藏|歸藏)|https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/(?:vista8|op7418)\//i.test(identity)) {
     return 'creators:qiaomu-guizang';
@@ -568,8 +576,8 @@ function buildDailyPromptCandidate(item) {
   const itemHasMedia = mediaPlaceholders.length > 0;
   const articleEvidence = item.details?.articleEvidence;
   const factualContentHtml = stableContentHtml.replace(/<img\b[^>]*>|<video\b[^>]*>[\s\S]*?<\/video>/gi, '');
-  const plainTextContent = truncatePromptText(articleEvidence?.excerpt || stripHtml(factualContentHtml) || item.description,
-    articleEvidence?.excerpt ? 1600 : 500);
+  const plainTextContent = truncatePromptText((sourceType === 'paper' ? item.description : articleEvidence?.excerpt) || stripHtml(factualContentHtml) || item.description,
+    sourceType === 'paper' ? 3500 : articleEvidence?.excerpt ? 1600 : 500);
   let itemText = "";
 
   switch (sourceType) {
@@ -585,7 +593,8 @@ function buildDailyPromptCandidate(item) {
       }
       break;
     case "paper":
-      itemText = `Papers Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
+      itemText = `Papers Title: ${item.title}\nAuthors: ${item.authors || 'Unknown'}\nSource: ${item.source || 'Research paper'}\nPublished: ${item.published_date}\nUrl: ${item.url}\nAbstract/Content Summary: ${plainTextContent}`;
+      itemText += '\nEvidence Scope: Author-provided abstract; attribute experiment results to the authors. Do not infer peer review, full-paper details, code availability or a public product release. Reserve this paper for the research section, not TOP.';
       break;
     case "socialMedia":
       itemText = `socialMedia Post by ${item.authors}\nTitle: ${item.title || ""}\nSource: ${item.source || 'Unknown'}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent: ${plainTextContent}`;
@@ -651,6 +660,7 @@ function buildDailyPromptCandidate(item) {
     isFirstPartyMajorModelLaunch,
     isMajorProductUpdate: isMajorDailyProductUpdate({ ...item, plainText: plainTextContent }),
     published_date: item.published_date,
+    paperAuthors: sourceType === 'paper' ? String(item.authors || '').normalize('NFKC').toLowerCase().split(/[,，;]/).map(name => name.trim()).filter(Boolean) : [],
     isDailyTrendingProject:
       sourceType === "project" &&
       (item.details?.sourceKind === "trending-daily" || /GitHub\s+Trending/i.test(String(item.source || ""))) &&
@@ -676,6 +686,11 @@ function isDuplicateDailyPromptCandidate(candidate, selectedCandidates) {
   const candidateEventKey = getCandidateEventKey(candidate);
 
   return selectedCandidates.some((existingCandidate) => {
+    if (candidate.sourceType === 'paper' && existingCandidate.sourceType === 'paper'
+      && candidate.paperAuthors.filter(name => existingCandidate.paperAuthors.includes(name)).length >= 2) return true;
+    const paperId = getArxivPaperId(candidate?.url);
+    const existingPaperId = getArxivPaperId(existingCandidate?.url);
+    if (paperId && existingPaperId) return paperId === existingPaperId;
     const existingUrlKey = normalizeReplayUrl(existingCandidate?.url);
     if (candidateUrlKey && existingUrlKey && candidateUrlKey === existingUrlKey) {
       return true;
@@ -716,6 +731,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
   };
   const hardCaps = {
     project: parsePositiveInt(env.DAILY_PROMPT_PROJECT_HARD_CAP, 4),
+    paper: 2,
   };
   const projectLikeHardCap = parsePositiveInt(
     env.DAILY_PROMPT_PROJECT_LIKE_HARD_CAP,
@@ -737,7 +753,9 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
     .filter((item) => getDailyPublisherKey(item) === 'creators:qiaomu-guizang')
     .map(dailySocialContentFingerprint).filter(Boolean));
 
-  for (const items of Object.values(allUnifiedData || {})) {
+  const candidateData = { ...allUnifiedData,
+    paper: selectDailyPaperCandidates(allUnifiedData?.paper || [], 8) };
+  for (const items of Object.values(candidateData)) {
     for (const originalItem of items || []) {
       const item = focusDailyDigestItem(originalItem);
       if (getDailyPublisherKey(item) !== 'creators:qiaomu-guizang'
@@ -866,7 +884,7 @@ export function buildDailyPromptSelection(allUnifiedData, env = {}, options = {}
 
   for (const sourceType of orderedSourceTypes) {
     const bucket = buckets.get(sourceType) || [];
-    const sortedBucket = [...bucket].sort(
+    const sortedBucket = sourceType === 'paper' ? bucket : [...bucket].sort(
       (left, right) => scoreDailyPromptPresentation(right) - scoreDailyPromptPresentation(left)
     );
     const priority = sortedBucket.filter((candidate) =>
