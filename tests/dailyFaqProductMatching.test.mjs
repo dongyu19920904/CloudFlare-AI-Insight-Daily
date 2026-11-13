@@ -98,6 +98,15 @@ test('denying Antigravity access does not reverse an explicit API recommendation
   assert.equal(result.links[0]?.url, products[3].url);
 });
 
+test('source statements denying API keys or programming interfaces still select native accounts', async () => {
+  for (const description of ['Gemini 网页功能无需 API 密钥，直接网页登录即可。', 'Gemini 网页功能更新，不涉及编程接口。']) {
+    const item = `News Title: Gemini 网页文档整理\nUrl: ${sourceUrl}\n${description}`;
+    const page = article + `## **❓ 相关问题**\n\n### Gemini 网页怎么开始用？\n\n**直接网页登录即可。** [本次更新](${sourceUrl})介绍网页功能。\n`;
+    const result = await ensureDailyFaqProductLinks(page, { ...context, sourceItems: [item], sourceText: item }, { fetchImpl: fetchProduct });
+    assert.equal(result.links[0]?.url, products[0].url);
+  }
+});
+
 test('relay writing instructions separate model access from official subscriptions', () => {
   const ctx = { ...context, scene: { topic: 'Gemini', sourceUrl, sourceText: 'Gemini API 调用', product: products[3] } };
   const input = buildStandaloneDailyFaqPromptInput('2026-11-13', article, [source], ctx);

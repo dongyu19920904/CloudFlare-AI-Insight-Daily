@@ -73,7 +73,7 @@ function matchesProductTopic(topic, name) {
 
 function positiveUseText(text) {
   return String(text || '').replace(
-    /(?:并不是|不是|并非|而非|无需|不需要|不使用|不用|不走|非)\s*(?:(?:通过|使用|走|用)\s*)?(?:API(?:\s*Key)?(?:\s*中转)?|中转|Antigravity|反重力)(?:\s*(?:账号|会员|服务|界面|接口))?/gi, ''
+    /(?:并不是|不是|并非|而非|无需|不需要|不使用|不涉及|不用|不走|非)\s*(?:(?:通过|使用|编程|走|用)\s*)?(?:API(?:\s*(?:Key|密钥|接口))?(?:\s*中转)?|密钥|接口|中转|Antigravity|反重力)(?:\s*(?:账号|会员|服务|界面|接口))?/gi, ''
   ).replace(/\b(?:not(?:\s+an?)?|without)\s+(?:API(?:\s*Key)?(?:\s+relay)?|Antigravity)\b/gi, '');
 }
 
