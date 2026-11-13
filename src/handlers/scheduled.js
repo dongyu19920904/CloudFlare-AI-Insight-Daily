@@ -1677,6 +1677,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
         try {
             const faqDraft = await withDailyFaqDeadline(async () => {
                 const recentFaqs = await loadRecentDailyFaqs(env.DATA_KV, dateStr);
+                faqProductContext = { ...dailyShopContext, recentFaqs };
                 const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, { ...dailyShopContext, recentFaqs });
                 const faqInput = buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
                 debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);

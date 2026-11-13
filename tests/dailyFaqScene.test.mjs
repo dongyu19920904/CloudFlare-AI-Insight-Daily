@@ -137,6 +137,28 @@ test('the actual final FAQ step adds the matching delivery even when optional mo
   }
 });
 
+test('optional model failure preserves the already-read product history for final FAQ delivery', async () => {
+  const ready = article + raw.replace(/\[爱窝啦·AI账号店[^\]]+\]\(AIVORA_PRODUCT_URL\)/, '续费入口') + '\n\n' + footer;
+  const shop = { ...context, products: [context.scene.product] };
+  const used = [{ productUrls: [context.scene.product.url] }];
+  for (const generateContentWithTransportFallback of [
+    async () => { throw Error('model offline'); },
+    () => new Promise(() => {}),
+  ]) {
+    const result = await runOptional({ generateContentWithTransportFallback,
+      loadRecentDailyFaqs: async () => used,
+      loadDailyFaqSceneContext: async (_markdown, _items, ctx) => ({ ...shop, recentFaqs: ctx.recentFaqs }),
+      withDailyFaqDeadline: task => withDailyFaqDeadline(task, 20),
+      ensureDailyFaqProductLinks: (markdown, ctx) => {
+        assert.equal(ctx.recentFaqs, used);
+        return ensureDailyFaqProductLinks(markdown, ctx, { fetchImpl: async () => { throw Error('Used product must not be fetched'); } });
+      },
+    })(ready, shop);
+    assert.equal(result.markdown, ready);
+    assert.equal(result.debug.dailyFaqProductLinks?.length, 0);
+  }
+});
+
 test('published FAQ history excludes today, survives month rollover and treats failures as optional', async () => {
   let stored;
   const kv = {get: async () => stored, put: async (_key, value) => {stored = value;}};

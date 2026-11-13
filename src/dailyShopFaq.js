@@ -1,7 +1,7 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls } from './opportunityAivoraLinkPolicy.js';
 import { stripHtml } from './helpers.js';
-import { getDailyFaqTheme, matchesDailyFaqTopic } from './dailyStandaloneFaq.js';
+import { getDailyFaqTheme, matchesDailyFaqTopic, isDailyFaqPrimarySource } from './dailyStandaloneFaq.js';
 import { extractDailyMarkdownLinks } from './dailyMarkdownItems.js';
 import { dailyMediaSourceKey } from './dailySourceMedia.js';
 
@@ -11,7 +11,7 @@ const TOPICS = [
   { name: 'ChatGPT', pattern: /chatgpt/i, slug: /chatgpt/i },
   { name: 'Claude', pattern: /claude|anthropic/i, slug: /claude/i },
   { name: 'Cursor', pattern: /cursor/i, slug: /cursor/i },
-  { name: 'Gemini', pattern: /gemini/i, slug: /gemini/i },
+  { name: 'Gemini', pattern: /gemini|antigravity|反重力/i, slug: /gemini/i },
   { name: 'Codex', pattern: /codex/i, slug: /codex/i },
   { name: 'MiniMax', pattern: /minimax/i, slug: /minimax/i },
   { name: 'Grok', pattern: /grok/i, slug: /grok/i },
@@ -71,9 +71,20 @@ function matchesProductTopic(topic, name) {
     matchesDailyFaqTopic(name, topic.name, { name });
 }
 
+function positiveUseText(text) {
+  return String(text || '').replace(
+    /(?:并不是|不是|并非|而非|无需|不需要|不使用|不用|不走|非)\s*(?:(?:通过|使用|走|用)\s*)?(?:API(?:\s*Key)?(?:\s*中转)?|中转|Antigravity|反重力)(?:\s*(?:账号|会员|服务|界面|接口))?/gi, ''
+  ).replace(/\b(?:not(?:\s+an?)?|without)\s+(?:API(?:\s*Key)?(?:\s+relay)?|Antigravity)\b/gi, '');
+}
+
 function eligibleProduct(topic, name, sourceText) {
-  return matchesProductTopic(topic, name) &&
-    !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name) &&
+  sourceText = positiveUseText(sourceText);
+  if (!matchesProductTopic(topic, name) || /激活|换号|Free|接码|邀请|镜像/i.test(name)) return false;
+  const edition = sourceText.match(/\b(?:Enterprise|Business|Team)\b|企业(?:版|套餐)|团队(?:版|套餐)/i)?.[0];
+  if (edition && !new RegExp(edition, 'i').test(name)) return false;
+  const apiUse = !/antigravity|反重力/i.test(sourceText) && /\bAPI\b|中转|接口|密钥|Coding\s*Plan/i.test(sourceText);
+  if (/中转|\bAPI\b/i.test(name)) return apiUse;
+  return !apiUse && !/额度/.test(name) &&
     (!/教育|学生/.test(name) || /学生认证|教育(?:版|资格)|校园(?:认证|资格)/.test(sourceText));
 }
 
@@ -87,10 +98,12 @@ function hasSubscriptionEvidence(topic, product, official) {
 }
 
 function selectProduct(topic, sourceText, products = [], recentFaqs = []) {
+  sourceText = positiveUseText(sourceText);
   const used = new Set(recentFaqs.flatMap(item => item.productUrls || []));
   return products.filter(({ name, url }) => eligibleProduct(topic, name, sourceText) && !used.has(url))
     .sort((a, b) => {
       const rank = ({ name }) => (/^(?:ChatGPT|Codex)$/.test(topic.name) && /\bPlus\b/i.test(name) ? 20 : 0) +
+        (topic.name === 'Gemini' && /antigravity|反重力/i.test(sourceText) && /antigravity|反重力/i.test(name) ? 30 : 0) +
         (/续费|到期|充值/.test(sourceText)
           ? Number(/续费|充值/.test(name)) * 5
           : Number(/成品|独享/.test(name)) * 5);
@@ -140,9 +153,12 @@ export function formatDailyShopPromptContext(context) {
     `今天的资讯与当前 sitemap 中的这些公开商品类别有交集：${context.topics.join('、')}。`,
     `已核实的商品目录：${context.catalogUrl}。只允许引用这个目录 URL，不得猜测具体商品 URL。`,
     `目录中的相关交付名称：${(context.products || []).filter(({name}) =>
-      TOPICS.some(topic => context.topics.includes(topic.name) && matchesProductTopic(topic, name)) &&
-      !/中转|额度|激活|换号|Free|接码|邀请|API|镜像/i.test(name)).slice(0, 8).map(({name}) => name).join('；') || context.topics.join('、')}。`,
+      TOPICS.some(topic => context.topics.includes(topic.name) &&
+        (context.sourceItems || [context.sourceText || '']).some(source =>
+          topic.pattern.test(String(source).replace(/^Url:.*$/gmi, '')) && eligibleProduct(topic, name, source))))
+      .slice(0, 8).map(({name}) => name).join('；') || context.topics.join('、')}。`,
     '目录只证明店内公开展示这些商品类别，不证明库存或新闻中的新功能属于任一套餐，也不证明官方价格、额度、地区或政策。',
+    '官网/App 账号、已有账号续费与 API 中转是不同交付。Antigravity 用途优先看含反重力的账号；明确 API/接口接入才推荐中转，不把中转写成官网会员，不承诺新闻中的新型号已在商品中开放。',
     '正文有同一工具的新闻且原始来源能回答问题时，写 1 条相关问题：先用短句解决当天的具体困扰，再按使用需求推荐一个上面列出的相关交付。每条相关问题自然带一次爱窝啦·AI账号店的相关商品入口，使用已核实的目录 URL。不要只写功能说明而漏掉推荐，不要求问句包含购买或会员。',
     'ChatGPT 场景优先；普通个人使用优先考虑 Plus，不把最贵套餐当默认选择。免费也有的功能必须照实说，不暗示购买才能解锁，不把新功能推送等同于地区限制取消。没有相关交付或可靠来源时不硬塞商品；不要添加固定广告尾巴。',
   ].join('\n');
@@ -189,6 +205,15 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
   const article = content.slice(0, section.index) + content.slice(section.index + section[0].length);
   const inputUrls = new Set(sourceUrlKeys(context.sourceText));
   const articleUrls = new Set(extractDailyMarkdownLinks(article).map(link => dailyMediaSourceKey(link.url)));
+  const publishedSources = new Map();
+  for (const item of context.sourceItems || []) {
+    const text = String(item);
+    const url = text.match(/^Url:\s*(https?:\/\/\S+)/im)?.[1];
+    const key = dailyMediaSourceKey(url);
+    if (key && inputUrls.has(key) && articleUrls.has(key)) publishedSources.set(key, {
+      url, key, title: text.match(/^(?:News Title|Project Name):\s*(.+)$/im)?.[1] || '', text,
+    });
+  }
   const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*)\r?$/gm)];
   const verified = new Map();
   let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
@@ -197,7 +222,22 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     const block = section[0].slice(question.index, questions[index + 1]?.index ?? section[0].length);
     const title = (question[1] || question[2]).trim();
     const sources = [...block.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)].map(m => m[1]);
-    const grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
+    let grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
+    let recoveredSource;
+    if (!grounded.length && sources.every(url => /^https:\/\/(?:www\.)?aivora\.cn(?:\/|$)/i.test(url))) {
+      const subject = title.match(/\b(?:Gemini|ChatGPT|Claude|Codex|Cursor|MiniMax|Grok|Perplexity)(?:[ \t-]+[a-z]+)?[ \t-]*\d+(?:\.\d+)*(?:[ \t-]+[a-z]+)?\b/i)?.[0];
+      const subjectKey = subject?.replace(/[\s-]/g, '').toLowerCase();
+      const matching = [...publishedSources.values()].filter(source => subjectKey &&
+        source.title.replace(/[\s-]/g, '').toLowerCase().includes(subjectKey) &&
+        isDailyFaqPrimarySource(source.text, source.url) && TOPICS.some(topic =>
+        context.topics?.includes(topic.name) && matchesDailyFaqTopic(title, topic.name, context.scene?.product) &&
+        topic.pattern.test(source.title)));
+      // Only a unique official post for the same versioned subject can restore a missing citation.
+      if (matching.length === 1) {
+        recoveredSource = matching[0];
+        grounded = [recoveredSource.key];
+      }
+    }
     const topic = [TOPICS.find(item => item.name === context.scene?.topic), ...TOPICS].filter(Boolean)
       .find(item => context.topics?.includes(item.name) && matchesDailyFaqTopic(title, item.name, context.scene?.product) &&
       (context.sourceItems || [context.sourceText || '']).some(source =>
@@ -206,9 +246,12 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       output += block;
       continue;
     }
+    const productUse = positiveUseText(`${title}\n${block.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')}`);
     const sceneProduct = context.scene?.topic === topic.name && context.scene.product;
-    const candidate = (sceneProduct && context.products.find(({ url }) => url === sceneProduct.url)) ||
-      selectProduct(topic, title, context.products, context.recentFaqs);
+    const candidate = (sceneProduct && eligibleProduct(topic, sceneProduct.name, productUse) &&
+      !(context.recentFaqs || []).some(item => item.productUrls?.includes(sceneProduct.url)) &&
+      context.products.find(({ url }) => url === sceneProduct.url)) ||
+      selectProduct(topic, productUse, context.products, context.recentFaqs);
     if (candidate && !hasSubscriptionEvidence(topic, candidate, context.scene?.official)) {
       result.skipped.push({ topic: topic.name, reason: 'missing-subscription-evidence' });
       output += block;
@@ -223,7 +266,7 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
           result.requests++;
           const html = await fetchText(fetchImpl, candidate.url, timeoutMs);
           const name = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
-          if (extractCanonical(html) === candidate.url && eligibleProduct(topic, name, title)) product = { url: candidate.url, name };
+          if (extractCanonical(html) === candidate.url && eligibleProduct(topic, name, productUse)) product = { url: candidate.url, name };
         } catch { /* Catalog/product failures leave the already-written news publishable. */ }
       }
       if (product) verified.set(product.url, product);
@@ -236,7 +279,9 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       }
       product = { name: candidate.name, url: CATALOG_URL };
     }
-    const label = `爱窝啦·AI账号店的 ${product.name.replace(/[\[\]\\\r\n|｜]/g, ' ').replace(/[【】]/g, '').replace(/\s+/g, ' ').trim()}`;
+    const antigravity = topic.name === 'Gemini' && /antigravity|反重力/i.test(productUse) && /antigravity|反重力/i.test(product.name);
+    const shortName = antigravity && /成品|独享/.test(product.name) ? product.name.replace(/【[^】]*】/g, ' ') : product.name;
+    const label = `爱窝啦·AI账号店的 ${shortName.replace(/[\[\]\\\r\n|｜]/g, ' ').replace(/[【】]/g, '').replace(/\s+/g, ' ').trim()}`;
     const link = `[${label}](${product.url})`;
     let replaced = false;
     const trailing = block.match(/\s*$/)?.[0] || '';
@@ -247,11 +292,24 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
         replaced = true;
         return link;
       });
+    if (recoveredSource) {
+      const attribution = /(?:Google\s*AI\s*)?官方(?:推文|公告|说明)|原文(?:介绍|说明)?/;
+      const headingEnd = updated.indexOf('\n') + 1;
+      const answer = updated.slice(headingEnd);
+      updated = updated.slice(0, headingEnd) + (attribution.test(answer)
+        ? answer.replace(attribution, label => `[${label}](${recoveredSource.url})`)
+        : `${answer.trimEnd()} 可核对[本次更新的原始说明](${recoveredSource.url})。${trailing}`);
+    }
     if (!replaced) {
       const renewal = /续费|充值/.test(product.name);
       const login = /登录|登入|Apple\s*ID|验证|打不开/i.test(title);
+      const relay = /中转|\bAPI\b/i.test(product.name);
       const need = renewal ? '已有账号可以正常使用、只是会员快到期' : `原本就想另开一个 ${topic.name} 账号`;
-      const suggestion = login
+      const suggestion = relay
+        ? `要接到自己的工具里，可看 ${link} 的当前模型列表；这是 API 中转，不是官网会员。`
+        : antigravity
+        ? `想用反重力写代码，可看 ${link}，具体模型以账号内显示为准。`
+        : login
         ? `如果你${need}，可以再看 ${link} 的交付说明；购买不能代替登录排查。`
         : `如果你${need}，可以对照 ${link} 的交付说明，看看是否适合自己的用法。`;
       updated = `${updated.trimEnd()} ${suggestion}${trailing}`;
@@ -314,6 +372,8 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     ? `https://raw.githubusercontent.com/${repository.map(encodeURIComponent).join('/')}/HEAD/README.md`
     : chosen.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(chosen.sourceText)
     ? 'https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'
+    : chosen.topic === 'Gemini' && /antigravity|反重力/i.test(chosen.sourceText)
+    ? 'https://antigravity.google/pricing'
     : FAQ_OFFICIAL_PAGES[chosen.topic];
   if (officialUrl) {
     try {

@@ -3,8 +3,9 @@ const OFFICIAL_HOSTS = new Set([
   'blog.google', 'ai.google.dev', 'deepmind.google', 'cursor.com',
   'microsoft.com', 'learn.microsoft.com', 'minimax.io', 'x.ai',
   'help.openai.com', 'support.claude.com', 'code.claude.com',
+  'antigravity.google',
 ]);
-const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'geminiapp']);
+const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'claudeai', 'geminiapp', 'googleai']);
 const FAQ_HISTORY_KEY = 'daily-faq-published-history-v1';
 
 function faqQuestionKey(question) {
@@ -13,6 +14,7 @@ function faqQuestionKey(question) {
 
 export function matchesDailyFaqTopic(text, topic, product) {
   return Boolean(topic) && (new RegExp(topic, 'i').test(text) ||
+    (topic === 'Gemini' && /antigravity|反重力/i.test(text)) ||
     (topic === 'Codex' && /ChatGPT\s+(?:Plus|Pro)\b/i.test(product?.name || '') && /ChatGPT/i.test(text)));
 }
 
@@ -79,7 +81,7 @@ function getSourceUrl(item) {
   return String(item || '').match(/^Url:\s*(https?:\/\/\S+)/im)?.[1] || '';
 }
 
-function isPrimarySource(item, url) {
+export function isDailyFaqPrimarySource(item, url) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
@@ -105,6 +107,9 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
         scene.product
           ? `本次已核实的交付是“${scene.product.name}”。在同一自然段里顺接一个简短、有条件的选择建议，必须用一次 [爱窝啦·AI账号店的 ${scene.product.name}](AIVORA_PRODUCT_URL)，你不得生成商品 URL。推荐理由要接住刚才的用途，不要话锋一转“正好有账号或续费需求”。${/续费|充值/.test(scene.product.name) ? '这是已有可用账号的会员续费，不是新成品账号。' : /成品|独享/.test(scene.product.name) ? '这是另一个成品账号，不是给旧号续费。' : '只按交付名称描述，不推断其他服务。'}不另起“相关商品：”，也不要写购买/配置步骤。`
           : '没有核实具体交付，只回答问题，不写商品名或商品 URL；最终代码按实时目录决定是否加入入口。',
+        /中转|\bAPI\b/i.test(scene.product?.name || '')
+          ? '本次交付是 API 中转，不是原生账号，不等同或解锁官网会员、App 或 Antigravity。推荐只接住 API/编程工具接入用途；新闻中的新模型是否可用，以商品的当前可选模型列表为准，不得保证新型号已经上架。'
+          : '本次推荐是原生账号或会员续费，不是 API 中转。Antigravity 用途应接住含反重力账号的交付，不保证新闻中的新模型已经对该账号开放。',
         '账号交付与工具用途已经由代码匹配。本次不讨论套餐权限、模型清单、定价或调用额度，不需要复述官方定价页；不暗示付费才能使用免费功能。不承诺买会员就配置好工具或完成新闻中的整套演示。',
         '用日常短句，首句给一个起步建议，例如“可以先试软件交互”，不自行比较哪种能力更擅长或更强。把“最小闭环、全链路、设计决策、交互逻辑”换成具体动作。不重复新闻中的人名、模型全称、时间和整套功能清单；只取与问题有关的一个细节。商品句说清新账号或续费即可，不解释独立账号的定义，也不再追加“先把第一版跑起来”一类重复结尾。',
         '问句问当天可以借鉴的一个具体用途，不问某套餐是否够用、能否完整复现演示；新闻没有任务消耗数据，不能回答“够跑完整个实验”“没有额外门槛”。内部演示与个人订阅分开，推荐账号不代表购买就获得相同模型或完整原型。',
@@ -117,7 +122,7 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
 
   const candidates = (selectedItems || [])
     .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
-    .filter(({ item, url }) => url && markdown.includes(url) && isPrimarySource(item, url));
+    .filter(({ item, url }) => url && markdown.includes(url) && isDailyFaqPrimarySource(item, url));
   const chosen = context.catalogUrl && context.topics?.length ? candidates.map((candidate) => ({
     ...candidate,
     topic: context.topics.find((topic) => new RegExp(topic, 'i').test(candidate.item)),
