@@ -214,7 +214,9 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       url, key, title: text.match(/^(?:News Title|Project Name):\s*(.+)$/im)?.[1] || '', text,
     });
   }
-  const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*|([^#*\[\]\r\n]+[?？]))\r?$/gm)];
+  const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*)\r?$/gm)];
+  const plainQuestion = section[0].match(/^(##[^\r\n]*\r?\n[ \t\r\n]*)([^#*\[\]\r\n]+[?？])\r?$/m);
+  if (plainQuestion) questions.unshift({ index: plainQuestion[1].length, 3: plainQuestion[2] });
   const verified = new Map();
   let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
   for (let index = 0; index < questions.length; index++) {
@@ -225,10 +227,9 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     let grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
     let recoveredSource;
     if (!grounded.length && sources.every(url => /^https:\/\/(?:www\.)?aivora\.cn(?:\/|$)/i.test(url))) {
-      const subject = title.match(/\b(?:Gemini|ChatGPT|Claude|Codex|Cursor|MiniMax|Grok|Perplexity)(?:[ \t-]+[a-z]+)?[ \t-]*\d+(?:\.\d+)*(?:[ \t-]+[a-z]+)?\b/i)?.[0];
-      const subjectKey = subject?.replace(/[\s-]/g, '').toLowerCase();
-      const matching = [...publishedSources.values()].filter(source => subjectKey &&
-        source.title.replace(/[\s-]/g, '').toLowerCase().includes(subjectKey) &&
+      const subjectKey = text => text.match(/\b(?:Gemini|ChatGPT|Claude|Codex|Cursor|MiniMax|Grok|Perplexity)(?:[ \t-]+[a-z]+)?[ \t-]*\d+(?:\.\d+)*(?:[ \t-]+[a-z][a-z0-9.-]*)*\b/i)?.[0].replace(/[\s-]/g, '').toLowerCase();
+      const subject = subjectKey(title);
+      const matching = [...publishedSources.values()].filter(source => subject && subjectKey(source.title) === subject &&
         isDailyFaqPrimarySource(source.text, source.url) && TOPICS.some(topic =>
         context.topics?.includes(topic.name) && matchesDailyFaqTopic(title, topic.name, context.scene?.product) &&
         topic.pattern.test(source.title)));
@@ -246,7 +247,8 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       output += block;
       continue;
     }
-    const productUse = positiveUseText(`${title}\n${block.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')}`);
+    const evidenceUse = grounded.map(key => publishedSources.get(key)?.text).filter(Boolean).join('\n');
+    const productUse = positiveUseText(evidenceUse || `${title}\n${block.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')}`);
     const sceneProduct = context.scene?.topic === topic.name && context.scene.product;
     const candidate = (sceneProduct && eligibleProduct(topic, sceneProduct.name, productUse) &&
       !(context.recentFaqs || []).some(item => item.productUrls?.includes(sceneProduct.url)) &&

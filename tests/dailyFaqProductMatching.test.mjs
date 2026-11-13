@@ -122,6 +122,22 @@ test('a plain-text FAQ question still gets its verified delivery and becomes a r
   assert.equal((await ensureDailyFaqProductLinks(result.markdown, context, { fetchImpl: fetchProduct })).markdown, result.markdown);
 });
 
+test('a soft-wrapped rhetorical question inside the answer is not a second FAQ', async () => {
+  const page = article + `## **❓ 相关问题**\n\nGemini 4 Hydrogen 需要什么账号？\n\n**先看清原生入口。** [Google 官方说明](${sourceUrl})介绍 Antigravity。\n还需要另开一个 Gemini 4 Hydrogen 账号吗？\n已有账号可先检查实际可选模型。\n`;
+  const result = await ensureDailyFaqProductLinks(page, context, { fetchImpl: fetchProduct });
+  assert.equal(result.links.length, 1);
+  assert.equal((result.markdown.match(/^### /gm) || []).length, 2); // One news title and one FAQ title.
+  assert.doesNotMatch(result.markdown, /^### 还需要/m);
+});
+
+test('a versioned subject prefix does not cite a differently named model', async () => {
+  const item = `News Title: Gemini 4 Hydrogen Plus 发布\nUrl: ${sourceUrl}\nGemini 4 Hydrogen Plus 用于 Antigravity。`;
+  const page = `## 新闻\n\n[Gemini 4 Hydrogen Plus](${sourceUrl})\n\n` + faq;
+  const result = await ensureDailyFaqProductLinks(page, { ...context, sourceItems: [item], sourceText: item },
+    { fetchImpl: async () => { throw Error('Different model'); } });
+  assert.equal(result.links.length, 0);
+});
+
 test('enterprise-specific features cannot recommend a personal subscription on brand alone', async () => {
   const url = 'https://example.org/chatgpt-enterprise';
   const item = `News Title: ChatGPT Enterprise 企业采购\nUrl: ${url}\nChatGPT Enterprise 通过 AWS 采购。`;
