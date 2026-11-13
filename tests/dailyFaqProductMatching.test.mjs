@@ -113,6 +113,15 @@ test('recently published products are not reintroduced by source recovery', asyn
   assert.equal(result.links.length, 0);
 });
 
+test('a plain-text FAQ question still gets its verified delivery and becomes a readable heading', async () => {
+  const page = article + `## **❓ 相关问题**\n\nGemini 网页怎么开始用？\n\n**先选原生账号。** [本次更新](${sourceUrl})介绍使用入口。\n`;
+  const result = await ensureDailyFaqProductLinks(page, context, { fetchImpl: fetchProduct });
+  assert.equal(result.links.length, 1);
+  assert.match(result.markdown, /### Gemini 网页怎么开始用？/);
+  assert.ok(result.markdown.startsWith(article));
+  assert.equal((await ensureDailyFaqProductLinks(result.markdown, context, { fetchImpl: fetchProduct })).markdown, result.markdown);
+});
+
 test('enterprise-specific features cannot recommend a personal subscription on brand alone', async () => {
   const url = 'https://example.org/chatgpt-enterprise';
   const item = `News Title: ChatGPT Enterprise 企业采购\nUrl: ${url}\nChatGPT Enterprise 通过 AWS 采购。`;

@@ -214,13 +214,13 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       url, key, title: text.match(/^(?:News Title|Project Name):\s*(.+)$/im)?.[1] || '', text,
     });
   }
-  const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*)\r?$/gm)];
+  const questions = [...section[0].matchAll(/^(?:###\s+([^\r\n]+)|\*\*([^*\r\n]+[?？])\*\*|([^#*\[\]\r\n]+[?？]))\r?$/gm)];
   const verified = new Map();
   let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
   for (let index = 0; index < questions.length; index++) {
     const question = questions[index];
     const block = section[0].slice(question.index, questions[index + 1]?.index ?? section[0].length);
-    const title = (question[1] || question[2]).trim();
+    const title = (question[1] || question[2] || question[3]).trim();
     const sources = [...block.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)].map(m => m[1]);
     let grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
     let recoveredSource;
@@ -285,7 +285,7 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     const link = `[${label}](${product.url})`;
     let replaced = false;
     const trailing = block.match(/\s*$/)?.[0] || '';
-    let updated = block.replace(/^\*\*([^*\r\n]+[?？])\*\*(\r?\n|$)/, '### $1$2')
+    let updated = block.replace(/^[^\r\n]+/, `### ${title}`)
       .replace(/^[ \t]*(?:相关商品|商品推荐)[：:][^\r\n]*\]\(https?:\/\/(?:www\.)?aivora\.cn[^)\r\n]*\)[^\r\n]*(?:\r?\n|$)/gm, '')
       .replace(/\[([^\]]+)\]\(https?:\/\/(?:www\.)?aivora\.cn(?:[/?#][^\s)]*)?\)/gi, (_match, oldLabel) => {
         if (replaced) return oldLabel;
