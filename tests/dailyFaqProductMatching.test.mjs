@@ -1,7 +1,132 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureDailyFaqProductLinks, loadDailyFaqSceneContext, formatDailyShopPromptContext } from '../src/dailyShopFaq.js';
-import { buildStandaloneDailyFaqPromptInput } from '../src/dailyStandaloneFaq.js';
+import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection } from '../src/dailyStandaloneFaq.js';
+
+const codexPlanUrl = 'https://learn.chatgpt.com/docs/pricing';
+const diagramUrl = 'https://github.com/cathrynlavery/diagram-design';
+const diagramSource = `Project Name: diagram-design\nPublished: 2026-11-20\nUrl: ${diagramUrl}\nDescription: 为 Claude Code、Codex、GitHub Copilot、Cursor、Factory Droid、Qoder 和 Pi 设计的编辑风格图表。45 种图表类型，独立 HTML + SVG，无阴影，无 Mermaid 冗余内容。`;
+const diagramArticle = `## 开源 TOP 项目\n\n### cathrynlavery/diagram-design：给 AI 编程工具设计的 45 种图表\n\n[图表设计项目](${diagramUrl})兼容 Codex。\n\n`;
+const diagramFaq = `## **❓ 相关问题**\n\n### Codex 跑任务时顺手画图，用什么方式出流程图？\n\n**可以先让 Codex 生成编辑风格的图表。** [这个图表设计项目](${diagramUrl})提供了多种独立格式的图形，适配 Codex 等常用编程工具。常画流程图的开发者可以在当前使用的账号里直接试，暂不推荐额外购买入口。\n`;
+const planHtml = '<main><p>ChatGPT Work and Codex share pricing.</p><h2>Plus</h2><a>Get Plus</a><p>Codex on the web, in the CLI, in the IDE extension, and on iOS.</p><h2>Pro</h2><a>Get Pro</a><p>Everything in Plus and:</p><p>More included usage.</p></main>';
+const diagramProducts = [
+  { name: 'ChatGPT Plus 成品号', url: 'https://www.aivora.cn/products/plus-account' },
+  { name: 'Codex API 中转', url: 'https://www.aivora.cn/products/relay' },
+  { name: 'ChatGPT Pro 充值续费', url: 'https://www.aivora.cn/products/pro-renewal' },
+];
+const diagramContext = {
+  catalogUrl: 'https://www.aivora.cn/products', topics: ['Codex'], sourceItems: [diagramSource], sourceText: diagramSource,
+  products: diagramProducts, recentFaqs: [{ productUrls: [diagramProducts[0].url] }],
+};
+
+function diagramFetch(calls, { official = planHtml, canonical = diagramProducts[2].url } = {}) {
+  return async (url) => {
+    calls.push(url);
+    const body = url === codexPlanUrl ? official : url === diagramProducts[2].url
+      ? `<link rel="canonical" href="${canonical}"><h1>${diagramProducts[2].name}</h1>`
+      : '# Diagram Design\nWorks with Codex, Claude Code and Cursor.';
+    return { ok: Boolean(body), status: body ? 200 : 503, text: async () => body };
+  };
+}
+
+test('November 20 Codex project keeps the GitHub citation and verifies the plan separately', async () => {
+  const calls = [];
+  const enriched = await loadDailyFaqSceneContext(diagramArticle + diagramFaq, [diagramSource], diagramContext,
+    { fetchImpl: diagramFetch(calls) });
+  assert.equal(enriched.scene.sourceUrl, diagramUrl);
+  assert.equal(enriched.scene.official?.url, codexPlanUrl);
+  assert.deepEqual(enriched.scene.product, diagramProducts[2]);
+  assert.deepEqual(new Set(calls), new Set([codexPlanUrl, diagramProducts[2].url]));
+  const result = await ensureDailyFaqProductLinks(diagramArticle + diagramFaq, enriched, { fetchImpl: diagramFetch(calls) });
+  assert.deepEqual(result.links.map(link => link.url), [diagramProducts[2].url]);
+  assert.equal(result.requests, 0, 'reuse already verified official page and SKU');
+  assert.ok(result.markdown.startsWith(diagramArticle));
+  assert.match(result.markdown, /在当前使用的账号里直接试。/);
+  assert.doesNotMatch(result.markdown, /暂不推荐|plus-account|\/relay/);
+});
+
+test('final Codex FAQ delivery checks the same official plan when optional rewriting did not yield a scene', async () => {
+  const before = diagramArticle + diagramFaq;
+  const calls = [];
+  const result = await ensureDailyFaqProductLinks(before, diagramContext, { fetchImpl: diagramFetch(calls) });
+  assert.deepEqual(result.links.map(link => link.url), [diagramProducts[2].url]);
+  assert.deepEqual(new Set(calls), new Set([codexPlanUrl, diagramProducts[2].url]));
+  assert.ok(result.markdown.startsWith(diagramArticle));
+  assert.match(result.markdown, /平时常用 Codex.*续费/);
+  assert.doesNotMatch(result.markdown, /暂不推荐/);
+});
+
+test('a third-party README cannot establish Codex plan rights, or substitute for a failed product check', async () => {
+  const before = diagramArticle + diagramFaq;
+  const context = { ...diagramContext, scene: { topic: 'Codex', official: {
+    url: 'https://raw.githubusercontent.com/example/project/HEAD/README.md', text: 'ChatGPT Pro includes Codex.',
+  } } };
+  for (const failure of [{ official: '' }, { canonical: diagramProducts[0].url }]) {
+    const calls = [];
+    const result = await ensureDailyFaqProductLinks(before, context, { fetchImpl: diagramFetch(calls, failure) });
+    if ('official' in failure) assert.ok(calls.includes(codexPlanUrl));
+    assert.deepEqual(result.links, []);
+    assert.equal(result.markdown, before);
+  }
+});
+
+const diagramDraftOffer = diagramFaq.replace('，暂不推荐额外购买入口。', '。').trimEnd();
+const prematureOffer = '首次试用建议直接购买';
+
+test('negative or keyword-only official text never approves a Codex subscription', async () => {
+  const draft = `${diagramArticle}${diagramDraftOffer} ${prematureOffer}[店铺入口](${diagramContext.catalogUrl})。\n`;
+  for (const official of [
+    '<main>Codex is not available on ChatGPT Pro.</main>',
+    '<main>Not every ChatGPT Pro plan includes Codex.</main>',
+    '<main>ChatGPT Pro is a pricing option. Visit the Codex API docs.</main>',
+    '<main>ChatGPT Work and Codex share pricing. Get Pro More credits, see Plus.</main>',
+    '<main>Compare Plus. Codex on the web requires a separate add-on. Get Pro Everything in Plus and more credits.</main>',
+    '<main>Get Plus Codex on the web, in the CLI, in the IDE extension, and on iOS requires a separate add-on. Get Pro Everything in Plus and more credits.</main>',
+    planHtml.replace('</main>', '<p>Codex is not available on ChatGPT Pro.</p></main>'),
+  ]) {
+    const result = await ensureDailyFaqProductLinks(draft, diagramContext, { fetchImpl: diagramFetch([], { official }) });
+    assert.deepEqual(result.links, []);
+    assert.equal(result.markdown, diagramArticle + diagramDraftOffer + '\n');
+  }
+});
+
+test('standalone FAQ cannot turn an unverified product slot into a catalog recommendation', () => {
+  const scene = { topic: 'Codex', sourceUrl: diagramUrl, sourceText: diagramSource, product: null };
+  const draft = `${diagramDraftOffer} 首次试用，可以看[爱窝啦·AI账号店的 ChatGPT Pro 续费](AIVORA_PRODUCT_URL)。`;
+  const context = { ...diagramContext, scene };
+  assert.equal(normalizeStandaloneDailyFaqSection(draft, diagramUrl, diagramSource, 'Codex', context), '');
+  assert.equal(normalizeStandaloneDailyFaqSection(diagramDraftOffer, diagramUrl, diagramSource, 'Codex', context), diagramDraftOffer);
+});
+
+test('old Codex offer is not blindly relabeled to the verified renewal SKU', async () => {
+  const draft = `${diagramArticle}${diagramDraftOffer} ${prematureOffer}[店铺入口](${diagramContext.catalogUrl})。\n`;
+  const result = await ensureDailyFaqProductLinks(draft, diagramContext, { fetchImpl: diagramFetch([]) });
+  assert.deepEqual(result.links.map(link => link.url), [diagramProducts[2].url]);
+  assert.match(result.markdown, /已有账号快到期/);
+  assert.doesNotMatch(result.markdown, /首次试用建议直接购买/);
+  assert.ok(result.markdown.startsWith(diagramArticle + diagramDraftOffer));
+  const rerun = await ensureDailyFaqProductLinks(result.markdown, diagramContext, { fetchImpl: diagramFetch([]) });
+  assert.equal(rerun.markdown, result.markdown);
+  const failedSku = await ensureDailyFaqProductLinks(draft, diagramContext, {
+    fetchImpl: diagramFetch([], { canonical: diagramProducts[0].url }),
+  });
+  assert.deepEqual(failedSku.links, []);
+  assert.equal(failedSku.markdown, diagramArticle + diagramDraftOffer + '\n');
+});
+
+test('cannot swap an offer when removing its clause would also delete the project citation', async () => {
+  const endOffer = `，${prematureOffer}[店铺入口](${diagramContext.catalogUrl})。`;
+  for (const first of ['**可以先让 Codex 生成编辑风格的图表。**', '**先用 Codex 画一张简单流程图**，']) {
+    const mixed = `${diagramArticle}${diagramDraftOffer
+      .replace('**可以先让 Codex 生成编辑风格的图表。**', first)
+      .replace('。常画流程图的开发者可以在当前使用的账号里直接试。', endOffer)}\n`;
+    const result = await ensureDailyFaqProductLinks(mixed, diagramContext, { fetchImpl: diagramFetch([]) });
+    assert.deepEqual(result.links, []);
+    assert.match(result.markdown, /\[这个图表设计项目\]\(https:\/\/github\.com\/cathrynlavery\/diagram-design\)/);
+    assert.ok(result.markdown.includes(first.replace(/，$/, '')));
+    assert.doesNotMatch(result.markdown, /aivora\.cn|首次试用建议直接购买/);
+  }
+});
 
 const catalogUrl = 'https://www.aivora.cn/products';
 const sourceUrl = 'https://x.com/GoogleAI/status/2120940683233984862';

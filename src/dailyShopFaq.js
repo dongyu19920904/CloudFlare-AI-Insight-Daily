@@ -66,6 +66,20 @@ async function fetchText(fetchImpl, url, timeoutMs) {
   }
 }
 
+async function loadFaqReference(url, fetchImpl, timeoutMs) {
+  if (!url) return null;
+  try {
+    const html = await fetchText(fetchImpl, url, timeoutMs);
+    const body = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ||
+      html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || html;
+    const text = readableText(body.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, ''));
+    const start = Math.max(0, text.search(/Troubleshooting login issues|General Troubleshooting Steps|With Pro and Max plans|What is ChatGPT Plus\?|What is Claude Code\?|Choose your plan|Codex Pricing|ChatGPT Work and Codex are included|ChatGPT Plus includes Codex/i));
+    return { url, text: text.slice(start, start + 2500) };
+  } catch {
+    return null;
+  }
+}
+
 function matchesProductTopic(topic, name) {
   return topic.pattern.test(name) ||
     matchesDailyFaqTopic(name, topic.name, { name });
@@ -88,13 +102,45 @@ function eligibleProduct(topic, name, sourceText) {
     (!/教育|学生/.test(name) || /学生认证|教育(?:版|资格)|校园(?:认证|资格)/.test(sourceText));
 }
 
+function needsCodexPlanEvidence(topic, product) {
+  return topic.name === 'Codex' && product && !topic.pattern.test(product.name);
+}
+
 function hasSubscriptionEvidence(topic, product, official) {
-  if (topic.pattern.test(product.name)) return true;
-  const plan = product.name.match(/\b(Plus|Pro)\b/i)?.[1];
-  const text = String(official?.text || '');
-  return Boolean(plan) && /\bCodex\b/i.test(text) && /\bChatGPT\b/i.test(text) &&
-    new RegExp(`\\b${plan}\\b`, 'i').test(text) &&
-    !new RegExp(`\\b${plan}\\b[^.!?。！？]{0,60}\\b(?:does not include|doesn't include|without access to)\\s+Codex\\b`, 'i').test(text);
+  if (!needsCodexPlanEvidence(topic, product)) return true;
+  if (official?.url !== FAQ_OFFICIAL_PAGES.Codex) return false;
+  const plan = product.name.match(/\b(Plus|Pro)\b/i)?.[1]?.toLowerCase();
+  const text = String(official?.text || '').replace(/\s+/g, ' ').trim();
+  const unavailable = tier => new RegExp(
+    `\\b${tier}(?: plan)? (?:does not include|doesn't include|excludes) Codex\\b|` +
+    `\\bnot (?:all|every) (?:ChatGPT )?${tier}(?: plans?)? includes? Codex\\b|` +
+    `\\bCodex (?:is )?(?:not (?:available|included)|unavailable) (?:in|on|for|with|to) (?:the |your )?(?:ChatGPT )?${tier}\\b`, 'i'
+  ).test(text);
+  if (!plan || unavailable(plan)) return false;
+  const explicit = new RegExp(
+    `(?:^|[.!?] )(?:ChatGPT ${plan}(?: plan)? includes Codex|` +
+    `(?:ChatGPT Work and )?Codex (?:is|are) included in (?:your |the )?ChatGPT ${plan}(?: plan)?)(?=[.!?](?: |$)|$)`, 'i'
+  ).test(text);
+  // The official Pro card inherits the Codex access listed on the Plus card.
+  const plusCard = /\bGet Plus Codex on the web, in the CLI, in the IDE extension, and on iOS(?:[.!?](?=\s|$)| Cloud-based integrations\b)/i.test(text) &&
+    !unavailable('plus');
+  return explicit || (plusCard && (plan === 'plus' || /\bGet Pro Everything in Plus and:/i.test(text)));
+}
+
+function withoutCodexDraftOffer(block) {
+  let mixed = false;
+  const markdown = block.replace(/(?:\[[^\]\r\n]+\]\(https?:\/\/[^\s)]+\)|[^。！？\r\n])+[。！？]?(?:\*\*)?/gu, sentence => {
+    const unlinked = sentence.replace(/\[([^\]]+)\]\(https?:\/\/(?:www\.)?aivora\.cn(?:[/?#][^\s)]*)?\)/gi, '$1');
+    if (unlinked === sentence) return sentence;
+    const sources = extractDailyMarkdownLinks(unlinked);
+    if (!sources.length) return '';
+    // Preserve citations, not unverified claims that are mixed into the draft offer.
+    mixed = true;
+    const direct = sentence.match(/^[ \t]*(\*\*[^*\r\n]+\*\*)/)?.[1];
+    const answer = direct && !/\]\(|购买|买号|续费|充值|开通|订阅/.test(direct) ? `${direct}。` : '';
+    return `${answer} 可查${sources.map(({ title, url }) => `[${title}](${url})`).join('、')}。`;
+  });
+  return { markdown, mixed };
 }
 
 function selectProduct(topic, sourceText, products = [], recentFaqs = []) {
@@ -218,6 +264,7 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
   const plainQuestion = section[0].match(/^(##[^\r\n]*\r?\n[ \t\r\n]*)([^#*\[\]\r\n]+[?？])\r?$/m);
   if (plainQuestion) questions.unshift({ index: plainQuestion[1].length, 3: plainQuestion[2] });
   const verified = new Map();
+  let codexPlanEvidence = context.scene?.official?.url === FAQ_OFFICIAL_PAGES.Codex ? context.scene.official : undefined;
   let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
   for (let index = 0; index < questions.length; index++) {
     const question = questions[index];
@@ -254,11 +301,6 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
       !(context.recentFaqs || []).some(item => item.productUrls?.includes(sceneProduct.url)) &&
       context.products.find(({ url }) => url === sceneProduct.url)) ||
       selectProduct(topic, productUse, context.products, context.recentFaqs);
-    if (candidate && !hasSubscriptionEvidence(topic, candidate, context.scene?.official)) {
-      result.skipped.push({ topic: topic.name, reason: 'missing-subscription-evidence' });
-      output += block;
-      continue;
-    }
     let product = candidate && verified.get(candidate.url);
     if (candidate && !product) {
       if (context.scene?.topic === topic.name && context.scene.product?.url === candidate.url) {
@@ -275,11 +317,28 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     }
     if (!product) {
       result.skipped.push({ topic: topic.name, reason: candidate ? 'product-check-failed' : 'no-matching-product' });
-      if (!candidate) {
-        output += block;
+      if (!candidate || needsCodexPlanEvidence(topic, candidate)) {
+        output += topic.name === 'Codex' ? withoutCodexDraftOffer(block).markdown : block;
         continue;
       }
       product = { name: candidate.name, url: CATALOG_URL };
+    }
+    const needsPlan = needsCodexPlanEvidence(topic, product);
+    if (needsPlan && codexPlanEvidence === undefined) {
+      result.requests++;
+      codexPlanEvidence = await loadFaqReference(FAQ_OFFICIAL_PAGES.Codex, fetchImpl, timeoutMs);
+    }
+    if (needsPlan && !hasSubscriptionEvidence(topic, product, codexPlanEvidence)) {
+      result.skipped.push({ topic: topic.name, reason: 'missing-subscription-evidence' });
+      output += withoutCodexDraftOffer(block).markdown;
+      continue;
+    }
+    const renewal = /续费|充值/.test(product.name);
+    const codexDraft = needsPlan && renewal ? withoutCodexDraftOffer(block) : null;
+    if (codexDraft?.mixed) {
+      result.skipped.push({ topic: topic.name, reason: 'offer-mixed-with-source' });
+      output += codexDraft.markdown;
+      continue;
     }
     const antigravity = topic.name === 'Gemini' && /antigravity|反重力/i.test(productUse) && /antigravity|反重力/i.test(product.name);
     const shortName = antigravity && /成品|独享/.test(product.name) ? product.name.replace(/【[^】]*】/g, ' ') : product.name;
@@ -287,8 +346,9 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     const link = `[${label}](${product.url})`;
     let replaced = false;
     const trailing = block.match(/\s*$/)?.[0] || '';
-    let updated = block.replace(/^[^\r\n]+/, `### ${title}`)
+    let updated = (codexDraft?.markdown ?? block).replace(/^[^\r\n]+/, `### ${title}`)
       .replace(/^[ \t]*(?:相关商品|商品推荐)[：:][^\r\n]*\]\(https?:\/\/(?:www\.)?aivora\.cn[^)\r\n]*\)[^\r\n]*(?:\r?\n|$)/gm, '')
+      .replace(/([，,。！？.!?])\s*暂不推荐(?:额外)?购买入口[。.!！]?(?=\s*$)/u, (_match, mark) => /[，,]/.test(mark) ? '。' : mark)
       .replace(/\[([^\]]+)\]\(https?:\/\/(?:www\.)?aivora\.cn(?:[/?#][^\s)]*)?\)/gi, (_match, oldLabel) => {
         if (replaced) return oldLabel;
         replaced = true;
@@ -303,7 +363,6 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
         : `${answer.trimEnd()} 可核对[本次更新的原始说明](${recoveredSource.url})。${trailing}`);
     }
     if (!replaced) {
-      const renewal = /续费|充值/.test(product.name);
       const login = /登录|登入|Apple\s*ID|验证|打不开/i.test(title);
       const relay = /中转|\bAPI\b/i.test(product.name);
       const need = renewal ? '已有账号可以正常使用、只是会员快到期' : `原本就想另开一个 ${topic.name} 账号`;
@@ -313,6 +372,8 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
         ? `想用反重力写代码，可看 ${link}，具体模型以账号内显示为准。`
         : login
         ? `如果你${need}，可以再看 ${link} 的交付说明；购买不能代替登录排查。`
+        : needsPlan && renewal
+        ? `平时常用 Codex、已有账号快到期，可以看${link}的续费说明。`
         : `如果你${need}，可以对照 ${link} 的交付说明，看看是否适合自己的用法。`;
       updated = `${updated.trimEnd()} ${suggestion}${trailing}`;
     }
@@ -360,7 +421,6 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
   const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);
   const { product, ...scene } = chosen;
   let verifiedProduct = null;
-  let official = null;
   if (product) {
     try {
       const html = await fetchText(fetchImpl, product.url, timeoutMs);
@@ -370,23 +430,16 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
   }
   const sourceUrl = new URL(chosen.sourceUrl);
   const repository = sourceUrl.pathname.split('/').filter(Boolean);
-  const officialUrl = sourceUrl.hostname === 'github.com' && repository.length === 2
+  // A repository can document its own integration, not the ChatGPT plan that runs Codex.
+  const officialUrl = needsCodexPlanEvidence(topicRule, verifiedProduct) ? FAQ_OFFICIAL_PAGES.Codex
+    : sourceUrl.hostname === 'github.com' && repository.length === 2
     ? `https://raw.githubusercontent.com/${repository.map(encodeURIComponent).join('/')}/HEAD/README.md`
     : chosen.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(chosen.sourceText)
     ? 'https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'
     : chosen.topic === 'Gemini' && /antigravity|反重力/i.test(chosen.sourceText)
     ? 'https://antigravity.google/pricing'
     : FAQ_OFFICIAL_PAGES[chosen.topic];
-  if (officialUrl) {
-    try {
-      const html = await fetchText(fetchImpl, officialUrl, timeoutMs);
-      const body = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ||
-        html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || html;
-      const text = readableText(body.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, ''));
-      const start = text.search(/Troubleshooting login issues|General Troubleshooting Steps|With Pro and Max plans|What is ChatGPT Plus\?|What is Claude Code\?|Choose your plan|Codex Pricing|ChatGPT Work and Codex are included|ChatGPT Plus includes Codex/i);
-      official = { url: officialUrl, text: text.slice(Math.max(0, start), Math.max(0, start) + 2500) };
-    } catch { /* Without official evidence the FAQ cannot assert plan entitlements. */ }
-  }
+  const official = await loadFaqReference(officialUrl, fetchImpl, timeoutMs);
   if (verifiedProduct && !hasSubscriptionEvidence(topicRule, verifiedProduct, official)) verifiedProduct = null;
   return { ...context, scene: { ...scene, product: verifiedProduct, official } };
 }

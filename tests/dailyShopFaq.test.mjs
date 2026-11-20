@@ -347,7 +347,7 @@ test('current pricing cards supply the actual Codex plan context without requiri
     {catalogUrl,topics:['Codex'],products:[{name:'ChatGPT Plus 成品号',url:plus}]},
     {fetchImpl:async url => ({ok:true,text:async () => url === plus
       ? `<link rel="canonical" href="${plus}"><h1>ChatGPT Plus 成品号</h1>`
-      : '<main><h1>Pricing</h1><p>ChatGPT Work and Codex share usage.</p><h2>Plus</h2><p>Codex on the web, in the CLI, in the IDE extension.</p></main>'})});
+      : '<main><h1>Pricing</h1><p>ChatGPT Work and Codex share usage.</p><h2>Plus</h2><a>Get Plus</a><p>Codex on the web, in the CLI, in the IDE extension, and on iOS</p><p>Cloud-based integrations</p></main>'})});
   assert.equal(result.scene.product?.url, plus);
 });
 

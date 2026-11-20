@@ -180,7 +180,7 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
     const allowed = new Set([sourceUrl, scene.official?.url].filter(Boolean));
     if (links.some((url) => !allowed.has(url)) || links.filter((url) => url === sourceUrl).length !== 1) return '';
     const productSlots = (text.match(/\]\(AIVORA_PRODUCT_URL\)/g) || []).length;
-    if (links.length > allowed.size || /aivora\.cn/i.test(text) || productSlots > 1) return '';
+    if (links.length > allowed.size || /aivora\.cn/i.test(text) || productSlots > 1 || (productSlots && !scene.product?.url)) return '';
     if ((text.match(/爱窝啦·AI账号店/g) || []).length !== productSlots || !matchesDailyFaqTopic(question, topic, scene.product)) return '';
     if (visible.length < 80 || visible.length > 200 || /\n\s*\n/.test(answer) || !/^\*\*[^*\n]+\*\*/.test(answer)) return '';
     if (/准备比较当前公开|无法生成|请.*确认|系统指令|职权范围|无限(?:使用|额度)|保证|绝不|不限地区|国内(?:都|均|直接).*可用|售价|\d+\s*(?:元|美元|刀|次|额度)|封号率/.test(visible)) return '';
@@ -193,7 +193,7 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
     for (const number of visible.match(/\d+(?:\.\d+)?/g) || []) {
       if (!`${sourceText} ${scene.official?.text || ''} ${scene.product?.name || ''}`.includes(number)) return '';
     }
-    return productSlots ? text.replace('](AIVORA_PRODUCT_URL)', `](${scene.product?.url || sceneContext.catalogUrl})`) : text;
+    return productSlots ? text.replace('](AIVORA_PRODUCT_URL)', `](${scene.product.url})`) : text;
   }
   if (links.length !== 1 || links[0] !== sourceUrl || /aivora\.cn/i.test(text)) return '';
   const question = text.match(/^###\s+([^\r\n]+)/m)?.[1] || '';

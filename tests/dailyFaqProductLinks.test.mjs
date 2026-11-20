@@ -186,7 +186,7 @@ test('a verified Codex scene retains its ChatGPT Plus delivery throughout final 
   const before = `## 新闻\n\n[Codex 原型](${codex})\n\n`;
   const faqSection = `## **❓ 相关问题**\n\n### Codex 能先做什么？\n\n[原型实验](${codex})介绍了软件设计。想动手试试，可看[爱窝啦·AI账号店的 ChatGPT Plus 成品号](${plus.url})。`;
   const shop = {catalogUrl,topics:['Codex'],sourceText:`News Title: Codex 原型\nUrl: ${codex}`,
-    products:[plus],scene:{topic:'Codex',product:plus,official:{text:'ChatGPT Plus includes Codex.'}}};
+    products:[plus],scene:{topic:'Codex',product:plus,official:{url:'https://learn.chatgpt.com/docs/pricing',text:'ChatGPT Plus includes Codex.'}}};
   const sanitized = faq.finalizeDailyShopFaq(before + faqSection + footer, shop);
   const result = await faq.ensureDailyFaqProductLinks(sanitized, shop, {fetchImpl:async () => {throw Error('already verified');}});
   assert.equal(result.requests, 0);
