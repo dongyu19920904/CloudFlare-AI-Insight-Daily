@@ -25,6 +25,7 @@ import {
 } from "../opportunityScoring.js";
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext, loadDailyFaqSceneContext, ensureDailyFaqProductLinks } from '../dailyShopFaq.js';
+import { ensureDailyNewsEmoji } from '../dailyNewsEmoji.js';
 import {
     buildStandaloneDailyFaqPromptInput,
     insertStandaloneDailyFaq,
@@ -1673,12 +1674,13 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     }
 
     if (validation.ok) {
-        let faqProductContext = dailyShopContext;
+        let faqProductContext = { ...dailyShopContext, faqHistoryUnavailable: Boolean(dailyShopContext.catalogUrl) };
         try {
             const faqDraft = await withDailyFaqDeadline(async () => {
-                const recentFaqs = await loadRecentDailyFaqs(env.DATA_KV, dateStr);
-                faqProductContext = { ...dailyShopContext, recentFaqs };
-                const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, { ...dailyShopContext, recentFaqs });
+                const recentFaqs = dailyShopContext.catalogUrl ? await loadRecentDailyFaqs(env.DATA_KV, dateStr, { env }) : [];
+                faqProductContext = { ...dailyShopContext, recentFaqs: recentFaqs || [], faqHistoryUnavailable: recentFaqs === null };
+                debugInfo.dailyFaqHistoryVerified = recentFaqs !== null;
+                const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, faqProductContext);
                 const faqInput = buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
                 debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
                 debugInfo.dailyFaqSceneTopic = sceneContext.scene?.topic || '';
@@ -1746,6 +1748,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
 
     dailySummaryMarkdownContent = normalizeMarkdownImageSyntax(dailySummaryMarkdownContent);
     dailySummaryMarkdownContent = normalizeDailyOutputPresentation(dailySummaryMarkdownContent);
+    dailySummaryMarkdownContent = ensureDailyNewsEmoji(dailySummaryMarkdownContent);
     const dailyFunStats = getDailyFunSectionStats(dailySummaryMarkdownContent);
     debugInfo.dailyFunSectionPresent = dailyFunStats.present;
     debugInfo.dailyFunSectionSourceLinks = dailyFunStats.sourceLinkCount;

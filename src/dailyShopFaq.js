@@ -7,6 +7,7 @@ import { dailyMediaSourceKey } from './dailySourceMedia.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
 const CATALOG_URL = 'https://www.aivora.cn/products';
+const DICTATION_HELP = 'https://help.openai.com/en/articles/12168547-voice-dictation-faq';
 const TOPICS = [
   { name: 'ChatGPT', pattern: /chatgpt/i, slug: /chatgpt/i },
   { name: 'Claude', pattern: /claude|anthropic/i, slug: /claude/i },
@@ -127,7 +128,7 @@ function hasSubscriptionEvidence(topic, product, official) {
   return explicit || (plusCard && (plan === 'plus' || /\bGet Pro Everything in Plus and:/i.test(text)));
 }
 
-function withoutCodexDraftOffer(block) {
+function withoutFaqDraftOffer(block) {
   let mixed = false;
   const markdown = block.replace(/(?:\[[^\]\r\n]+\]\(https?:\/\/[^\s)]+\)|[^。！？\r\n])+[。！？]?(?:\*\*)?/gu, sentence => {
     const unlinked = sentence.replace(/\[([^\]]+)\]\(https?:\/\/(?:www\.)?aivora\.cn(?:[/?#][^\s)]*)?\)/gi, '$1');
@@ -141,6 +142,28 @@ function withoutCodexDraftOffer(block) {
     return `${answer} 可查${sources.map(({ title, url }) => `[${title}](${url})`).join('、')}。`;
   });
   return { markdown, mixed };
+}
+
+function isChatGptDictation(title) {
+  return String(title || '').split(/[；;]/u).some(part =>
+    /\bChatGPT\b/i.test(part) && /听写|语音输入|\bvoice dictation\b/i.test(part) &&
+    !/\bAPI\b|录音文件|语音(?:对话|通话)|voice mode/i.test(part));
+}
+
+function isNativeRenewal(name) {
+  return /\bChatGPT\s+(?:Plus|Go)\b.*(?:续费|充值)/i.test(name) && !/中转|镜像|接码|额度|团队|\bAPI\b/i.test(name);
+}
+
+function hasAvailableShopOffer(html, url) {
+  for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const data = JSON.parse(match[1]);
+      if ([data].flat().concat(data?.['@graph'] || []).some(item =>
+        item?.['@type'] === 'Product' && item.url === url && [item.offers].flat().some(offer =>
+          offer?.url === url && offer.availability === 'https://schema.org/InStock'))) return true;
+    } catch { /* Only a positive current inventory signal can support this recommendation. */ }
+  }
+  return false;
 }
 
 function selectProduct(topic, sourceText, products = [], recentFaqs = []) {
@@ -186,6 +209,7 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
     return {
       ...(topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
       products,
+      productUrls: urls.filter(url => url.startsWith(`${CATALOG_URL}/`)),
     };
   } catch (error) {
     return { ...empty, error: error?.message || String(error) };
@@ -206,8 +230,51 @@ export function formatDailyShopPromptContext(context) {
     '目录只证明店内公开展示这些商品类别，不证明库存或新闻中的新功能属于任一套餐，也不证明官方价格、额度、地区或政策。',
     '官网/App 账号、已有账号续费与 API 中转是不同交付。Antigravity 用途优先看含反重力的账号；明确 API/接口接入才推荐中转，不把中转写成官网会员，不承诺新闻中的新型号已在商品中开放。',
     '正文有同一工具的新闻且原始来源能回答问题时，写 1 条相关问题：先用短句解决当天的具体困扰，再按使用需求推荐一个上面列出的相关交付。每条相关问题自然带一次爱窝啦·AI账号店的相关商品入口，使用已核实的目录 URL。不要只写功能说明而漏掉推荐，不要求问句包含购买或会员。',
+    '相关问题必须引用正文已使用、能证明同一条功能或政策的来源 URL，不用同品牌其他新闻代替。没有官方说明，就不说升级会员能更早收到新功能。',
     'ChatGPT 场景优先；普通个人使用优先考虑 Plus，不把最贵套餐当默认选择。免费也有的功能必须照实说，不暗示购买才能解锁，不把新功能推送等同于地区限制取消。没有相关交付或可靠来源时不硬塞商品；不要添加固定广告尾巴。',
   ].join('\n');
+}
+
+function formatDictationFaq(block, source, official = false, offer = '') {
+  const eol = block.includes('\r\n') ? '\r\n' : '\n';
+  const trailing = block.match(/\s*$/)?.[0] || '';
+  const article = source ? ` 具体变化看[当天的听写报道](${source.url})。` : '';
+  const details = official ? ` 按[OpenAI 的听写说明](${DICTATION_HELP})，转出的文字可以改完再发。`
+    : ' 能不能用，以账号实际显示和官方说明为准。';
+  return `### ChatGPT 实时听写，要买 Plus 才能用吗？${eol}${eol}**先看输入框里的麦克风。**${article}${details} 开会员不等于能提前收到推送。${offer}${trailing}`;
+}
+
+async function completeDictationFaq(source, block, context, result, fetchImpl, timeoutMs) {
+  const used = new Set((context.recentFaqs || []).flatMap(item => item.productUrls || []));
+  for (const { url } of result.links) used.add(url);
+  const listed = selectProduct(TOPICS.find(topic => topic.name === 'ChatGPT'), '续费',
+    (context.products || []).filter(({ name }) => isNativeRenewal(name)), context.recentFaqs);
+  const url = (listed && !used.has(listed.url) ? listed.url : null) ||
+    context.productUrls?.find(value => !used.has(value) &&
+      /^https:\/\/www\.aivora\.cn\/products\/chatgpt-plus-[a-z0-9-]*renewal[a-z0-9-]*$/i.test(value));
+  result.requests += url ? 2 : 1;
+  const [official, html] = await Promise.all([
+    loadFaqReference(DICTATION_HELP, fetchImpl, timeoutMs),
+    url ? fetchText(fetchImpl, url, timeoutMs).catch(() => '') : '',
+  ]);
+  const officialText = official?.text || '';
+  if (!/microphone icon/i.test(officialText) || !/transcri\w+/i.test(officialText) || !/edit before sending/i.test(officialText)) {
+    result.skipped.push({ topic: 'ChatGPT', reason: 'missing-dictation-evidence' });
+    return formatDictationFaq(block, source);
+  }
+  const name = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
+  let offer = '';
+  if (url && extractCanonical(html) === url && isNativeRenewal(name) && hasAvailableShopOffer(html, url)) {
+    const halfPrice = /半价/.test(name);
+    if (!halfPrice || /半价资格/.test(readableText(html))) {
+      const label = halfPrice ? 'ChatGPT Plus 半价月卡' : name.replace(/[\[\]【】|｜]/g, ' ').replace(/\s+/g, ' ').trim();
+      const requirement = halfPrice ? '先查半价资格，符合再看' : '可以先看';
+      offer = ` 本来就准备给自己的账号续费，${requirement}[爱窝啦·AI账号店的 ${label}](${url})。`;
+      result.links.push({ topic: 'ChatGPT', url, name });
+    }
+  }
+  if (!offer) result.skipped.push({ topic: 'ChatGPT', reason: url ? 'product-check-failed' : 'no-matching-product' });
+  return formatDictationFaq(block, source, true, offer);
 }
 
 export function finalizeDailyShopFaq(markdown, context = {}) {
@@ -245,9 +312,13 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
 export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetchImpl = fetch, timeoutMs = 1500 } = {}) {
   const content = String(markdown || '');
   const result = { markdown: content, links: [], requests: 0, skipped: [] };
-  if (context.catalogUrl !== CATALOG_URL || !context.products?.length) return result;
   const section = content.match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
   if (!section) return result;
+  const canRecommend = !context.faqHistoryUnavailable && context.catalogUrl === CATALOG_URL &&
+    Boolean(context.products?.length || context.productUrls?.length);
+  if (context.faqHistoryUnavailable) {
+    result.skipped.push({ reason: 'published-faq-history-unavailable' });
+  }
   const article = content.slice(0, section.index) + content.slice(section.index + section[0].length);
   const inputUrls = new Set(sourceUrlKeys(context.sourceText));
   const articleUrls = new Set(extractDailyMarkdownLinks(article).map(link => dailyMediaSourceKey(link.url)));
@@ -266,12 +337,33 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
   const verified = new Map();
   let codexPlanEvidence = context.scene?.official?.url === FAQ_OFFICIAL_PAGES.Codex ? context.scene.official : undefined;
   let output = section[0].slice(0, questions[0]?.index ?? section[0].length);
+  if (context.faqHistoryUnavailable) output = withoutFaqDraftOffer(output).markdown;
+  let dictationChecked = false;
   for (let index = 0; index < questions.length; index++) {
     const question = questions[index];
     const block = section[0].slice(question.index, questions[index + 1]?.index ?? section[0].length);
     const title = (question[1] || question[2] || question[3]).trim();
     const sources = [...block.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)].map(m => m[1]);
     let grounded = sources.map(dailyMediaSourceKey).filter(url => inputUrls.has(url) && articleUrls.has(url));
+    if (isChatGptDictation(title)) {
+      const knownLinksOnly = sources.every(url => url === DICTATION_HELP || /^https:\/\/(?:www\.)?aivora\.cn(?:\/|$)/i.test(url));
+      const matches = [...publishedSources.values()].filter(source => isChatGptDictation(source.title) &&
+        (grounded.length ? grounded.includes(source.key) : knownLinksOnly));
+      const source = matches.length === 1 ? matches[0] : null;
+      if (source && canRecommend && !dictationChecked && result.links.length < 2) {
+        output += await completeDictationFaq(source, block, context, result, fetchImpl, timeoutMs);
+        dictationChecked = true;
+      } else if (source || /优先|抢先|更早|提前|第一时间/u.test(block)) {
+        output += formatDictationFaq(block, source);
+      } else {
+        output += withoutFaqDraftOffer(block).markdown;
+      }
+      continue;
+    }
+    if (!canRecommend) {
+      output += context.faqHistoryUnavailable ? withoutFaqDraftOffer(block).markdown : block;
+      continue;
+    }
     let recoveredSource;
     if (!grounded.length && sources.every(url => /^https:\/\/(?:www\.)?aivora\.cn(?:\/|$)/i.test(url))) {
       const subjectKey = text => text.match(/\b(?:Gemini|ChatGPT|Claude|Codex|Cursor|MiniMax|Grok|Perplexity)(?:[ \t-]+[a-z]+)?[ \t-]*\d+(?:\.\d+)*(?:[ \t-]+[a-z][a-z0-9.-]*)*\b/i)?.[0].replace(/[\s-]/g, '').toLowerCase();
@@ -318,7 +410,7 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     if (!product) {
       result.skipped.push({ topic: topic.name, reason: candidate ? 'product-check-failed' : 'no-matching-product' });
       if (!candidate || needsCodexPlanEvidence(topic, candidate)) {
-        output += topic.name === 'Codex' ? withoutCodexDraftOffer(block).markdown : block;
+        output += topic.name === 'Codex' ? withoutFaqDraftOffer(block).markdown : block;
         continue;
       }
       product = { name: candidate.name, url: CATALOG_URL };
@@ -330,11 +422,11 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
     }
     if (needsPlan && !hasSubscriptionEvidence(topic, product, codexPlanEvidence)) {
       result.skipped.push({ topic: topic.name, reason: 'missing-subscription-evidence' });
-      output += withoutCodexDraftOffer(block).markdown;
+      output += withoutFaqDraftOffer(block).markdown;
       continue;
     }
     const renewal = /续费|充值/.test(product.name);
-    const codexDraft = needsPlan && renewal ? withoutCodexDraftOffer(block) : null;
+    const codexDraft = needsPlan && renewal ? withoutFaqDraftOffer(block) : null;
     if (codexDraft?.mixed) {
       result.skipped.push({ topic: topic.name, reason: 'offer-mixed-with-source' });
       output += codexDraft.markdown;
@@ -413,9 +505,9 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     item.sourceUrls?.some(url => dailyMediaSourceKey(url) === dailyMediaSourceKey(candidate.sourceUrl)) ||
     (item.topic?.toLowerCase() === candidate.topic.toLowerCase() && item.theme &&
       item.theme === getDailyFaqTheme(candidate.sourceText))))
-    .map(candidate => ({ ...candidate, product: selectProduct(
-      TOPICS.find(topic => topic.name === candidate.topic), candidate.sourceText, context.products, recent,
-    ) }))
+    .map(candidate => ({ ...candidate, product: context.faqHistoryUnavailable ||
+      (candidate.topic === 'ChatGPT' && isChatGptDictation(candidate.sourceText.split('\n')[0]))
+      ? null : selectProduct(TOPICS.find(topic => topic.name === candidate.topic), candidate.sourceText, context.products, recent) }))
     .sort((a, b) => Number(Boolean(b.product)) - Number(Boolean(a.product)) || b.score - a.score)[0];
   if (!chosen) return context;
   const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);

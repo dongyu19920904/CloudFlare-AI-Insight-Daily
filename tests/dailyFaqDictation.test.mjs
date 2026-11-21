@@ -1,0 +1,106 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { ensureDailyFaqProductLinks, loadDailyShopContext } from '../src/dailyShopFaq.js';
+import { loadRecentDailyFaqs } from '../src/dailyStandaloneFaq.js';
+
+const store = 'https://www.aivora.cn/products';
+const standard = `${store}/standard-plus`;
+const halfPrice = `${store}/chatgpt-plus-half-price-renewal-monthly`;
+const sourceUrl = 'https://www.aibase.com/zh/news/32445';
+const officialUrl = 'https://help.openai.com/en/articles/12168547-voice-dictation-faq';
+const source = `News Title: AI日报：ChatGPT上线实时听写功能；谷歌主页新增AI搜索侧边栏\nUrl: ${sourceUrl}\nContent Summary: ChatGPT 语音输入升级，支持转写后即时修改。另一条报道提到了 Gemini API。`;
+const issue = `## 今日焦点 TOP 10\n\n### 4. ChatGPT 语音输入取消时长限制\n\n[实时听写更新](${sourceUrl})介绍听写功能。\n\n`;
+const oldFaq = '## **❓ 相关问题**\n\n**ChatGPT 语音输入升级后，怎么才能第一时间用上？**\n\n实时听写功能正在全平台陆续推送，普通账号也在推送范围内。Plus 账号通常享有更优先的功能推送节奏。\n';
+const recentFaqs = [{ date: '2026-11-15', productUrls: [standard] }];
+
+function sampleFetch(calls, { official = true, available = true, correctCanonical = true, otherInStock = false } = {}) {
+  return async (url) => {
+    calls.push(url);
+    if (url === 'https://www.aivora.cn/sitemap.xml') return new Response(
+      `<urlset>${[store, standard, halfPrice].map(x => `<url><loc>${x}</loc></url>`).join('')}</urlset>`,
+    );
+    if (url === store) return new Response(`<link rel="canonical" href="${store}"><a href="${standard}">ChatGPT Plus 充值续费</a>`);
+    if (url === officialUrl && official) return new Response('<main>Voice Dictation - FAQ. Press the microphone icon to record. The transcription is returned as text, which you can edit before sending.</main>');
+    if (url === halfPrice) return new Response(`<link rel="canonical" href="${correctCanonical ? url : standard}"><h1>ChatGPT Plus｜充值续费【半价月卡】</h1><p>先查询半价资格。</p><script type="application/ld+json">{"@type":"Product","url":"${url}","offers":{"url":"${url}","availability":"https://schema.org/${available ? 'InStock' : 'OutOfStock'}"}}</script>${
+      otherInStock ? `<script type="application/ld+json">{"@type":"Product","url":"${standard}","offers":{"url":"${standard}","availability":"https://schema.org/InStock"}}</script>` : ''}`);
+    return new Response(null, { status: 403 });
+  };
+}
+
+test('Nov 21 unlinked dictation question recovers the actual story and a non-repeated live SKU', async () => {
+  const calls = [];
+  const fetchImpl = sampleFetch(calls);
+  const context = { ...await loadDailyShopContext([source], { fetchImpl }), recentFaqs };
+  assert.deepEqual(context.products.map(x => x.url), [standard]);
+  const result = await ensureDailyFaqProductLinks(issue + oldFaq, context, { fetchImpl });
+  assert.ok(result.markdown.startsWith(issue));
+  assert.match(result.markdown.slice(issue.length), /官网|OpenAI/);
+  assert.match(result.markdown.slice(issue.length), /先查.*半价资格/);
+  assert.doesNotMatch(result.markdown, /更优先/);
+  assert.deepEqual(result.links.map(x => x.url), [halfPrice]);
+  assert.equal(result.requests, 2);
+  assert.ok(calls.includes(officialUrl));
+  assert.equal(calls.includes(standard), false);
+  assert.equal((await ensureDailyFaqProductLinks(result.markdown, context, { fetchImpl })).markdown, result.markdown);
+});
+
+test('dictation fallback never forces a recommendation without a unique grounded event, official proof or unused live product', async () => {
+  for (const options of [{ official: false }, { available: false }, { correctCanonical: false }, { available: false, otherInStock: true }]) {
+    const fetchImpl = sampleFetch([], options);
+    const context = { ...await loadDailyShopContext([source], { fetchImpl }), recentFaqs };
+    const result = await ensureDailyFaqProductLinks(issue + oldFaq, context, { fetchImpl });
+    assert.equal(result.links.length, 0);
+    assert.ok(result.markdown.startsWith(issue));
+    assert.doesNotMatch(result.markdown, /更优先|chatgpt-plus-half-price-renewal-monthly/);
+  }
+  const calls = [];
+  const fetchImpl = sampleFetch(calls);
+  const context = { ...await loadDailyShopContext([source], { fetchImpl }),
+    recentFaqs: [...recentFaqs, { productUrls: [halfPrice] }] };
+  const result = await ensureDailyFaqProductLinks(issue + oldFaq, context, { fetchImpl });
+  assert.equal(result.links.length, 0);
+  assert.ok(!calls.includes(halfPrice));
+  assert.doesNotMatch(result.markdown, /更优先/);
+  calls.length = 0;
+  const secondUrl = 'https://www.aibase.com/zh/news/another-dictation';
+  const second = source.replace(sourceUrl, secondUrl);
+  const withNewSource = issue + `[另一场发布](${secondUrl})\n\n`;
+  const ambiguous = await ensureDailyFaqProductLinks(withNewSource + oldFaq,
+    { ...context, sourceItems: [source, second], sourceText: `${source}\n${second}` }, { fetchImpl });
+  assert.ok(ambiguous.markdown.startsWith(withNewSource));
+  assert.doesNotMatch(ambiguous.markdown.slice(withNewSource.length), /更优先|https?:\/\//);
+  assert.deepEqual(calls, []);
+});
+
+test('one seven-date GitHub read uses the published merchandise, including manual patches and bold questions', async () => {
+  const env = { GITHUB_TOKEN: 'fixture-token', GITHUB_REPO_OWNER: 'owner', GITHUB_REPO_NAME: 'front', GITHUB_BRANCH: 'main' };
+  let requests = 0;
+  const faq = oldFaq.replace('Plus 账号通常享有更优先的功能推送节奏。', `[验证商品](${halfPrice}?ref=news\n "Offer")。`);
+  const history = await loadRecentDailyFaqs(null, '2026-11-22', { env, fetchImpl: async (url, options) => {
+    requests++;
+    assert.equal(url, 'https://api.github.com/graphql');
+    const { query, variables } = JSON.parse(options.body);
+    assert.deepEqual(variables, { owner: 'owner', name: 'front' });
+    assert.equal((query.match(/content\/cn\/2026-11\/2026-11-\d{2}\.md/g) || []).length, 7);
+    assert.match(query, /content\/cn\/2026-11\/2026-11-21\.md/);
+    assert.match(query, /content\/cn\/2026-11\/2026-11-15\.md/);
+    return Response.json({ data: { repository: Object.fromEntries(Array.from({ length: 7 }, (_, index) =>
+      [`d${index}`, index === 0 ? { text: faq, isTruncated: false } : null])) } });
+  } });
+  assert.equal(requests, 1);
+  assert.deepEqual(history.map(x => [x.date, x.productUrls]), [['2026-11-21', [halfPrice]]]);
+  assert.equal(await loadRecentDailyFaqs(undefined, '2026-11-22', { env,
+    fetchImpl: async () => Response.json({ data: { repository: { d0: null } } }),
+  }), null);
+});
+
+test('unverifiable history still permits a factual answer, not a paid-priority claim or store request', async () => {
+  const calls = [];
+  const fetchImpl = sampleFetch(calls);
+  const ctx = { ...await loadDailyShopContext([source], { fetchImpl }), faqHistoryUnavailable: true };
+  const result = await ensureDailyFaqProductLinks(issue + oldFaq, ctx, { fetchImpl });
+  assert.equal(result.requests, 0);
+  assert.equal(result.links.length, 0);
+  assert.ok(result.markdown.startsWith(issue));
+  assert.doesNotMatch(result.markdown, /更优先|aivora\.cn/);
+});

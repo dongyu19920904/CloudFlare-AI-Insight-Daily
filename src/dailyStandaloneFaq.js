@@ -1,3 +1,5 @@
+import { dailyInlineLinkRanges } from './dailyMarkdownItems.js';
+
 const OFFICIAL_HOSTS = new Set([
   'openai.com', 'developers.openai.com', 'anthropic.com', 'docs.anthropic.com',
   'blog.google', 'ai.google.dev', 'deepmind.google', 'cursor.com',
@@ -42,7 +44,64 @@ function recentFaqHistory(records, dateStr, includeToday = false) {
   }).slice(-8);
 }
 
-export async function loadRecentDailyFaqs(kv, dateStr) {
+function publishedFaqRecord(date, markdown) {
+  const section = String(markdown).match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im)?.[0];
+  if (!section) return null;
+  const question = section.match(/^###\s+([^\r\n]+)/m)?.[1] ||
+    section.match(/^\*\*([^*\r\n]+[?？])\*\*\r?$/m)?.[1] || '';
+  const links = dailyInlineLinkRanges(section).filter(link => !link.image).flatMap(({ url }) => {
+    try { return [new URL(url)]; } catch { return []; }
+  });
+  const shop = url => /^https:\/\/(?:www\.)?aivora\.cn$/i.test(url.origin);
+  const productUrls = [...new Set(links.filter(url => shop(url) && /^\/products\/[^/]+\/?$/.test(url.pathname))
+    .map(url => `https://www.aivora.cn${url.pathname.replace(/\/$/, '')}`))];
+  if (!question && !productUrls.length) return null;
+  return { date, question, topic: question.match(/Claude|ChatGPT|Cursor|Gemini|Codex|MiniMax|Grok|Perplexity/i)?.[0] || '',
+    theme: getDailyFaqTheme(question), sourceUrls: links.filter(url => !shop(url)).map(url => url.href), productUrls };
+}
+
+async function loadPublishedFaqHistory(env, dateStr, fetchImpl) {
+  try {
+    const today = Date.parse(`${dateStr}T00:00:00Z`);
+    const dates = Array.from({ length: 7 }, (_, index) => new Date(today - (index + 1) * 86400000).toISOString().slice(0, 10));
+    const ref = env.GITHUB_BRANCH || 'main';
+    const queries = dates.map((date, index) =>
+      `d${index}: object(expression: ${JSON.stringify(`${ref}:content/cn/${date.slice(0, 7)}/${date}.md`)}) { ... on Blob { text isTruncated } }`);
+    const response = await fetchImpl('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'Cloudflare-Worker-ContentBot/1.0' },
+      redirect: 'error',
+      signal: AbortSignal.timeout(2300),
+      body: JSON.stringify({
+        query: `query RecentFaqs($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${queries.join(' ')} } }`,
+        variables: { owner: env.GITHUB_REPO_OWNER, name: env.GITHUB_REPO_NAME },
+      }),
+    });
+    if (!response.ok) return null;
+    const { data, errors } = await response.json();
+    const repo = data?.repository;
+    if (!repo || errors?.length) return null;
+    const records = [];
+    for (const [index, date] of dates.entries()) {
+      const key = `d${index}`;
+      if (!Object.hasOwn(repo, key)) return null;
+      const file = repo[key];
+      if (file === null) continue;
+      if (file.isTruncated !== false || typeof file.text !== 'string') return null;
+      const faq = publishedFaqRecord(date, file.text);
+      if (faq) records.push(faq);
+    }
+    return records.reverse();
+  } catch {
+    return null;
+  }
+}
+
+export async function loadRecentDailyFaqs(kv, dateStr, { env, fetchImpl = fetch } = {}) {
+  // Published Markdown also includes manual corrections, which scheduled KV writes cannot see.
+  if (env?.GITHUB_TOKEN && env?.GITHUB_REPO_OWNER && env?.GITHUB_REPO_NAME) {
+    return loadPublishedFaqHistory(env, dateStr, fetchImpl);
+  }
   if (!kv) return [];
   try {
     const stored = await withDailyFaqDeadline(() => kv.get(FAQ_HISTORY_KEY), 1000);
@@ -55,21 +114,14 @@ export async function loadRecentDailyFaqs(kv, dateStr) {
 
 export async function rememberPublishedDailyFaq(kv, dateStr, markdown) {
   if (!kv) return;
-  const section = String(markdown).match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im)?.[0];
-  const question = section?.match(/^###\s+([^\r\n]+)/m)?.[1];
-  if (!question) return;
   try {
+    const faq = publishedFaqRecord(dateStr, markdown);
+    if (!faq) return;
     await withDailyFaqDeadline(async () => {
       const stored = await kv.get(FAQ_HISTORY_KEY);
       const records = recentFaqHistory(stored ? JSON.parse(stored) : [], dateStr, true)
         .filter((item) => item.date !== dateStr);
-      const topic = question.match(/Claude|ChatGPT|Cursor|Gemini|Codex|MiniMax|Grok|Perplexity/i)?.[0] || '';
-      records.push({ date: dateStr, question, topic, theme: getDailyFaqTheme(question),
-        sourceUrls: [...section.matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)]
-          .map((match) => match[1]).filter((url) => !/aivora\.cn/i.test(url)),
-        productUrls: [...new Set([...section.matchAll(/\]\((https:\/\/www\.aivora\.cn\/products\/[^\s)?#]+)\)/g)]
-          .map(match => match[1]))],
-      });
+      records.push(faq);
       await kv.put(FAQ_HISTORY_KEY, JSON.stringify(records), { expirationTtl: 86400 * 10 });
     }, 2000);
   } catch (error) {
