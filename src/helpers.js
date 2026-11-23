@@ -31,6 +31,14 @@ export function getISODate(dateObj = new Date()) {
     return dateString;
 }
 
+export function parseReportDate(values) {
+    if (values.length !== 1) return null;
+    const value = values[0];
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const time = Date.parse(value + 'T00:00:00.000Z');
+    return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value ? value : null;
+}
+
 /**
  * Escapes HTML special characters in a string.
  * @param {*} unsafe The input to escape. If not a string, it's converted. Null/undefined become empty string.

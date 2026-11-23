@@ -1,9 +1,9 @@
-import { replaceImageProxy, formatMarkdownText, formatDateToGMT8WithTime, removeMarkdownCodeBlock } from '../helpers.js';
+import { formatMarkdownText, formatDateToGMT8WithTime, removeMarkdownCodeBlock, parseReportDate } from '../helpers.js';
 import { getDailyReportContent, getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
 import { callChatAPI } from '../chatapi.js'; // 导入 callChatAPI
-import { getSummarizationSimplifyPrompt } from "../prompt/summarizationSimplifyPrompt";
+import { getSummarizationSimplifyPrompt } from '../prompt/summarizationSimplifyPrompt.js';
 import { getAppUrl } from '../appUrl.js';
 
 /**
@@ -14,12 +14,9 @@ import { getAppUrl } from '../appUrl.js';
  */
 export async function handleGenerateRssContent(request, env) {
     const url = new URL(request.url);
-    const dateStr = url.searchParams.get('date');
-    console.log(`[generateRssContent] Received request for date: ${dateStr}`);
-
+    const dateStr = parseReportDate(url.searchParams.getAll('date'));
     if (!dateStr) {
-        console.error('[generateRssContent] Missing date parameter');
-        return new Response('Missing date parameter', { status: 400 });
+        return new Response('Expected one valid date (YYYY-MM-DD)', { status: 400 });
     }
 
     try {
@@ -77,12 +74,9 @@ export async function handleGenerateRssContent(request, env) {
  */
 export async function handleWriteRssData(request, env) {
     const url = new URL(request.url);
-    const dateStr = url.searchParams.get('date');
-    console.log(`[writeRssData] Received request for date: ${dateStr}`);
-
+    const dateStr = parseReportDate(url.searchParams.getAll('date'));
     if (!dateStr) {
-        console.error('[writeRssData] Missing date parameter');
-        return new Response('Missing date parameter', { status: 400 });
+        return new Response('Expected one valid date (YYYY-MM-DD)', { status: 400 });
     }
 
     try {

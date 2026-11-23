@@ -1,6 +1,19 @@
 // src/github.js
 
 const TRANSIENT_GITHUB_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const WRITABLE_DOCUMENT_TREES = new Set(['daily', 'podcast', 'rss', 'content']);
+
+function documentApiPath(filePath, write = false) {
+    const parts = typeof filePath === 'string' ? filePath.split('/') : [];
+    if (!parts.length || parts.some(part => !part || part === '.' || part === '..' ||
+        /[\\%?#\u0000-\u001f\u007f]/u.test(part))) {
+        throw new Error('Invalid GitHub document path');
+    }
+    if (write && (parts.length < 2 || !WRITABLE_DOCUMENT_TREES.has(parts[0]) || !parts.at(-1).endsWith('.md'))) {
+        throw new Error('GitHub document write destination is not allowed');
+    }
+    return '/contents/' + parts.map(encodeURIComponent).join('/');
+}
 
 function getRetryNumber(value, fallback, maximum) {
     const parsed = Number.parseInt(value, 10);
@@ -115,8 +128,9 @@ export async function callGitHubApi(env, path, method = 'GET', body = null) {
  */
 export async function getGitHubFileSha(env, filePath) {
     const GITHUB_BRANCH = env.GITHUB_BRANCH || 'main';
+    const apiPath = documentApiPath(filePath) + '?ref=' + encodeURIComponent(GITHUB_BRANCH);
     try {
-        const data = await callGitHubApi(env, `/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+        const data = await callGitHubApi(env, apiPath);
         return data && data.sha ? data.sha : null;
     } catch (error) {
         if (error.message.includes("404") || error.message.toLowerCase().includes("not found")) {
@@ -132,6 +146,7 @@ export async function getGitHubFileSha(env, filePath) {
  * Creates a new file or updates an existing one on GitHub.
  */
 export async function createOrUpdateGitHubFile(env, filePath, content, commitMessage, existingSha = null) {
+    const apiPath = documentApiPath(filePath, true);
     const GITHUB_BRANCH = env.GITHUB_BRANCH || 'main';
     const base64Content = b64EncodeUnicode(content);
 
@@ -144,7 +159,7 @@ export async function createOrUpdateGitHubFile(env, filePath, content, commitMes
     if (existingSha) {
         payload.sha = existingSha;
     }
-    return callGitHubApi(env, `/contents/${filePath}`, 'PUT', payload);
+    return callGitHubApi(env, apiPath, 'PUT', payload);
 }
 
 /**
@@ -152,7 +167,7 @@ export async function createOrUpdateGitHubFile(env, filePath, content, commitMes
  */
 export async function getGitHubFileContent(env, filePath) {
     const GITHUB_BRANCH = env.GITHUB_BRANCH || 'main';
-    const data = await callGitHubApi(env, `/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+    const data = await callGitHubApi(env, documentApiPath(filePath) + '?ref=' + encodeURIComponent(GITHUB_BRANCH));
     return data && data.content ? b64DecodeUnicode(data.content) : '';
 }
 
@@ -169,8 +184,9 @@ export async function getDailyReportContent(env, filePath) {
         throw new Error("GitHub API configuration is missing in environment variables.");
     }
 
+    const apiPath = documentApiPath(filePath) + '?ref=' + encodeURIComponent(GITHUB_BRANCH);
     try {
-        const data = await callGitHubApi(env, `/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+        const data = await callGitHubApi(env, apiPath);
         return b64DecodeUnicode(data.content);
     } catch (error) {
         console.error(`Error fetching daily report content from ${filePath}:`, error);

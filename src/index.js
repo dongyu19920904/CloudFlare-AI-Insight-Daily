@@ -281,6 +281,7 @@ export default {
         env = withWorkerConfigDefaults(env);
         const url = new URL(request.url);
         const path = url.pathname;
+        const isRssWrite = path === '/writeRssData' || path === '/generateRssContent';
 
         if (path === '/mediaProxy' && (request.method === 'GET' || request.method === 'HEAD')) {
             return await handleMediaProxy(request);
@@ -337,10 +338,6 @@ export default {
             return await handleGetContent(request, env);
         } else if (path.startsWith('/rss') && request.method === 'GET') {
             return await handleRss(request, env);
-        } else if (path === '/writeRssData' && request.method === 'GET') {
-            return await handleWriteRssData(request, env);
-        } else if (path === '/generateRssContent' && request.method === 'GET') {
-            return await handleGenerateRssContent(request, env);
         } else if (path === '/testModelConnection') {
             return await handleModelConnectionProbe(request, env);
         } else if (path === '/testFoloCookie' && (request.method === 'GET' || request.method === 'POST')) {
@@ -582,11 +579,17 @@ export default {
             }
         }
 
+        if (isRssWrite && request.method !== 'POST') {
+            return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'POST' } });
+        }
         const { authenticated, cookie: newCookie } = await isAuthenticated(request, env);
         if (!authenticated) {
             const loginUrl = new URL('/login', url.origin);
             loginUrl.searchParams.set('redirect', url.pathname + url.search);
             return Response.redirect(loginUrl.toString(), 302);
+        }
+        if (isRssWrite && request.headers.get('Origin') !== url.origin) {
+            return new Response('Expected a same-origin RSS write request', { status: 403 });
         }
 
         let response;
@@ -609,6 +612,10 @@ export default {
                 response = await handleGenAIDailyPage(request, env);
             } else if (path === '/commitToGitHub' && request.method === 'POST') {
                 response = await handleCommitToGitHub(request, env);
+            } else if (path === '/writeRssData' && request.method === 'POST') {
+                response = await handleWriteRssData(request, env);
+            } else if (path === '/generateRssContent' && request.method === 'POST') {
+                response = await handleGenerateRssContent(request, env);
             } else if (
                 (path === '/triggerScheduled' ||
                     path === '/triggerScheduledDaily' ||

@@ -1,5 +1,5 @@
 // src/handlers/commitToGitHub.js
-import { getISODate, formatMarkdownText } from '../helpers.js';
+import { getISODate, formatMarkdownText, parseReportDate } from '../helpers.js';
 import { getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
@@ -10,7 +10,12 @@ export async function handleCommitToGitHub(request, env) {
     }
     try {
         const formData = await request.formData();
-        const dateStr = formData.get('date') || getISODate();
+        const dates = formData.getAll('date');
+        const dateStr = dates.length === 0 || (dates.length === 1 && dates[0] === '')
+            ? getISODate() : parseReportDate(dates);
+        if (!dateStr) {
+            return Response.json({ status: 'error', message: 'Expected one valid date (YYYY-MM-DD)' }, { status: 400 });
+        }
         const dailyMd = formData.get('daily_summary_markdown');
         const podcastMd = formData.get('podcast_script_markdown');
 
