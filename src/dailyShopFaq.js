@@ -236,21 +236,22 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
   try {
     const [sitemapXml, catalogHtml] = await Promise.all([
       fetchText(fetchImpl, SITEMAP_URL, timeoutMs),
-      fetchText(fetchImpl, CATALOG_URL, timeoutMs),
+      fetchText(fetchImpl, CATALOG_URL, timeoutMs).catch(() => ''),
     ]);
     const urls = parseAivoraSitemapUrls(sitemapXml);
-    if (!urls.includes(CATALOG_URL) || extractCanonical(catalogHtml) !== CATALOG_URL) return empty;
+    if (!urls.includes(CATALOG_URL)) return empty;
 
+    const listingAvailable = extractCanonical(catalogHtml) === CATALOG_URL;
     const productPaths = urls
       .filter((url) => url.startsWith(`${CATALOG_URL}/`))
       .map((url) => new URL(url).pathname);
-    const products = catalogProducts(catalogHtml, urls);
+    const products = listingAvailable ? catalogProducts(catalogHtml, urls) : [];
     const topics = candidateTopics
       .filter((topic) => productPaths.some((path) => topic.slug.test(path)) ||
         products.some(({ name }) => matchesProductTopic(topic, name)))
       .map((topic) => topic.name);
     return {
-      ...(topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
+      ...(listingAvailable && topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
       catalogVerified: true,
       products,
       productUrls: urls.filter(url => url.startsWith(`${CATALOG_URL}/`)),
@@ -637,14 +638,17 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible) &&
       (!verifyDelivery || (title && !/IPO|融资|市值|估值|股价|黑洞|论文|诉讼|财报|裁员|收购|泄露|传闻/i.test(title) &&
         (topic.pattern.test(title) || /^Project Name:/im.test(text)))))
-      .map((topic) => ({ topic: topic.name, sourceUrl: url, sourceText: text,
-        useText: exactFaq(topic) ? withoutFaqDraftOffer(originalFaq).markdown : text,
-        dictation: verifyDelivery && topic.name === 'ChatGPT' && isChatGptDictation(title),
-        flow: verifyDelivery && topic.name === 'Gemini' && /\bGoogle Flow\b/i.test(visible) && ANTIGRAVITY.test(positiveUseText(visible)),
-        score: (faqSources.has(dailyMediaSourceKey(url)) ? 50 : 0) + (/^(?:ChatGPT|Codex)$/.test(topic.name) ? 20 : 0) +
-          (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
-          (/登录|登入|OAuth|打不开|无法访问|封号/i.test(visible) ? 30 : 0),
-      }));
+      .map((topic) => {
+        const faqMatch = exactFaq(topic);
+        return { topic: topic.name, sourceUrl: url, sourceText: text, faqMatch,
+          useText: faqMatch ? withoutFaqDraftOffer(originalFaq).markdown : text,
+          dictation: verifyDelivery && topic.name === 'ChatGPT' && isChatGptDictation(title),
+          flow: verifyDelivery && topic.name === 'Gemini' && /\bGoogle Flow\b/i.test(visible) && ANTIGRAVITY.test(positiveUseText(visible)),
+          score: (faqMatch ? 70 : faqSources.has(dailyMediaSourceKey(url)) ? 50 : 0) + (/^(?:ChatGPT|Codex)$/.test(topic.name) ? 20 : 0) +
+            (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
+            (/登录|登入|OAuth|打不开|无法访问|封号/i.test(visible) ? 30 : 0),
+        };
+      });
   });
   const recent = context.recentFaqs || [];
   const fresh = candidates.filter((candidate) => !recent.some((item) =>
@@ -705,6 +709,13 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     picks.push({ ...candidate, product });
     usedSources.add(key);
     usedOffers.add(product.url);
+    if (picks.length === 1 && candidate.faqMatch) {
+      const alternate = offers.find(offer => !usedOffers.has(offer.url));
+      if (alternate) {
+        picks.push({ ...candidate, product: alternate });
+        usedOffers.add(alternate.url);
+      }
+    }
     if (picks.length >= MAX_OFFER_CHECKS) break;
   }
   for (const { candidate, offers } of ranked) {

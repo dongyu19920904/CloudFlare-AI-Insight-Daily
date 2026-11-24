@@ -1681,21 +1681,30 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             faqHistoryUnavailable: canCheckFaqHistory,
             delivery: { reason: 'faq-selection-incomplete' },
         };
+        debugInfo.dailyFaqHistoryStatus = canCheckFaqHistory ? 'checking' : 'not-checked';
+        debugInfo.dailyFaqHistoryVerified = false;
+        let faqStage = 'history';
         try {
-            const faqDeadline = Date.now() + 30000;
-            const sceneContext = await withDailyFaqDeadline(async () => {
-                const recentFaqs = canCheckFaqHistory ? await loadRecentDailyFaqs(env.DATA_KV, dateStr, { env }) : [];
-                return loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, {
-                    ...faqProductContext, recentFaqs: recentFaqs || [], faqHistoryUnavailable: recentFaqs === null,
-                }, {
+            const faqStarted = Date.now();
+            const faqDeadline = faqStarted + 30000;
+            const recentFaqs = canCheckFaqHistory
+                ? await withDailyFaqDeadline(() => loadRecentDailyFaqs(env.DATA_KV, dateStr, { env }), 8000) : [];
+            if (canCheckFaqHistory) {
+                debugInfo.dailyFaqHistoryVerified = recentFaqs !== null;
+                debugInfo.dailyFaqHistoryStatus = recentFaqs === null ? 'unavailable' : 'verified';
+            }
+            faqProductContext = { ...faqProductContext, recentFaqs: recentFaqs || [], faqHistoryUnavailable: recentFaqs === null };
+            faqStage = 'offer-checks';
+            // Leave room for both the batch history fallback and the second round of SKU checks.
+            const sceneContext = await withDailyFaqDeadline(() =>
+                loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, faqProductContext, {
                     verifyDelivery: true, timeoutMs: 1800,
-                });
-            }, 15000);
+                }), Math.max(1, faqStarted + 20000 - Date.now()));
             faqProductContext = sceneContext;
-            debugInfo.dailyFaqHistoryVerified = !sceneContext.faqHistoryUnavailable;
             debugInfo.dailyFaqSceneTopic = sceneContext.scene?.topic || '';
             debugInfo.dailyFaqVerifiedProductUrl = sceneContext.scene?.product?.url || '';
             debugInfo.dailyFaqOfferCandidatesChecked = sceneContext.delivery?.checkedOffers || 0;
+            faqStage = 'optional-copy';
             const faqInput = sceneContext.scene?.useVerifiedCopy || (sceneContext.delivery && !sceneContext.scene) ? null :
                 buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
             debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
@@ -1736,6 +1745,8 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
             }
         } catch (error) {
             console.warn(`[Scheduled][Daily] Standalone FAQ generation failed: ${error.message}`);
+            if (faqStage === 'history') debugInfo.dailyFaqHistoryStatus = 'unavailable';
+            debugInfo.dailyFaqFailedStage = faqStage;
             debugInfo.dailyFaqSeparateGenerationError = error.message;
         }
         try {
@@ -1750,9 +1761,12 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 debugInfo.dailyFaqProductLinkRequests = linkedFaq.requests;
                 debugInfo.dailyFaqProductLinkSkipped = linkedFaq.skipped;
                 debugInfo.dailyFaqUsedVerifiedFallback = linkedFaq.usedFallback === true;
+            } else {
+                debugInfo.dailyFaqFailedStage = 'final-publication-check';
             }
         } catch (error) {
             console.warn(`[Scheduled][Daily] FAQ product links skipped: ${error.message}`);
+            debugInfo.dailyFaqFailedStage = 'link-finalization';
             debugInfo.dailyFaqProductLinkError = error.message;
         }
     }

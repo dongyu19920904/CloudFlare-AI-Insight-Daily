@@ -135,6 +135,7 @@ function nov22Fetch(calls, opts = {}) {
     });
     if (url === 'https://www.aivora.cn/sitemap.xml')
       return new Response('<urlset>' + [nov22Catalog, nov22OldProduct, nov22Product].map(x => '<url><loc>' + x + '</loc></url>').join('') + '</urlset>');
+    if (url === nov22Catalog && opts.catalogOffline) return new Response(null, { status: 503 });
     if (url === nov22Catalog) return new Response('<link rel="canonical" href="' + url + '">' + (opts.sitemapOnly ? '' :
       '<a href="' + nov22OldProduct + '">ChatGPT Plus 充值续费</a>') + (opts.publicListOnly ? '' : '<a href="' + nov22Product + '">' + nov22ProductName + '</a>'));
     if (opts.publicListOnly && url === 'https://www.aivora.cn/api/v1/public/products?page=1&page_size=50')
@@ -233,6 +234,41 @@ test('a genuinely unpublished day is verified by the live archive, and the publi
   assert.ok(calls.includes(nov22Product.replace('/products/', '/api/v1/public/products/')));
 });
 
+test('a missing HTML listing still uses public product data when the sitemap and individual SKU can be verified', async () => {
+  const calls = [];
+  const result = await replayNov22({ fetchImpl: nov22Fetch(calls, { catalogOffline: true, publicListOnly: true }),
+    generateContentWithTransportFallback: async () => assert.fail('No model needed for this verified scene') });
+  assert.equal(result.debug.dailyFaqHistoryStatus, 'verified');
+  assert.equal(result.debug.dailyFaqProductLinks[0].url, nov22Product);
+  assert.ok(calls.includes('https://www.aivora.cn/api/v1/public/products?page=1&page_size=50'));
+  assert.ok(calls.includes(nov22Product.replace('/products/', '/api/v1/public/products/')));
+});
+
+test('the optional stage distinguishes unverified history and leaves time for both rounds of product checks', async () => {
+  const budgets = [];
+  let reads = 0;
+  let now = 0;
+  const replay = runOptional({
+    Date: { now: () => now },
+    withDailyFaqDeadline: async (task, budget) => { budgets.push(budget); return task(); },
+    loadRecentDailyFaqs: async () => { reads++; now += 7400; return null; },
+    loadDailyFaqSceneContext: async (_markdown, _items, ctx) => ({ ...ctx, delivery: { reason: 'fixture' } }),
+    ensureDailyFaqProductLinks: async markdown => ({ markdown, links: [], requests: 0, skipped: [] }),
+  });
+  const notChecked = await replay(article + oldFaq);
+  assert.equal(notChecked.debug.dailyFaqHistoryStatus, 'not-checked');
+  assert.equal(notChecked.debug.dailyFaqHistoryVerified, false);
+  assert.equal(reads, 0);
+  budgets.length = 0;
+  const unavailable = await replay(article + oldFaq, { catalogVerified: true });
+  assert.equal(unavailable.debug.dailyFaqHistoryStatus, 'unavailable');
+  assert.equal(unavailable.debug.dailyFaqHistoryVerified, false);
+  assert.equal(reads, 1);
+  assert.equal(budgets[0], 8000);
+  assert.equal(budgets[1], 12600);
+  assert.equal(unavailable.markdown, article + oldFaq);
+});
+
 test('higher-ranked fresh source with a failed official or stock check falls through to a second scene', async () => {
   const calls = [];
   const result = await replayNov22({
@@ -319,6 +355,31 @@ test('an eligible third available SKU can recover the only verified topic after 
     return new Response(null, { status: 404 });
   });
   assert.equal(result.scene.product.url, offers[2].url);
+  assert.equal(result.delivery.checkedOffers, 3);
+});
+
+test('a sold-out first Gemini offer leaves a slot for another SKU for the same cited question', async () => {
+  const sources = ['Gemini GIF 工具', 'ChatGPT 语音工具', 'Claude 写作功能'].map((title, i) => ({
+    title, url: `https://news.example/daily-${i}`, text: `News Title: ${title}\nUrl: https://news.example/daily-${i}\nContent Summary: 功能开始推出。`,
+  }));
+  const body = sources.map(({ title, url }) => `[${title}](${url})`).join('\n\n') +
+    `\n\n## 相关问题\n\n### Gemini 的 GIF 生成功能，免费用户能用吗？\n\n[这次开放的范围](${sources[0].url})取决于地区。`;
+  const products = [
+    ['Gemini Pro 成品号', 'gemini-sold-out'], ['Gemini Pro 充值续费', 'gemini-renewal'],
+    ['ChatGPT Plus 成品号', 'chatgpt-account'], ['Claude Pro 续费', 'claude-renewal'],
+  ].map(([name, slug]) => ({ name, url: `${nov22Catalog}/${slug}` }));
+  const result = await loadDailyFaqSceneContext(body, sources.map(x => x.text), {
+    catalogUrl: nov22Catalog, topics: ['ChatGPT', 'Gemini', 'Claude'], products, productUrls: products.map(x => x.url),
+  }, { verifyDelivery: true, fetchImpl: async url => {
+    const html = products.find(x => x.url === url);
+    if (html) return stockPage(url, html.name);
+    const detail = products.find(x => x.url.replace('/products/', '/api/v1/public/products/') === url);
+    if (detail) return detail === products[0] ? Response.json({ data: { is_sold_out: true } }) : detailPage(detail.url, detail.name);
+    return new Response('<main>Official feature details</main>');
+  } });
+  assert.equal(result.scene.topic, 'Gemini');
+  assert.equal(result.scene.sourceUrl, sources[0].url);
+  assert.equal(result.scene.product.url, products[1].url);
   assert.equal(result.delivery.checkedOffers, 3);
 });
 
@@ -417,6 +478,20 @@ test('optional model failure preserves the already-read product history for fina
     assert.equal(result.markdown, ready);
     assert.equal(result.debug.dailyFaqProductLinks?.length, 0);
   }
+});
+
+test('offer-check timeout still de-duplicates a repeated original FAQ using the verified history', async () => {
+  const repeated = `## 相关问题\n\n### Claude Code 怎么配置技能？\n\n[开始使用](${sourceUrl})。\n\n`;
+  const result = await runOptional({
+    loadRecentDailyFaqs: async () => [{ question: 'Claude Code 技能能用吗？', sourceUrls: [sourceUrl] }],
+    loadDailyFaqSceneContext: () => new Promise(() => {}),
+    withDailyFaqDeadline: task => withDailyFaqDeadline(task, 20),
+    generateContentWithTransportFallback: async () => assert.fail('An offer-check timeout must not call a model'),
+  })(article + repeated + footer, { ...context, scene: undefined });
+  assert.equal(result.debug.dailyFaqHistoryStatus, 'verified');
+  assert.equal(result.debug.dailyFaqFailedStage, 'offer-checks');
+  assert.equal(result.debug.dailyFaqProductLinkSkipped[0].reason, 'repeated-faq');
+  assert.equal(result.markdown, article + footer);
 });
 
 test('published FAQ history excludes today, survives month rollover and treats failures as optional', async () => {
