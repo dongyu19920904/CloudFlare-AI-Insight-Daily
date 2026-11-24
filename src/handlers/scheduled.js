@@ -26,6 +26,7 @@ import {
 import { assembleDailySummaryMarkdown } from '../dailyMarkdownAssembly.js';
 import { finalizeDailyShopFaq, formatDailyShopPromptContext, loadDailyShopContext, loadDailyFaqSceneContext, ensureDailyFaqProductLinks } from '../dailyShopFaq.js';
 import { ensureDailyNewsEmoji } from '../dailyNewsEmoji.js';
+import { normalizeDailyPagesVideos, notifyDailyPages } from '../dailyPagesNotification.js';
 import {
     buildStandaloneDailyFaqPromptInput,
     insertStandaloneDailyFaq,
@@ -1674,19 +1675,32 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
     }
 
     if (validation.ok) {
-        let faqProductContext = { ...dailyShopContext, faqHistoryUnavailable: Boolean(dailyShopContext.catalogUrl) };
+        const canCheckFaqHistory = Boolean(dailyShopContext.catalogUrl || dailyShopContext.catalogVerified);
+        let faqProductContext = {
+            ...dailyShopContext,
+            faqHistoryUnavailable: canCheckFaqHistory,
+            delivery: { reason: 'faq-selection-incomplete' },
+        };
         try {
-            const faqDraft = await withDailyFaqDeadline(async () => {
-                const recentFaqs = dailyShopContext.catalogUrl ? await loadRecentDailyFaqs(env.DATA_KV, dateStr, { env }) : [];
-                faqProductContext = { ...dailyShopContext, recentFaqs: recentFaqs || [], faqHistoryUnavailable: recentFaqs === null };
-                debugInfo.dailyFaqHistoryVerified = recentFaqs !== null;
-                const sceneContext = await loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, faqProductContext);
-                const faqInput = buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
-                debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
-                debugInfo.dailyFaqSceneTopic = sceneContext.scene?.topic || '';
-                debugInfo.dailyFaqVerifiedProductUrl = sceneContext.scene?.product?.url || '';
-                if (!faqInput) return null;
-                const rawFaq = await generateContentWithTransportFallback(
+            const faqDeadline = Date.now() + 30000;
+            const sceneContext = await withDailyFaqDeadline(async () => {
+                const recentFaqs = canCheckFaqHistory ? await loadRecentDailyFaqs(env.DATA_KV, dateStr, { env }) : [];
+                return loadDailyFaqSceneContext(dailySummaryMarkdownContent, faqSourceItems, {
+                    ...faqProductContext, recentFaqs: recentFaqs || [], faqHistoryUnavailable: recentFaqs === null,
+                }, {
+                    verifyDelivery: true, timeoutMs: 1800,
+                });
+            }, 15000);
+            faqProductContext = sceneContext;
+            debugInfo.dailyFaqHistoryVerified = !sceneContext.faqHistoryUnavailable;
+            debugInfo.dailyFaqSceneTopic = sceneContext.scene?.topic || '';
+            debugInfo.dailyFaqVerifiedProductUrl = sceneContext.scene?.product?.url || '';
+            debugInfo.dailyFaqOfferCandidatesChecked = sceneContext.delivery?.checkedOffers || 0;
+            const faqInput = sceneContext.scene?.useVerifiedCopy || (sceneContext.delivery && !sceneContext.scene) ? null :
+                buildStandaloneDailyFaqPromptInput(dateStr, dailySummaryMarkdownContent, faqSourceItems, sceneContext);
+            debugInfo.dailyFaqSeparateGenerationAttempted = Boolean(faqInput);
+            if (faqInput) {
+                const rawFaq = await withDailyFaqDeadline(() => generateContentWithTransportFallback(
                     {
                         ...env,
                         ANTHROPIC_MAX_TOKENS: '700',
@@ -1694,12 +1708,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     },
                     faqInput.prompt,
                     getStandaloneDailyFaqSystemPrompt()
-                );
-                return { rawFaq, faqInput, sceneContext };
-            }, 30000);
-            if (faqDraft) {
-                const { rawFaq, faqInput, sceneContext } = faqDraft;
-                faqProductContext = sceneContext;
+                ), Math.max(1, faqDeadline - Date.now()));
                 const faqSection = normalizeStandaloneDailyFaqSection(
                     removeMarkdownCodeBlock(rawFaq),
                     faqInput.sourceUrl,
@@ -1716,6 +1725,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                     if (faqValidation.ok) {
                         dailySummaryMarkdownContent = withFaq;
                         validation = faqValidation;
+                        faqProductContext = { ...sceneContext, acceptedSceneDraft: true };
                         debugInfo.dailyFaqSeparateGenerationInserted = true;
                     } else {
                         debugInfo.dailyFaqSeparateGenerationRejectedIssues = faqValidation.issues;
@@ -1739,6 +1749,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 debugInfo.dailyFaqProductLinks = linkedFaq.links;
                 debugInfo.dailyFaqProductLinkRequests = linkedFaq.requests;
                 debugInfo.dailyFaqProductLinkSkipped = linkedFaq.skipped;
+                debugInfo.dailyFaqUsedVerifiedFallback = linkedFaq.usedFallback === true;
             }
         } catch (error) {
             console.warn(`[Scheduled][Daily] FAQ product links skipped: ${error.message}`);
@@ -3101,7 +3112,14 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     } catch (error) {
         console.warn(`[Scheduled][Daily] Telegram image archive skipped: ${error.message}`);
     }
+    publicationMarkdown = normalizeDailyPagesVideos(publicationMarkdown);
     await commitDailyOutputs(env, dateStr, publicationMarkdown);
+    if (!specifiedDate) {
+        debugInfo.dailyPagesNotification = await notifyDailyPages(env, dateStr);
+        if (!debugInfo.dailyPagesNotification.sent) {
+            console.warn('[Scheduled][Daily] Pages notification unavailable; the Pages schedule remains the fallback.');
+        }
+    }
     await rememberPublishedDailyFaq(env.DATA_KV, dateStr, publicationMarkdown);
     await storePublishedDailyGithubTopProjects(env, dateStr, publicationMarkdown, debugInfo);
     debugInfo.dailyPublished = true;

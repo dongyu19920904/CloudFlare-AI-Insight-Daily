@@ -1,13 +1,18 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls } from './opportunityAivoraLinkPolicy.js';
 import { stripHtml } from './helpers.js';
-import { getDailyFaqTheme, matchesDailyFaqTopic, isDailyFaqPrimarySource } from './dailyStandaloneFaq.js';
+import { DAILY_FAQ_SECTION, getDailyFaqTheme, matchesDailyFaqTopic, isDailyFaqPrimarySource, isRepeatedDailyFaq, insertStandaloneDailyFaq } from './dailyStandaloneFaq.js';
 import { extractDailyMarkdownLinks } from './dailyMarkdownItems.js';
 import { dailyMediaSourceKey } from './dailySourceMedia.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
 const CATALOG_URL = 'https://www.aivora.cn/products';
+const PUBLIC_PRODUCTS_URL = 'https://www.aivora.cn/api/v1/public/products?page=1&page_size=50';
 const DICTATION_HELP = 'https://help.openai.com/en/articles/12168547-voice-dictation-faq';
+const FLOW_CREDITS_HELP = 'https://support.google.com/googleone/answer/16287445?hl=zh-Hans';
+const MAX_OFFER_CHECKS = 3;
+const ANTIGRAVITY = /antigravity|反重力/i;
+const DICTATION_RENEWAL_PATH = /^https:\/\/www\.aivora\.cn\/products\/chatgpt-plus-[a-z0-9-]*renewal[a-z0-9-]*$/i;
 const TOPICS = [
   { name: 'ChatGPT', pattern: /chatgpt/i, slug: /chatgpt/i },
   { name: 'Claude', pattern: /claude|anthropic/i, slug: /claude/i },
@@ -87,9 +92,11 @@ function matchesProductTopic(topic, name) {
 }
 
 function positiveUseText(text) {
-  return String(text || '').replace(
-    /(?:并不是|不是|并非|而非|无需|不需要|不使用|不涉及|不用|不走|非)\s*(?:(?:通过|使用|编程|走|用)\s*)?(?:API(?:\s*(?:Key|密钥|接口))?(?:\s*中转)?|密钥|接口|中转|Antigravity|反重力)(?:\s*(?:账号|会员|服务|界面|接口))?/gi, ''
-  ).replace(/\b(?:not(?:\s+an?)?|without)\s+(?:API(?:\s*Key)?(?:\s+relay)?|Antigravity)\b/gi, '');
+  return String(text || '').replace(/^(?:Url|Source|Published|Owner|Language|Stars Today|Total Stars|Placement Hint):.*$/gmi, '')
+    .replace(/https?:\/\/[^\s)]+/gi, '').replace(
+    /(?:并不是|不是|并非|而非|无需|不需要|不使用|不涉及|不用|不走|不含|不带|不支持|不提供|非)\s*(?:(?:通过|使用|编程|走|用|Google)\s*)?(?:API(?:\s*(?:Key|密钥|接口))?(?:\s*中转)?|密钥|接口|中转|Antigravity|反重力)(?:\s*(?:账号|会员|服务|界面|接口))?/gi, ''
+  ).replace(/\b(?:not(?:\s+an?)?|without)\s+(?:API(?:\s*Key)?(?:\s+relay)?|Antigravity)\b/gi, '')
+    .replace(/\bAntigravity\s+(?:is\s+)?(?:not\s+(?:used|required|supported|available|included)|excluded|unavailable)\b/gi, '');
 }
 
 function eligibleProduct(topic, name, sourceText) {
@@ -166,7 +173,39 @@ function hasAvailableShopOffer(html, url) {
   return false;
 }
 
-function selectProduct(topic, sourceText, products = [], recentFaqs = []) {
+async function verifyAvailableShopProduct(product, topic, sourceText, fetchImpl, timeoutMs) {
+  try {
+    const html = await fetchText(fetchImpl, product.url, timeoutMs);
+    const name = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
+    if (extractCanonical(html) !== product.url || !eligibleProduct(topic, name, sourceText) ||
+        (/半价/.test(name) && !/半价资格/.test(readableText(html)))) return null;
+    const slug = new URL(product.url).pathname.split('/').pop();
+    const detail = JSON.parse(await fetchText(fetchImpl,
+      new URL('/api/v1/public/products/' + encodeURIComponent(slug), CATALOG_URL).href, timeoutMs)).data;
+    if (detail?.slug !== slug || readableText(detail.title?.['zh-CN']) !== name || detail.is_sold_out !== false ||
+        !detail.skus?.some(sku => sku.is_active === true && sku.is_sold_out === false && sku.stock_status === 'in_stock')) return null;
+    return { url: product.url, name };
+  } catch {
+    return null;
+  }
+}
+
+async function addPublicCatalogProducts(context, fetchImpl, timeoutMs) {
+  const candidates = new Map((context.products || []).map(product => [product.url, product]));
+  try {
+    const allowed = new Set(context.productUrls);
+    const rows = JSON.parse(await fetchText(fetchImpl, PUBLIC_PRODUCTS_URL, timeoutMs)).data;
+    for (const item of (Array.isArray(rows) ? rows.slice(0, 50) : [])) {
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.slug || '') || item.is_sold_out !== false) continue;
+      const url = `${CATALOG_URL}/${item.slug}`;
+      const name = readableText(item.title?.['zh-CN']);
+      if (name && allowed.has(url)) candidates.set(url, { url, name });
+    }
+  } catch { /* The already-verified listing remains available as a discovery input. */ }
+  return [...candidates.values()];
+}
+
+function rankProducts(topic, sourceText, products = [], recentFaqs = []) {
   sourceText = positiveUseText(sourceText);
   const used = new Set(recentFaqs.flatMap(item => item.productUrls || []));
   return products.filter(({ name, url }) => eligibleProduct(topic, name, sourceText) && !used.has(url))
@@ -177,7 +216,11 @@ function selectProduct(topic, sourceText, products = [], recentFaqs = []) {
           ? Number(/续费|充值/.test(name)) * 5
           : Number(/成品|独享/.test(name)) * 5);
       return rank(b) - rank(a);
-    })[0];
+    });
+}
+
+function selectProduct(topic, sourceText, products, recentFaqs) {
+  return rankProducts(topic, sourceText, products, recentFaqs)[0];
 }
 
 export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
@@ -208,6 +251,7 @@ export async function loadDailyShopContext(selectedItems, { fetchImpl = fetch, t
       .map((topic) => topic.name);
     return {
       ...(topics.length > 0 ? { ...empty, catalogUrl: CATALOG_URL, topics } : empty),
+      catalogVerified: true,
       products,
       productUrls: urls.filter(url => url.startsWith(`${CATALOG_URL}/`)),
     };
@@ -244,21 +288,24 @@ function formatDictationFaq(block, source, official = false, offer = '') {
   return `### ChatGPT 实时听写，要买 Plus 才能用吗？${eol}${eol}**先看输入框里的麦克风。**${article}${details} 开会员不等于能提前收到推送。${offer}${trailing}`;
 }
 
+function dictationEvidence(official) {
+  const text = official?.text || '';
+  return /microphone icon/i.test(text) && /transcri\w+/i.test(text) && /edit before sending/i.test(text);
+}
+
 async function completeDictationFaq(source, block, context, result, fetchImpl, timeoutMs) {
   const used = new Set((context.recentFaqs || []).flatMap(item => item.productUrls || []));
   for (const { url } of result.links) used.add(url);
   const listed = selectProduct(TOPICS.find(topic => topic.name === 'ChatGPT'), '续费',
     (context.products || []).filter(({ name }) => isNativeRenewal(name)), context.recentFaqs);
   const url = (listed && !used.has(listed.url) ? listed.url : null) ||
-    context.productUrls?.find(value => !used.has(value) &&
-      /^https:\/\/www\.aivora\.cn\/products\/chatgpt-plus-[a-z0-9-]*renewal[a-z0-9-]*$/i.test(value));
+    context.productUrls?.find(value => !used.has(value) && DICTATION_RENEWAL_PATH.test(value));
   result.requests += url ? 2 : 1;
   const [official, html] = await Promise.all([
     loadFaqReference(DICTATION_HELP, fetchImpl, timeoutMs),
     url ? fetchText(fetchImpl, url, timeoutMs).catch(() => '') : '',
   ]);
-  const officialText = official?.text || '';
-  if (!/microphone icon/i.test(officialText) || !/transcri\w+/i.test(officialText) || !/edit before sending/i.test(officialText)) {
+  if (!dictationEvidence(official)) {
     result.skipped.push({ topic: 'ChatGPT', reason: 'missing-dictation-evidence' });
     return formatDictationFaq(block, source);
   }
@@ -279,7 +326,7 @@ async function completeDictationFaq(source, block, context, result, fetchImpl, t
 
 export function finalizeDailyShopFaq(markdown, context = {}) {
   const content = String(markdown || '');
-  const faq = content.match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
+  const faq = content.match(DAILY_FAQ_SECTION);
   if (!faq) return content;
   const article = content.slice(0, faq.index) + content.slice(faq.index + faq[0].length);
   const sourceLinks = extractDailyMarkdownLinks(faq[0]).map(link => dailyMediaSourceKey(link.url));
@@ -312,7 +359,36 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
 export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetchImpl = fetch, timeoutMs = 1500 } = {}) {
   const content = String(markdown || '');
   const result = { markdown: content, links: [], requests: 0, skipped: [] };
-  const section = content.match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
+  const section = content.match(DAILY_FAQ_SECTION);
+  if (context.delivery) {
+    const { fallback, reason } = context.delivery;
+    if (!fallback) {
+      if (section && context.recentFaqs?.length) {
+        const question = section[0].match(/^###\s+([^\r\n]+)/m)?.[1] ||
+          section[0].match(/^\*\*([^*\r\n]+[?？])\*\*\r?$/m)?.[1] || '';
+        const topic = TOPICS.find(item => matchesDailyFaqTopic(question, item.name))?.name;
+        const used = new Set(context.recentFaqs.flatMap(item => item.sourceUrls || []).map(dailyMediaSourceKey));
+        if (isRepeatedDailyFaq(question, topic, context.recentFaqs) ||
+            extractDailyMarkdownLinks(section[0]).some(({ url }) => used.has(dailyMediaSourceKey(url)))) {
+          return { ...result, markdown: content.slice(0, section.index) + content.slice(section.index + section[0].length),
+            skipped: [{ reason: 'repeated-faq', offerReason: reason }] };
+        }
+      }
+      const safe = await ensureDailyFaqProductLinks(content, { ...context, delivery: null, faqHistoryUnavailable: true }, { fetchImpl, timeoutMs });
+      return { ...safe, markdown: finalizeDailyShopFaq(safe.markdown), skipped: [{ reason }] };
+    }
+    const { product, topic, sourceUrl } = context.scene;
+    const links = extractDailyMarkdownLinks(section?.[0] || '');
+    const shopLinks = links.filter(({ url }) => /^https?:\/\/(?:www\.)?aivora\.cn(?:\/|$)/i.test(url));
+    const hasApprovedDraft = !context.scene.useVerifiedCopy && context.acceptedSceneDraft && shopLinks.length === 1 &&
+      shopLinks[0].url === product.url && links.some(({ url }) => url === sourceUrl);
+    return {
+      ...result,
+      markdown: hasApprovedDraft ? content : insertStandaloneDailyFaq(content, fallback),
+      links: [{ topic, ...product }],
+      usedFallback: !hasApprovedDraft,
+    };
+  }
   if (!section) return result;
   const canRecommend = !context.faqHistoryUnavailable && context.catalogUrl === CATALOG_URL &&
     Boolean(context.products?.length || context.productUrls?.length);
@@ -476,8 +552,62 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
   return result;
 }
 
+function sceneFallback(scene, originalFaq) {
+  const { topic, sourceUrl, product, official } = scene;
+  const sourceText = scene.useText || scene.sourceText;
+  const label = product.name.replace(/【[^】]*】/g, ' ').replace(/[\[\]\\\r\n|｜]/g, ' ').replace(/\s+/g, ' ').trim();
+  const link = '[爱窝啦·AI账号店的 ' + label + '](' + product.url + ')';
+  const source = '[当天的使用案例](' + sourceUrl + ')';
+  const header = '## **❓ 相关问题**\n\n';
+  if (scene.dictation) {
+    const check = /半价/.test(product.name) ? '先查半价资格，符合再看' : '可以看';
+    return header + formatDictationFaq('', { url: sourceUrl }, true,
+      ' 已有可用账号、会员快到期，' + check + link + '。');
+  }
+  if (scene.flow) {
+    const credits = official?.url === FLOW_CREDITS_HELP && /\bFlow\b/i.test(official.text) && /点数|credits/i.test(official.text)
+      ? '按[Google 的点数说明](' + FLOW_CREDITS_HELP + ')核对用量。' : '生成前以 Flow 内显示的用量为准。';
+    return header + '### 用 Gemini 的 Antigravity 拍视频，Flow 点数算在哪？\n\n' +
+      '**先看 Flow 余额，不用换账号试。** ' + source + '用反重力操作 Flow，' + credits +
+      '缺的是编辑器入口，可以看' + link + '，别把它当 Flow 点数包买。';
+  }
+  const relay = /中转|\bAPI\b/i.test(product.name);
+  const use = relay ? '接进自己的工具' : /代码|编程|coding|code\b|IDE\b/i.test(sourceText) ? '写代码'
+    : /图片|绘图|图表|image|diagram/i.test(sourceText) ? '做图' : /语音|听写|voice/i.test(sourceText) ? '处理语音' : '试这项更新';
+  const requirement = relay ? '要用 API 接入，可对照' + link + '的模型列表；中转不是官网会员。'
+    : /半价/.test(product.name) ? '原账号快到期，先查半价资格，符合再看' + link + '。'
+    : /续费|充值/.test(product.name) ? '原账号能用、会员快到期，再看' + link + '的续费说明。'
+    : '本来就需要单独一个账号，再看' + link + '的交付说明。';
+  const existingQuestion = originalFaq?.match(/^###\s+([^\r\n]+)/m)?.[1] ||
+    originalFaq?.match(/^\*\*([^*\r\n]+[?？])\*\*\r?$/m)?.[1] || '';
+  if (!scene.useVerifiedCopy && originalFaq && matchesDailyFaqTopic(existingQuestion, topic, product) &&
+      extractDailyMarkdownLinks(originalFaq).some(({ url }) => dailyMediaSourceKey(url) === dailyMediaSourceKey(sourceUrl)) &&
+      !/买了就|保证可用|包解锁|稳定账号|提前收到|付费即可解锁/.test(originalFaq)) {
+    const ending = /免费|开放|地区|推送/.test(originalFaq) ? ' 购买不改变地区限制或开放进度。' : '';
+    return withoutFaqDraftOffer(originalFaq).markdown.trimEnd() + '\n\n' + requirement + ending;
+  }
+  const usage = use === '试这项更新' ? '这项更新' : `用来${use}`;
+  return header + '### ' + topic + ' ' + usage + '，手上的账号能先试吗？\n\n' +
+    '**先用原账号试一个小任务。** 想知道从哪开始，参考' + source + '；能否用，要看自己的账号界面。' + requirement;
+}
+
+function matchesDelivery(scene, name) {
+  if (scene.dictation) return isNativeRenewal(name);
+  if (scene.topic === 'Gemini' && ANTIGRAVITY.test(positiveUseText(scene.useText || scene.sourceText))) {
+    // Require the storefront's complete affirmative delivery label, not a mention of the feature.
+    return /^Gemini\s+(?:Pro|Ultra(?:\s+\d+x)?)\s*(?:[|｜]\s*)?(?:成品号|独享号)(?:【\d+(?:-\d+)?个?月(?:\s+随机发)?】)?\s*含反重力$/i.test(name.trim());
+  }
+  return true;
+}
+
 // Enrich only the optional FAQ, after the news body has passed publication checks.
-export async function loadDailyFaqSceneContext(markdown, selectedItems, context = {}, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+export async function loadDailyFaqSceneContext(markdown, selectedItems, context = {}, {
+  fetchImpl = fetch, timeoutMs = 5000, verifyDelivery = false,
+} = {}) {
+  if (verifyDelivery && !context.faqHistoryUnavailable && context.productUrls?.length &&
+      (context.catalogVerified === true || context.catalogUrl === CATALOG_URL)) {
+    context = { ...context, products: await addPublicCatalogProducts(context, fetchImpl, timeoutMs) };
+  }
   const namedTopics = TOPICS.filter((topic) =>
     context.candidateTopics?.includes(topic.name) &&
     (context.products || []).some(({ name }) => matchesProductTopic(topic, name)))
@@ -486,52 +616,121 @@ export async function loadDailyFaqSceneContext(markdown, selectedItems, context 
     ...context, catalogUrl: context.catalogUrl || CATALOG_URL,
     topics: [...new Set([...(context.topics || []), ...namedTopics])],
   };
-  if (!context.catalogUrl || !context.topics?.length) return context;
-  const publishedUrls = new Map(extractDailyMarkdownLinks(markdown).map(link => [dailyMediaSourceKey(link.url), link.url]));
+  const withoutOffer = (reason) => verifyDelivery ? { ...context, delivery: { reason } } : context;
+  if (context.faqHistoryUnavailable) return withoutOffer('published-faq-history-unavailable');
+  if (!context.catalogUrl || !context.topics?.length) return withoutOffer('verified-catalog-unavailable');
+  const draft = String(markdown || '');
+  const originalFaq = draft.match(DAILY_FAQ_SECTION)?.[0];
+  const faqQuestion = originalFaq?.match(/^###\s+([^\r\n]+)/m)?.[1] ||
+    originalFaq?.match(/^\*\*([^*\r\n]+[?？])\*\*\r?$/m)?.[1] || '';
+  const faqSources = new Set(extractDailyMarkdownLinks(originalFaq || '').map(({ url }) => dailyMediaSourceKey(url)));
+  const article = draft.replace(DAILY_FAQ_SECTION, '');
+  const publishedUrls = new Map(extractDailyMarkdownLinks(article).map(link => [dailyMediaSourceKey(link.url), link.url]));
   const candidates = (selectedItems || []).flatMap((item) => {
     const text = String(item);
     const sourceUrl = text.match(/^Url:\s*(https?:\/\/\S+)/im)?.[1];
     const url = publishedUrls.get(dailyMediaSourceKey(sourceUrl));
     if (!url) return [];
     const visible = text.replace(/^Url:.*$/gmi, '');
-    return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible))
+    const title = visible.match(/^(?:News Title|Project Name):\s*(.+)$/im)?.[1] || '';
+    const exactFaq = topic => faqSources.has(dailyMediaSourceKey(url)) && matchesDailyFaqTopic(faqQuestion, topic.name);
+    return TOPICS.filter((topic) => context.topics.includes(topic.name) && topic.pattern.test(visible) &&
+      (!verifyDelivery || (title && !/IPO|融资|市值|估值|股价|黑洞|论文|诉讼|财报|裁员|收购|泄露|传闻/i.test(title) &&
+        (topic.pattern.test(title) || /^Project Name:/im.test(text)))))
       .map((topic) => ({ topic: topic.name, sourceUrl: url, sourceText: text,
-        score: (/^(?:ChatGPT|Codex)$/.test(topic.name) ? 20 : 0) + (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
+        useText: exactFaq(topic) ? withoutFaqDraftOffer(originalFaq).markdown : text,
+        dictation: verifyDelivery && topic.name === 'ChatGPT' && isChatGptDictation(title),
+        flow: verifyDelivery && topic.name === 'Gemini' && /\bGoogle Flow\b/i.test(visible) && ANTIGRAVITY.test(positiveUseText(visible)),
+        score: (faqSources.has(dailyMediaSourceKey(url)) ? 50 : 0) + (/^(?:ChatGPT|Codex)$/.test(topic.name) ? 20 : 0) +
+          (/skill|技能|工作流|编程|写代码/i.test(visible) ? 10 : 0) -
           (/登录|登入|OAuth|打不开|无法访问|封号/i.test(visible) ? 30 : 0),
       }));
   });
   const recent = context.recentFaqs || [];
-  const chosen = candidates.filter((candidate) => !recent.some((item) =>
+  const fresh = candidates.filter((candidate) => !recent.some((item) =>
     item.sourceUrls?.some(url => dailyMediaSourceKey(url) === dailyMediaSourceKey(candidate.sourceUrl)) ||
     (item.topic?.toLowerCase() === candidate.topic.toLowerCase() && item.theme &&
-      item.theme === getDailyFaqTheme(candidate.sourceText))))
-    .map(candidate => ({ ...candidate, product: context.faqHistoryUnavailable ||
-      (candidate.topic === 'ChatGPT' && isChatGptDictation(candidate.sourceText.split('\n')[0]))
-      ? null : selectProduct(TOPICS.find(topic => topic.name === candidate.topic), candidate.sourceText, context.products, recent) }))
-    .sort((a, b) => Number(Boolean(b.product)) - Number(Boolean(a.product)) || b.score - a.score)[0];
-  if (!chosen) return context;
-  const topicRule = TOPICS.find((topic) => topic.name === chosen.topic);
-  const { product, ...scene } = chosen;
-  let verifiedProduct = null;
-  if (product) {
-    try {
-      const html = await fetchText(fetchImpl, product.url, timeoutMs);
-      const title = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
-      if (extractCanonical(html) === product.url && eligibleProduct(topicRule, title, chosen.sourceText)) verifiedProduct = { ...product, name: title };
-    } catch { /* A failed product check must not block the news or invent a SKU. */ }
+      item.theme === getDailyFaqTheme(candidate.useText)))).sort((a, b) => b.score - a.score);
+  if (!fresh.length) return withoutOffer('no-fresh-published-source');
+  const offersFor = (candidate) => {
+    const rule = TOPICS.find(topic => topic.name === candidate.topic);
+    let products = context.products || [];
+    if (verifyDelivery && candidate.dictation) {
+      const named = new Set(products.map(({ url }) => url));
+      products = products.concat((context.productUrls || []).filter(url => DICTATION_RENEWAL_PATH.test(url) && !named.has(url))
+        .map(url => ({ url, name: 'ChatGPT Plus 续费' })));
+    }
+    if (verifyDelivery) products = products.filter(({ url, name }) =>
+      context.productUrls?.includes(url) && matchesDelivery(candidate, name));
+    else if (candidate.topic === 'ChatGPT' && isChatGptDictation(candidate.sourceText.split('\n')[0])) return [];
+    return rankProducts(rule, candidate.dictation ? '续费' : candidate.useText, products, recent);
+  };
+  async function verifyScene({ product, ...scene }) {
+    const rule = TOPICS.find((topic) => topic.name === scene.topic);
+    const sourceUrl = new URL(scene.sourceUrl);
+    const useText = scene.useText;
+    const repository = sourceUrl.pathname.split('/').filter(Boolean);
+    // A repository can document its integration, not the ChatGPT plan that runs Codex.
+    const officialUrl = scene.dictation ? DICTATION_HELP : scene.flow ? FLOW_CREDITS_HELP
+      : needsCodexPlanEvidence(rule, product) ? FAQ_OFFICIAL_PAGES.Codex
+      : sourceUrl.hostname === 'github.com' && repository.length === 2
+      ? 'https://raw.githubusercontent.com/' + repository.map(encodeURIComponent).join('/') + '/HEAD/README.md'
+      : scene.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(scene.sourceText)
+      ? 'https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'
+      : scene.topic === 'Gemini' && ANTIGRAVITY.test(positiveUseText(useText))
+      ? 'https://antigravity.google/pricing' : FAQ_OFFICIAL_PAGES[scene.topic];
+    const [official, verified] = await Promise.all([
+      loadFaqReference(officialUrl, fetchImpl, timeoutMs),
+      product ? verifyDelivery ? verifyAvailableShopProduct(product, rule, useText, fetchImpl, timeoutMs)
+        : fetchText(fetchImpl, product.url, timeoutMs).then(html => {
+          const name = readableText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
+          return extractCanonical(html) === product.url && eligibleProduct(rule, name, useText) ? { ...product, name } : null;
+        }).catch(() => null) : null,
+    ]);
+    return { ...scene, official, product: verified && (!verifyDelivery || matchesDelivery(scene, verified.name)) && hasSubscriptionEvidence(rule, verified, official) &&
+      (!scene.dictation || dictationEvidence(official)) ? verified : null };
   }
-  const sourceUrl = new URL(chosen.sourceUrl);
-  const repository = sourceUrl.pathname.split('/').filter(Boolean);
-  // A repository can document its own integration, not the ChatGPT plan that runs Codex.
-  const officialUrl = needsCodexPlanEvidence(topicRule, verifiedProduct) ? FAQ_OFFICIAL_PAGES.Codex
-    : sourceUrl.hostname === 'github.com' && repository.length === 2
-    ? `https://raw.githubusercontent.com/${repository.map(encodeURIComponent).join('/')}/HEAD/README.md`
-    : chosen.topic === 'ChatGPT' && /登录|登入|OAuth|Apple\s*ID|sign.?in/i.test(chosen.sourceText)
-    ? 'https://help.openai.com/en/articles/7426629-why-cant-i-log-in-to-chatgpt'
-    : chosen.topic === 'Gemini' && /antigravity|反重力/i.test(chosen.sourceText)
-    ? 'https://antigravity.google/pricing'
-    : FAQ_OFFICIAL_PAGES[chosen.topic];
-  const official = await loadFaqReference(officialUrl, fetchImpl, timeoutMs);
-  if (verifiedProduct && !hasSubscriptionEvidence(topicRule, verifiedProduct, official)) verifiedProduct = null;
-  return { ...context, scene: { ...scene, product: verifiedProduct, official } };
+  const ranked = fresh.map(candidate => ({ candidate, offers: offersFor(candidate) }));
+  if (!verifyDelivery) {
+    const { candidate, offers } = ranked.find(entry => entry.offers.length) || ranked[0];
+    return { ...context, scene: await verifyScene({ ...candidate, product: offers[0] }) };
+  }
+  const picks = [];
+  const usedSources = new Set();
+  const usedOffers = new Set();
+  for (const { candidate, offers } of ranked) {
+    const key = dailyMediaSourceKey(candidate.sourceUrl);
+    const product = offers.find(offer => !usedOffers.has(offer.url));
+    if (!product || usedSources.has(key)) continue;
+    picks.push({ ...candidate, product });
+    usedSources.add(key);
+    usedOffers.add(product.url);
+    if (picks.length >= MAX_OFFER_CHECKS) break;
+  }
+  for (const { candidate, offers } of ranked) {
+    if (picks.length >= MAX_OFFER_CHECKS) break;
+    for (const product of offers) {
+      if (picks.length >= MAX_OFFER_CHECKS) break;
+      if (!picks.some(pick => pick.sourceUrl === candidate.sourceUrl && pick.topic === candidate.topic && pick.product.url === product.url)) {
+        picks.push({ ...candidate, product });
+      }
+    }
+  }
+  let checkedOffers = 0;
+  async function check(pick) {
+    checkedOffers++;
+    const scene = await verifyScene(pick);
+    if (!scene.product) return null;
+    // For deliveries that are easily confused, do not let prose change the verified terms.
+    scene.useVerifiedCopy = scene.dictation || scene.flow || /中转|\bAPI\b/i.test(scene.product.name) ||
+      (scene.topic === 'Gemini' && ANTIGRAVITY.test(positiveUseText(scene.useText)));
+    const fallback = sceneFallback(scene, originalFaq);
+    const question = fallback.match(/^###\s+([^\r\n]+)/m)?.[1] || fallback.match(/^\*\*([^*\r\n]+[?？])\*\*\r?$/m)?.[1];
+    if (isRepeatedDailyFaq(question, scene.topic, recent)) return null;
+    return { ...context, scene, delivery: { fallback } };
+  }
+  if (!picks.length) return withoutOffer('no-matching-unused-product');
+  const completed = await check(picks[0]) || (await Promise.all(picks.slice(1).map(check))).find(Boolean) ||
+    withoutOffer('no-candidate-passed-offer-checks');
+  return { ...completed, delivery: { ...completed.delivery, checkedOffers } };
 }

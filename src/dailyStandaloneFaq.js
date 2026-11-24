@@ -9,6 +9,11 @@ const OFFICIAL_HOSTS = new Set([
 ]);
 const OFFICIAL_SOCIAL_HANDLES = new Set(['openai', 'anthropicai', 'claudeai', 'geminiapp', 'googleai']);
 const FAQ_HISTORY_KEY = 'daily-faq-published-history-v1';
+const PUBLISHED_ARCHIVE_URL = 'https://news.aivora.cn/ai-daily-release-state.json';
+const PUBLISHED_SNAPSHOT_LAST_DAY = '2026-11-23';
+// Pages keeps the pre-import archive, including the pinned November 23 original.
+const PUBLISHED_SNAPSHOT_REF = '18e64db6b1ccaa141e9610442def2da1c34fbb5c';
+export const DAILY_FAQ_SECTION = /^##[ \t]+[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##[ \t]+|^---[ \t]*\r?$|(?![\s\S]))/im;
 
 function faqQuestionKey(question) {
   return String(question || '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
@@ -45,7 +50,7 @@ function recentFaqHistory(records, dateStr, includeToday = false) {
 }
 
 function publishedFaqRecord(date, markdown) {
-  const section = String(markdown).match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im)?.[0];
+  const section = String(markdown).match(DAILY_FAQ_SECTION)?.[0];
   if (!section) return null;
   const question = section.match(/^###\s+([^\r\n]+)/m)?.[1] ||
     section.match(/^\*\*([^*\r\n]+[?？])\*\*\r?$/m)?.[1] || '';
@@ -60,13 +65,35 @@ function publishedFaqRecord(date, markdown) {
     theme: getDailyFaqTheme(question), sourceUrls: links.filter(url => !shop(url)).map(url => url.href), productUrls };
 }
 
-async function loadPublishedFaqHistory(env, dateStr, fetchImpl) {
+async function getPublishedFaqFiles(dateStr, fetchImpl) {
   try {
     const today = Date.parse(`${dateStr}T00:00:00Z`);
     const dates = Array.from({ length: 7 }, (_, index) => new Date(today - (index + 1) * 86400000).toISOString().slice(0, 10));
-    const ref = env.GITHUB_BRANCH || 'main';
-    const queries = dates.map((date, index) =>
-      `d${index}: object(expression: ${JSON.stringify(`${ref}:content/cn/${date.slice(0, 7)}/${date}.md`)}) { ... on Blob { text isTruncated } }`);
+    const response = await fetchImpl(PUBLISHED_ARCHIVE_URL, {
+      signal: AbortSignal.timeout(1600), redirect: 'error', headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!response.ok) return null;
+    const state = await response.json();
+    if (state.version !== 1 || !/^\d{4}-\d{2}-\d{2}$/.test(state.latest) || state.latest < dates[0] ||
+        !/^[a-f0-9]{40}$/.test(state.source || '') || !Array.isArray(state.articles) || state.articles.length > 10000 ||
+        !state.articles.every(path => typeof path === 'string')) return null;
+    const articles = new Set(state.articles);
+    if (!articles.has(`${state.latest.slice(0, 7)}/${state.latest}/index.html`)) return null;
+    return dates.flatMap(date => {
+      const path = `${date.slice(0, 7)}/${date}`;
+      return articles.has(`${path}/index.html`) ? [{
+        date, path: `content/cn/${path}.md`, ref: date <= PUBLISHED_SNAPSHOT_LAST_DAY ? PUBLISHED_SNAPSHOT_REF : state.source,
+      }] : [];
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function loadPublishedFaqHistory(env, files, fetchImpl) {
+  try {
+    const queries = files.map(({ path, ref }, index) =>
+      `d${index}: object(expression: ${JSON.stringify(`${ref}:${path}`)}) { ... on Blob { text isTruncated } }`);
     const response = await fetchImpl('https://api.github.com/graphql', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'Cloudflare-Worker-ContentBot/1.0' },
@@ -82,12 +109,9 @@ async function loadPublishedFaqHistory(env, dateStr, fetchImpl) {
     const repo = data?.repository;
     if (!repo || errors?.length) return null;
     const records = [];
-    for (const [index, date] of dates.entries()) {
-      const key = `d${index}`;
-      if (!Object.hasOwn(repo, key)) return null;
-      const file = repo[key];
-      if (file === null) continue;
-      if (file.isTruncated !== false || typeof file.text !== 'string') return null;
+    for (const [index, { date }] of files.entries()) {
+      const file = repo[`d${index}`];
+      if (file?.isTruncated !== false || typeof file.text !== 'string' || !/^---\r?\n/.test(file.text)) return null;
       const faq = publishedFaqRecord(date, file.text);
       if (faq) records.push(faq);
     }
@@ -97,10 +121,37 @@ async function loadPublishedFaqHistory(env, dateStr, fetchImpl) {
   }
 }
 
+async function loadPublishedFaqHistoryViaContents(env, files, fetchImpl) {
+  try {
+    const root = `https://api.github.com/repos/${encodeURIComponent(env.GITHUB_REPO_OWNER)}/${encodeURIComponent(env.GITHUB_REPO_NAME)}/contents`;
+    const signal = AbortSignal.timeout(3500);
+    const headers = {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      Accept: 'application/vnd.github.raw+json',
+      'User-Agent': 'Cloudflare-Worker-ContentBot/1.0',
+    };
+    const read = async ({ date, path, ref }) => {
+      const response = await fetchImpl(`${root}/${path}?ref=${ref}`,
+        { headers, signal, redirect: 'error' });
+      if (!response.ok) throw new Error('Published FAQ history could not be verified');
+      const markdown = await response.text();
+      if (!/^---\r?\n/.test(markdown)) throw new Error('Published FAQ history was not Markdown');
+      return publishedFaqRecord(date, markdown);
+    };
+    const first = await Promise.all(files.slice(0, 4).map(read));
+    const rest = await Promise.all(files.slice(4).map(read));
+    return [...first, ...rest].reverse().filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
 export async function loadRecentDailyFaqs(kv, dateStr, { env, fetchImpl = fetch } = {}) {
-  // Published Markdown also includes manual corrections, which scheduled KV writes cannot see.
   if (env?.GITHUB_TOKEN && env?.GITHUB_REPO_OWNER && env?.GITHUB_REPO_NAME) {
-    return loadPublishedFaqHistory(env, dateStr, fetchImpl);
+    const files = await getPublishedFaqFiles(dateStr, fetchImpl);
+    if (!files?.length) return files;
+    return await loadPublishedFaqHistory(env, files, fetchImpl) ??
+      await loadPublishedFaqHistoryViaContents(env, files, fetchImpl);
   }
   if (!kv) return [];
   try {
@@ -170,7 +221,7 @@ export function buildStandaloneDailyFaqPromptInput(dateStr, markdown, selectedIt
       ].join('\n\n'),
     };
   }
-  if (/^##[^\r\n]*(?:相关问题|FAQ)/im.test(markdown)) return null;
+  if (DAILY_FAQ_SECTION.test(markdown)) return null;
 
   const candidates = (selectedItems || [])
     .map((item) => ({ item: String(item || ''), url: getSourceUrl(item) }))
@@ -239,6 +290,14 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
     if (/数据(?:本身)?(?:没有|未)加密/.test(visible)) return '';
     if (/稳定账号|直接开始使用这项功能/.test(visible)) return '';
     const productLabel = text.match(/\[([^\]]+)\]\(AIVORA_PRODUCT_URL\)/)?.[1] || '';
+    if (sceneContext.delivery && (scene.useVerifiedCopy ||
+        (productSlots && productLabel !== '爱窝啦·AI账号店的 ' + scene.product.name))) return '';
+    const isRelay = /中转|\bAPI\b/i.test(scene.product?.name || '');
+    const nativeDelivery = /(?:官网|原生|官方)\s*(?:账号|会员|订阅)|成品号|独享号/i;
+    if (isRelay) {
+      const claims = visible.replace(/(?:并非|不是|不等于|不含|不能替代)\s*(?:官网|原生|官方)\s*(?:账号|会员|订阅)/gi, '');
+      if ((productSlots && !/中转|\bAPI\b/i.test(productLabel)) || nativeDelivery.test(productLabel) || nativeDelivery.test(claims)) return '';
+    } else if (productSlots && /中转|\bAPI\b/i.test(productLabel)) return '';
     if (/成品|独享/.test(scene.product?.name || '') &&
         (/续费|续期|充值/.test(productLabel) || /(?:已有|原有|自己的)账号[^。！？\n]{0,20}(?:续费|续期|充值)/.test(visible))) return '';
     if (/续费|充值/.test(scene.product?.name || '') && /成品|独享/.test(productLabel)) return '';
@@ -261,10 +320,11 @@ export function normalizeStandaloneDailyFaqSection(markdown, sourceUrl, sourceTe
 }
 
 export function insertStandaloneDailyFaq(markdown, section) {
-  const existing = String(markdown).match(/^##[^\r\n]*(?:相关问题|FAQ)[^\r\n]*\r?\n[\s\S]*?(?=^##\s+|(?![\s\S]))/im);
+  const existing = String(markdown).match(DAILY_FAQ_SECTION);
   if (existing) {
     const trailingSpace = existing[0].match(/\s*$/)?.[0] || '';
-    return String(markdown).slice(0, existing.index) + section.trim() + trailingSpace +
+    const eol = existing[0].includes('\r\n') ? '\r\n' : '\n';
+    return String(markdown).slice(0, existing.index) + section.trim().replace(/\r?\n/g, eol) + trailingSpace +
       String(markdown).slice(existing.index + existing[0].length);
   }
   const content = String(markdown || '').trimEnd();

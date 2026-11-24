@@ -78,6 +78,10 @@ test('one seven-date GitHub read uses the published merchandise, including manua
   const faq = oldFaq.replace('Plus 账号通常享有更优先的功能推送节奏。', `[验证商品](${halfPrice}?ref=news\n "Offer")。`);
   const history = await loadRecentDailyFaqs(null, '2026-11-22', { env, fetchImpl: async (url, options) => {
     requests++;
+    if (url === 'https://news.aivora.cn/ai-daily-release-state.json') return Response.json({
+      version: 1, latest: '2026-11-21', source: 'a'.repeat(40), articles: Array.from({ length: 7 }, (_, i) =>
+        `2026-11/2026-11-${21 - i}/index.html`),
+    });
     assert.equal(url, 'https://api.github.com/graphql');
     const { query, variables } = JSON.parse(options.body);
     assert.deepEqual(variables, { owner: 'owner', name: 'front' });
@@ -85,13 +89,42 @@ test('one seven-date GitHub read uses the published merchandise, including manua
     assert.match(query, /content\/cn\/2026-11\/2026-11-21\.md/);
     assert.match(query, /content\/cn\/2026-11\/2026-11-15\.md/);
     return Response.json({ data: { repository: Object.fromEntries(Array.from({ length: 7 }, (_, index) =>
-      [`d${index}`, index === 0 ? { text: faq, isTruncated: false } : null])) } });
+      [`d${index}`, { text: '---\ntitle: edition\n---\n' + (index === 0 ? faq : '# Published issue without a FAQ'), isTruncated: false }])) } });
   } });
-  assert.equal(requests, 1);
+  assert.equal(requests, 2);
   assert.deepEqual(history.map(x => [x.date, x.productUrls]), [['2026-11-21', [halfPrice]]]);
   assert.equal(await loadRecentDailyFaqs(undefined, '2026-11-22', { env,
     fetchImpl: async () => Response.json({ data: { repository: { d0: null } } }),
   }), null);
+});
+
+test('published history follows the manifest source and the pinned Nov 23 archive, not mutable main', async () => {
+  const env = { GITHUB_TOKEN: 'fixture-token', GITHUB_REPO_OWNER: 'owner', GITHUB_REPO_NAME: 'front', GITHUB_BRANCH: 'main' };
+  const revision = 'a'.repeat(40);
+  const pinned = '18e64db6b1ccaa141e9610442def2da1c34fbb5c';
+  const reads = [];
+  const entry = (date, product) => `---\ntitle: edition\n---\n## \u76f8\u5173\u95ee\u9898\n\n### ChatGPT ${date}?\n\n[Offer](${product})\n`;
+  const history = await loadRecentDailyFaqs(null, '2026-11-25', { env, fetchImpl: async (url, options) => {
+    if (url === 'https://news.aivora.cn/ai-daily-release-state.json') return Response.json({
+      version: 1, latest: '2026-11-24', source: revision,
+      articles: ['2026-11/2026-11-24/index.html', '2026-11/2026-11-23/index.html'],
+    });
+    if (url === 'https://api.github.com/graphql') {
+      const { query } = JSON.parse(options.body);
+      assert.ok(query.includes(`${revision}:content/cn/2026-11/2026-11-24.md`));
+      assert.ok(query.includes(`${pinned}:content/cn/2026-11/2026-11-23.md`));
+      assert.doesNotMatch(query, /main:|2026-11-22/);
+      return new Response(null, { status: 503 });
+    }
+    const [, date, ref] = /\/(2026-11-2[34])\.md\?ref=([0-9a-f]{40})$/.exec(url);
+    assert.equal(ref, date === '2026-11-23' ? pinned : revision);
+    reads.push(date);
+    return new Response(entry(date, date === '2026-11-23' ? halfPrice : 'https://www.aivora.cn/products/other'));
+  } });
+  assert.deepEqual(reads, ['2026-11-24', '2026-11-23']);
+  assert.deepEqual(history.map(({ date, productUrls }) => [date, productUrls[0]]), [
+    ['2026-11-23', halfPrice], ['2026-11-24', 'https://www.aivora.cn/products/other'],
+  ]);
 });
 
 test('unverifiable history still permits a factual answer, not a paid-priority claim or store request', async () => {

@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
   insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt,
   loadRecentDailyFaqs, rememberPublishedDailyFaq, isRepeatedDailyFaq } from '../src/dailyStandaloneFaq.js';
-import { finalizeDailyShopFaq, ensureDailyFaqProductLinks } from '../src/dailyShopFaq.js';
+import { finalizeDailyShopFaq, ensureDailyFaqProductLinks, loadDailyFaqSceneContext, loadDailyShopContext } from '../src/dailyShopFaq.js';
 
 const sourceUrl = 'https://github.com/example/skills';
 const sourceText = `Project Name: skills\nUrl: ${sourceUrl}\nDescription: Claude Code 工作流技能库`;
@@ -81,9 +81,9 @@ const start = scheduled.indexOf('    if (validation.ok) {', scheduled.indexOf('c
 const end = scheduled.indexOf('    dailySummaryMarkdownContent = normalizeMarkdownImageSyntax', start);
 assert.ok(start >= 0 && end > start);
 function runOptional(overrides = {}) {
-  return vm.runInNewContext(`(async function(markdown, shopContext = {}) {
+  return vm.runInNewContext(`(async function(markdown, shopContext = {}, input = {}) {
     let dailySummaryMarkdownContent = markdown; let validation = {ok:true}; const debugInfo = {};
-    const env = {}; const dateStr = '2026-10-03'; const faqSourceItems = [];
+    const env = input.env || {}; const dateStr = input.date || '2026-10-03'; const faqSourceItems = input.items || [];
     const dailyShopContext = shopContext; const outputOfCall3 = ''; const options = {dryRun:true};
     ${scheduled.slice(start, end)}
     return {markdown:dailySummaryMarkdownContent, debug:debugInfo};
@@ -95,6 +95,266 @@ function runOptional(overrides = {}) {
     validateGeneratedDaily: () => ({ok:true}), ...overrides,
   });
 }
+
+const nov22Dictation = 'https://www.aibase.com/zh/news/32445';
+const nov22Flow = 'https://x.com/Gorden_Sun/status/2124124404208804306';
+const nov22Catalog = 'https://www.aivora.cn/products';
+const nov22Product = nov22Catalog + '/nian-ka-han-fan-zhong-li-bian-ji-qi-zhi-bao-yi-yue';
+const nov22ProductName = 'Gemini Pro｜成品号【3-12个月 随机发】含反重力';
+const nov22OldProduct = nov22Catalog + '/chatgpt-plus-half-price-renewal-monthly';
+const nov22Items = [
+  'News Title: AI日报：ChatGPT上线实时听写功能；谷歌主页新增AI搜索侧边栏；微信12月起强制要求AI短剧提交生成证明\n' +
+    'Url: ' + nov22Dictation + '\nContent Summary: ChatGPT 语音输入升级，实现边说边转写并支持即时修改。',
+  'News Title: Antigravity Flow：让Antigravity直接在浏览器里操作Google Flow制作视频\n' +
+    'Url: ' + nov22Flow + '\nContent Summary: 插件将 Google Flow 接入 Antigravity，扣积分前提示用量，额度不足会暂停。',
+];
+const nov22Body = '## 今日焦点 TOP 10\n\n### 5. ChatGPT 语音输入取消时长限制\n\n[实时听写更新](' + nov22Dictation + ')\n\n' +
+  '## AI 趣闻\n\n### 一键拍片，但积分不够时它会乖乖停下来等你\n\n[插件跑完整流程的演示](' + nov22Flow + ')\n\n';
+const nov22OldFaq = '## **❓ 相关问题**\n\n### ChatGPT 实时听写，要买 Plus 才能用吗？\n\n' +
+  '**先看输入框里的麦克风。** 具体变化看[当天的听写报道](' + nov22Dictation + ')。 能不能用，以账号实际显示和官方说明为准。 开会员不等于能提前收到推送。\n\n';
+const nov22Env = { GITHUB_REPO_OWNER: 'owner', GITHUB_REPO_NAME: 'front', GITHUB_TOKEN: 'fixture-token' };
+const nov22Input = { env: nov22Env, date: '2026-11-22', items: nov22Items };
+function nov22Fetch(calls, opts = {}) {
+  return async (url, options) => {
+    calls.push(url);
+    if (url === 'https://api.github.com/graphql') return new Response(null, { status: 403 });
+    if (url.startsWith('https://api.github.com/repos/owner/front/contents/')) {
+      assert.equal(options.headers.Accept, 'application/vnd.github.raw+json');
+      if (url.includes('/2026-11-19.md') && opts.historyFails) return new Response(null, { status: 503 });
+      if (url.includes('/2026-11-19.md') && opts.missingHistory) return new Response(null, { status: 404 });
+      if (!url.includes('/2026-11-21.md')) return new Response('---\ntitle: 已发布日报\n---\n没有 FAQ');
+      if (opts.otherTopicYesterday) return new Response('---\ntitle: 已发布日报\n---\n## 相关问题\n\n### Claude 能帮我推导物理公式吗？\n\n研究来自 Anthropic。');
+      const other = opts.productUsed ? ' [店铺商品](' + nov22Product + '?ref=daily)。' : '';
+      return new Response('---\ntitle: 已发布日报\n---\n' + nov22OldFaq.replace(nov22Dictation, nov22Dictation + '?utm_source=rss') +
+        '[去店铺前核对资格](' + nov22OldProduct + ')。' + other);
+    }
+    if (url === 'https://news.aivora.cn/ai-daily-release-state.json') return Response.json({
+      version: 1, latest: opts.staleArchive ? '2026-11-20' : '2026-11-21', source: 'a'.repeat(40),
+      articles: Array.from({ length: 7 }, (_, i) => 21 - i).filter(day => day !== 19 || !opts.unpublished)
+        .map(day => `2026-11/2026-11-${day}/index.html`),
+    });
+    if (url === 'https://www.aivora.cn/sitemap.xml')
+      return new Response('<urlset>' + [nov22Catalog, nov22OldProduct, nov22Product].map(x => '<url><loc>' + x + '</loc></url>').join('') + '</urlset>');
+    if (url === nov22Catalog) return new Response('<link rel="canonical" href="' + url + '">' + (opts.sitemapOnly ? '' :
+      '<a href="' + nov22OldProduct + '">ChatGPT Plus 充值续费</a>') + (opts.publicListOnly ? '' : '<a href="' + nov22Product + '">' + nov22ProductName + '</a>'));
+    if (opts.publicListOnly && url === 'https://www.aivora.cn/api/v1/public/products?page=1&page_size=50')
+      return Response.json({ data: [{ slug: nov22Product.split('/').at(-1), title: { 'zh-CN': nov22ProductName }, is_sold_out: false }] });
+    if (opts.sitemapOnly && url === nov22OldProduct) return stockPage(url, 'ChatGPT Plus 充值续费【半价月卡】', '先查半价资格。');
+    if (opts.sitemapOnly && url === nov22OldProduct.replace('/products/', '/api/v1/public/products/'))
+      return detailPage(nov22OldProduct, 'ChatGPT Plus 充值续费【半价月卡】');
+    if (opts.sitemapOnly && url.includes('voice-dictation-faq')) return new Response(
+      '<main>Tap the microphone icon. The transcription can be edited: edit before sending.</main>');
+    if (url === nov22Product) return stockPage(url, nov22ProductName);
+    if (url === nov22Product.replace('/products/', '/api/v1/public/products/')) return Response.json({ data: {
+      slug: url.split('/').at(-1), title: { 'zh-CN': nov22ProductName }, is_sold_out: opts.soldOut === true,
+      skus: [{ is_active: true, is_sold_out: opts.soldOut === true, stock_status: opts.soldOut ? 'out_of_stock' : 'in_stock' }],
+    } });
+    if (url.includes('16287445')) return new Response('<main>在 Google Flow 中使用 AI 点数。</main>');
+    return new Response(null, { status: 503 });
+  };
+}
+
+function stockPage(url, name, extra = '') {
+  return new Response('<link rel="canonical" href="' + url + '"><h1>' + name + '</h1>' + extra +
+    '<script type="application/ld+json">' + JSON.stringify({
+      '@type': 'Product', url, offers: { url, availability: 'https://schema.org/InStock' },
+    }) + '</script>');
+}
+
+function detailPage(productUrl, name) {
+  return Response.json({ data: { slug: productUrl.split('/').at(-1), title: { 'zh-CN': name }, is_sold_out: false,
+    skus: [{ is_active: true, is_sold_out: false, stock_status: 'in_stock' }] } });
+}
+
+async function replayNov22({ fetchImpl, generateContentWithTransportFallback, body = nov22Body, items = nov22Items }) {
+  const shop = await loadDailyShopContext(items, { fetchImpl });
+  return runOptional({
+    loadRecentDailyFaqs: (kv, date, opts) => loadRecentDailyFaqs(kv, date, { ...opts, fetchImpl }),
+    loadDailyFaqSceneContext: (markdown, items, ctx, opts) => loadDailyFaqSceneContext(markdown, items, ctx, { ...opts, fetchImpl }),
+    generateContentWithTransportFallback,
+    withDailyFaqDeadline: task => withDailyFaqDeadline(task, 80),
+  })(body + nov22OldFaq + footer, shop, { ...nov22Input, items });
+}
+
+test('Nov 22 scheduled replay: GraphQL unavailable and yesterday’s topic used, selects today’s verified Antigravity account', async () => {
+  const calls = [];
+  let generated = 0;
+  const result = await replayNov22({ fetchImpl: nov22Fetch(calls),
+    generateContentWithTransportFallback: async () => { generated++; return 'not used'; } });
+  assert.equal(result.debug.dailyFaqHistoryVerified, true);
+  assert.equal(result.debug.dailyFaqSceneTopic, 'Gemini');
+  assert.equal(result.debug.dailyFaqUsedVerifiedFallback, true);
+  assert.equal(result.debug.dailyFaqProductLinks[0].url, nov22Product);
+  assert.ok(result.markdown.startsWith(nov22Body));
+  assert.ok(result.markdown.endsWith(footer));
+  assert.doesNotMatch(result.markdown.slice(nov22Body.length), /ChatGPT 实时听写|半价|买了就能/);
+  assert.match(result.markdown, /别把它当 Flow 点数包买/);
+  assert.equal(calls.filter(url => url.includes('/contents/')).length, 7);
+  assert.equal(calls.includes(nov22OldProduct), false);
+  assert.equal(generated, 0);
+});
+
+test('the verified scene survives a failed, invalid or timed out optional rewrite', async () => {
+  const items = [nov22Items[0], 'News Title: Gemini 图片编辑示例\nUrl: ' + nov22Flow + '\nContent Summary: 演示如何改一张商品图。'];
+  for (const generate of [async () => { throw Error('model unavailable'); }, async () => 'not a FAQ', () => new Promise(() => {})]) {
+    const result = await replayNov22({ items, fetchImpl: nov22Fetch([]), generateContentWithTransportFallback: generate });
+    assert.equal(result.debug.dailyFaqSeparateGenerationAttempted, true);
+    assert.equal(result.debug.dailyFaqUsedVerifiedFallback, true);
+    assert.equal(result.debug.dailyFaqProductLinks[0].url, nov22Product);
+    assert.ok(result.markdown.startsWith(nov22Body));
+    assert.ok(result.markdown.endsWith(footer));
+  }
+});
+
+test('Nov 22 scheduled replay: incomplete history, no stock, used SKU or FAQ-only evidence never invents an offer', async () => {
+  for (const opts of [{ historyFails: true }, { missingHistory: true }, { staleArchive: true }, { soldOut: true }, { productUsed: true }, { onlyFaq: true }]) {
+    const calls = [];
+    const body = opts.onlyFaq ? nov22Body.replace(nov22Flow, nov22Dictation) : nov22Body;
+    let modelCalls = 0;
+    const result = await replayNov22({ body, fetchImpl: nov22Fetch(calls, opts),
+      generateContentWithTransportFallback: async () => { modelCalls++; return ''; } });
+    assert.ok(result.markdown.startsWith(body));
+    assert.ok(result.markdown.endsWith(footer));
+    assert.equal(result.debug.dailyFaqProductLinks.length, 0, JSON.stringify({ opts, debug: result.debug }));
+    assert.equal(modelCalls, 0);
+    assert.doesNotMatch(result.markdown.slice(body.length), /www\.aivora\.cn\/products/);
+    if (opts.productUsed) assert.doesNotMatch(result.markdown.slice(body.length), /ChatGPT 实时听写/);
+    if (opts.historyFails || opts.productUsed || opts.onlyFaq) assert.equal(calls.includes(nov22Product), false);
+  }
+});
+
+test('a genuinely unpublished day is verified by the live archive, and the public catalog covers a hidden item', async () => {
+  const calls = [];
+  const result = await replayNov22({ fetchImpl: nov22Fetch(calls, { missingHistory: true, unpublished: true, publicListOnly: true }),
+    generateContentWithTransportFallback: async () => assert.fail('No model needed for this verified scene') });
+  assert.equal(result.debug.dailyFaqHistoryVerified, true);
+  assert.equal(result.debug.dailyFaqProductLinks[0].url, nov22Product);
+  assert.ok(calls.includes('https://news.aivora.cn/ai-daily-release-state.json'));
+  assert.ok(calls.includes(nov22Product.replace('/products/', '/api/v1/public/products/')));
+});
+
+test('higher-ranked fresh source with a failed official or stock check falls through to a second scene', async () => {
+  const calls = [];
+  const result = await replayNov22({
+    fetchImpl: nov22Fetch(calls, { otherTopicYesterday: true }),
+    generateContentWithTransportFallback: async () => '',
+  });
+  assert.equal(result.debug.dailyFaqOfferCandidatesChecked, 2);
+  assert.ok(calls.includes(nov22OldProduct));
+  assert.equal(result.debug.dailyFaqProductLinks[0].url, nov22Product);
+});
+
+test('a sitemap-only renewal can serve fresh dictation with proof without another model call', async () => {
+  let modelCalls = 0;
+  const result = await replayNov22({
+    fetchImpl: nov22Fetch([], { otherTopicYesterday: true, sitemapOnly: true }),
+    generateContentWithTransportFallback: async () => { modelCalls++; return ''; },
+  });
+  assert.equal(result.debug.dailyFaqProductLinks[0].url, nov22OldProduct);
+  assert.match(result.markdown, /先查半价资格/);
+  assert.equal(modelCalls, 0);
+});
+
+test('an inline FAQ in a news title and the footer divider are not part of the real FAQ', async () => {
+  const body = nov22Body.replace('### 5. ChatGPT 语音输入取消时长限制', '### 5. ChatGPT 发布听写 FAQ');
+  const result = await replayNov22({
+    body, fetchImpl: nov22Fetch([]), generateContentWithTransportFallback: async () => 'invalid',
+  });
+  assert.ok(result.markdown.startsWith(body));
+  assert.equal((result.markdown.match(/^## \*\*❓ 相关问题\*\*$/gm) || []).length, 1);
+  assert.equal(insertStandaloneDailyFaq(body + nov22OldFaq + '---\n' + footer, '## 相关问题\n\n新答案').slice(-(footer.length + 4)), '---\n' + footer);
+});
+
+test('a valid URL cannot label an API relay as official membership or a native account', () => {
+  const relay = { ...context, scene: {
+    ...context.scene, topic: 'Claude', product: { name: 'Claude API 中转', url: nov22Catalog + '/current-relay' },
+  } };
+  const mistaken = raw.replace('Claude Pro 续费', 'Claude 成品号');
+  assert.equal(normalizeStandaloneDailyFaqSection(mistaken, sourceUrl, sourceText, 'Claude', relay), '');
+  const falseClaim = raw.replace('Claude Pro 续费', 'Claude API 中转').replace('已有账号', '想买官网会员');
+  assert.equal(normalizeStandaloneDailyFaqSection(falseClaim, sourceUrl, sourceText, 'Claude', relay), '');
+  const wrongBrand = raw.replace('Claude Pro 续费', 'Gemini Pro 续费');
+  assert.equal(normalizeStandaloneDailyFaqSection(wrongBrand, sourceUrl, sourceText, 'Claude', { ...context, delivery: {} }), '');
+});
+
+async function selectGeminiDelivery(text, products, fetchImpl) {
+  const item = 'News Title: Gemini 编程工作流\nUrl: ' + nov22Flow + '\nContent Summary: ' + text;
+  return loadDailyFaqSceneContext('[Gemini 编程工作流](' + nov22Flow + ')', [item],
+    { catalogUrl: nov22Catalog, topics: ['Gemini'], products, productUrls: products.map(x => x.url) },
+    { verifyDelivery: true, fetchImpl });
+}
+
+test('explicitly denied Antigravity does not match an editor account or block the real relay use', async () => {
+  const relay = { name: 'Gemini API 中转', url: nov22Catalog + '/gemini-api-relay' };
+  const account = { name: nov22ProductName, url: nov22Product };
+  for (const name of [
+    'Gemini Pro 成品号（不含反重力）', 'Gemini Pro account (Antigravity not included)',
+    'Gemini Pro｜成品号【3-12个月 随机发】不包含反重力', 'Gemini Pro account does not come with Antigravity',
+  ]) {
+    const native = await selectGeminiDelivery('用 Antigravity 操作 Google Flow。', [account], async url =>
+      url === account.url ? stockPage(url, name) : new Response('Flow'));
+    assert.equal(native.scene, undefined);
+  }
+  for (const scene of ['调用 Gemini API，不使用 Antigravity。', 'Use Gemini API. Antigravity is not used.']) {
+    const api = await selectGeminiDelivery(scene, [account, relay], async url => {
+      if (url === relay.url) return stockPage(url, relay.name);
+      if (url === relay.url.replace('/products/', '/api/v1/public/products/')) return detailPage(relay.url, relay.name);
+      return new Response(null, { status: 404 });
+    });
+    assert.equal(api.scene.product.url, relay.url);
+    assert.equal(api.scene.useVerifiedCopy, true);
+    const result = await runOptional({ loadDailyFaqSceneContext: async () => api,
+      generateContentWithTransportFallback: async () => '中转可开通 Gemini 手机 App Pro 和 Antigravity' })(nov22Body + nov22OldFaq);
+    assert.equal(result.debug.dailyFaqSeparateGenerationAttempted, false);
+    assert.match(result.markdown, /中转不是官网会员/);
+    assert.doesNotMatch(result.markdown, /手机 App Pro/);
+  }
+});
+
+test('an eligible third available SKU can recover the only verified topic after two failures', async () => {
+  const offers = [1, 2, 3].map(n => ({ name: 'Gemini Pro 成品号 含反重力', url: nov22Catalog + '/gemini-editor-' + n }));
+  const result = await selectGeminiDelivery('用 Antigravity 操作 Google Flow。', offers, async url => {
+    if (url === offers[2].url) return stockPage(url, offers[2].name);
+    if (url === offers[2].url.replace('/products/', '/api/v1/public/products/')) return detailPage(offers[2].url, offers[2].name);
+    return new Response(null, { status: 404 });
+  });
+  assert.equal(result.scene.product.url, offers[2].url);
+  assert.equal(result.delivery.checkedOffers, 3);
+});
+
+test('the source URL is not evidence for an API relay', async () => {
+  const url = 'https://news.example/api/story';
+  const item = `News Title: Claude 网页端读长文\nUrl: ${url}\nContent Summary: 读原文，不使用 API。`;
+  const native = { name: 'Claude Pro 续费', url: nov22Catalog + '/claude-native' };
+  const relay = { name: 'Claude API 中转', url: nov22Catalog + '/claude-relay' };
+  const result = await loadDailyFaqSceneContext(`[Claude 读长文](${url})`, [item], {
+    catalogUrl: nov22Catalog, topics: ['Claude'], products: [relay, native], productUrls: [relay.url, native.url],
+  }, { verifyDelivery: true, fetchImpl: async where => {
+    if (where === native.url) return stockPage(native.url, native.name);
+    if (where === native.url.replace('/products/', '/api/v1/public/products/')) return detailPage(native.url, native.name);
+    return new Response(null, { status: 404 });
+  }});
+  assert.equal(result.scene.product.url, native.url);
+});
+
+test('a multi-news summary does not transfer another product’s coding or enterprise terms into a cited Gemini FAQ', async () => {
+  const url = 'https://news.example/nov24';
+  const item = `News Title: Gemini 提供 GIF；另一家上线 Coding Plan\nUrl: ${url}\nContent Summary: Gemini 新增 GIF。另一家发布 Enterprise API。`;
+  const heading = '**Gemini 的 GIF 生成功能，免费用户能用吗？**';
+  const markdown = `## 今日焦点\n\n[报道的 GIF 功能](${url})。\n\n## 相关问题\n\n${heading}\n\n[这条报道](${url})提到各地逐步开放，不能拿购买会员替代地区条件。`;
+  const native = { name: 'Gemini Pro 成品号', url: nov22Catalog + '/gemini-native' };
+  const relay = { name: 'Gemini API 中转', url: nov22Catalog + '/gemini-relay' };
+  const result = await loadDailyFaqSceneContext(markdown, [item], {
+    catalogUrl: nov22Catalog, topics: ['Gemini'], products: [relay, native], productUrls: [relay.url, native.url],
+  }, { verifyDelivery: true, fetchImpl: async where => {
+    if (where === native.url) return stockPage(native.url, native.name);
+    if (where === native.url.replace('/products/', '/api/v1/public/products/')) return detailPage(native.url, native.name);
+    return new Response(null, { status: 404 });
+  }});
+  assert.equal(result.scene.product.url, native.url);
+  assert.ok(result.delivery.fallback.includes(heading));
+  assert.match(result.delivery.fallback, /购买不改变地区限制或开放进度/);
+});
 
 test('optional fetch, model, invalid-output and deadline failures leave the ready article unchanged', async () => {
   const ready = article + oldFaq + footer;
