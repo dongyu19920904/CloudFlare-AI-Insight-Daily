@@ -78,6 +78,7 @@ test('one seven-date GitHub read uses the published merchandise, including manua
   const faq = oldFaq.replace('Plus 账号通常享有更优先的功能推送节奏。', `[验证商品](${halfPrice}?ref=news\n "Offer")。`);
   const history = await loadRecentDailyFaqs(null, '2026-11-22', { env, fetchImpl: async (url, options) => {
     requests++;
+    assert.equal(options.redirect, 'manual');
     if (url === 'https://news.aivora.cn/ai-daily-release-state.json') return Response.json({
       version: 1, latest: '2026-11-21', source: 'a'.repeat(40), articles: Array.from({ length: 7 }, (_, i) =>
         `2026-11/2026-11-${21 - i}/index.html`),
@@ -105,6 +106,7 @@ test('published history follows the manifest source and the pinned Nov 23 archiv
   const reads = [];
   const entry = (date, product) => `---\ntitle: edition\n---\n## \u76f8\u5173\u95ee\u9898\n\n### ChatGPT ${date}?\n\n[Offer](${product})\n`;
   const history = await loadRecentDailyFaqs(null, '2026-11-25', { env, fetchImpl: async (url, options) => {
+    assert.equal(options.redirect, 'manual');
     if (url === 'https://news.aivora.cn/ai-daily-release-state.json') return Response.json({
       version: 1, latest: '2026-11-24', source: revision,
       articles: ['2026-11/2026-11-24/index.html', '2026-11/2026-11-23/index.html'],
@@ -125,6 +127,29 @@ test('published history follows the manifest source and the pinned Nov 23 archiv
   assert.deepEqual(history.map(({ date, productUrls }) => [date, productUrls[0]]), [
     ['2026-11-23', halfPrice], ['2026-11-24', 'https://www.aivora.cn/products/other'],
   ]);
+});
+
+test('FAQ history does not use a redirect as publication evidence or follow it with credentials', async () => {
+  const env = { GITHUB_TOKEN: 'fixture-token', GITHUB_REPO_OWNER: 'owner', GITHUB_REPO_NAME: 'front' };
+  const calls = [];
+  const location = 'https://other.example/redirect-target';
+  const redirect = () => new Response(null, { status: 302, headers: { Location: location } });
+  const verify = async serveManifest => loadRecentDailyFaqs(null, '2026-11-25', { env, fetchImpl: async (url, options) => {
+    calls.push(url);
+    assert.equal(options.redirect, 'manual');
+    assert.notEqual(url, location);
+    if (serveManifest && url === 'https://news.aivora.cn/ai-daily-release-state.json') return Response.json({
+      version: 1, latest: '2026-11-24', source: 'a'.repeat(40), articles: ['2026-11/2026-11-24/index.html'],
+    });
+    return redirect();
+  } });
+  assert.equal(await verify(false), null);
+  assert.equal(calls.length, 1);
+  calls.length = 0;
+  assert.equal(await verify(true), null);
+  assert.equal(calls.length, 3);
+  assert.ok(calls[1].startsWith('https://api.github.com/graphql'));
+  assert.ok(calls[2].startsWith('https://api.github.com/repos/'));
 });
 
 test('unverifiable history still permits a factual answer, not a paid-priority claim or store request', async () => {

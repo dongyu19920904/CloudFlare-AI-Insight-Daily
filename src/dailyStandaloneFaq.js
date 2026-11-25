@@ -69,8 +69,9 @@ async function getPublishedFaqFiles(dateStr, fetchImpl) {
   try {
     const today = Date.parse(`${dateStr}T00:00:00Z`);
     const dates = Array.from({ length: 7 }, (_, index) => new Date(today - (index + 1) * 86400000).toISOString().slice(0, 10));
+    // Workers rejects redirect: 'error'. Manual mode keeps redirects untrusted (response.ok rejects 3xx).
     const response = await fetchImpl(PUBLISHED_ARCHIVE_URL, {
-      signal: AbortSignal.timeout(1600), redirect: 'error', headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(1600), redirect: 'manual', headers: { 'Cache-Control': 'no-cache' },
     });
     if (!response.ok) return null;
     const state = await response.json();
@@ -97,7 +98,7 @@ async function loadPublishedFaqHistory(env, files, fetchImpl) {
     const response = await fetchImpl('https://api.github.com/graphql', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'Cloudflare-Worker-ContentBot/1.0' },
-      redirect: 'error',
+      redirect: 'manual',
       signal: AbortSignal.timeout(2300),
       body: JSON.stringify({
         query: `query RecentFaqs($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${queries.join(' ')} } }`,
@@ -132,7 +133,7 @@ async function loadPublishedFaqHistoryViaContents(env, files, fetchImpl) {
     };
     const read = async ({ date, path, ref }) => {
       const response = await fetchImpl(`${root}/${path}?ref=${ref}`,
-        { headers, signal, redirect: 'error' });
+        { headers, signal, redirect: 'manual' });
       if (!response.ok) throw new Error('Published FAQ history could not be verified');
       const markdown = await response.text();
       if (!/^---\r?\n/.test(markdown)) throw new Error('Published FAQ history was not Markdown');
