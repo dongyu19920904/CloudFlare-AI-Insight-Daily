@@ -15,7 +15,7 @@ test('sends a single publication notification to the configured AI Daily fronten
     called++;
     assert.equal(url, 'https://api.github.com/repos/dongyu19920904/Hextra-AI-Insight-Daily/dispatches');
     assert.equal(request.method, 'POST');
-    assert.equal(request.redirect, 'error');
+    assert.equal(request.redirect, 'manual');
     assert.deepEqual(JSON.parse(request.body), { event_type: 'ai-daily-report-ready', client_payload: { date: '2026-11-24' } });
     return new Response(null, { status: 204 });
   });
@@ -30,6 +30,17 @@ test('notification failure leaves publication to the regular Pages schedule, wit
   const unavailable = await notifyDailyPages(approved, '2026-11-24', async () => { called++; throw new Error('network'); });
   assert.deepEqual(unavailable, { sent: false, reason: 'notification-unavailable' });
   assert.equal(called, 2);
+});
+
+test('a redirected notification is rejected without sending credentials to a second URL', async () => {
+  const urls = [];
+  const result = await notifyDailyPages(approved, '2026-11-26', async (url, options) => {
+    urls.push(url);
+    assert.equal(options.redirect, 'manual');
+    return new Response(null, { status: 302, headers: { Location: 'https://other.example/' } });
+  });
+  assert.deepEqual(urls, ['https://api.github.com/repos/dongyu19920904/Hextra-AI-Insight-Daily/dispatches']);
+  assert.deepEqual(result, { sent: false, reason: 'http-error', status: 302 });
 });
 
 test('cannot notify another project, branch or invalid date', async () => {

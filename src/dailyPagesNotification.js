@@ -33,7 +33,8 @@ export async function notifyDailyPages(env, date, fetchImpl = fetch) {
         'User-Agent': 'AivoraDailyPublication/1.0',
       },
       body: JSON.stringify({ event_type: DISPATCH_TYPE, client_payload: { date } }),
-      redirect: 'error',
+      // Workers rejects 'error'; surface redirects as non-204 without following them.
+      redirect: 'manual',
       signal: AbortSignal.timeout(2200),
     });
     return response.status === 204 ? { sent: true } : { sent: false, reason: 'http-error', status: response.status };
