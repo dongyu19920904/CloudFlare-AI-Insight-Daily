@@ -1761,6 +1761,7 @@ async function generateDailyMarkdown(env, dateStr, selectedContentItems, mediaCa
                 debugInfo.dailyFaqProductLinkRequests = linkedFaq.requests;
                 debugInfo.dailyFaqProductLinkSkipped = linkedFaq.skipped;
                 debugInfo.dailyFaqUsedVerifiedFallback = linkedFaq.usedFallback === true;
+                debugInfo.dailyFaqUsedSourceFallback = linkedFaq.usedSourceFallback === true;
             } else {
                 debugInfo.dailyFaqFailedStage = 'final-publication-check';
             }

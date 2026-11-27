@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { buildStandaloneDailyFaqPromptInput, normalizeStandaloneDailyFaqSection,
   insertStandaloneDailyFaq, withDailyFaqDeadline, getStandaloneDailyFaqSystemPrompt,
-  loadRecentDailyFaqs, rememberPublishedDailyFaq, isRepeatedDailyFaq } from '../src/dailyStandaloneFaq.js';
+  loadRecentDailyFaqs, rememberPublishedDailyFaq, isRepeatedDailyFaq, DAILY_FAQ_SECTION } from '../src/dailyStandaloneFaq.js';
 import { finalizeDailyShopFaq, ensureDailyFaqProductLinks, loadDailyFaqSceneContext, loadDailyShopContext } from '../src/dailyShopFaq.js';
 
 const sourceUrl = 'https://github.com/example/skills';
@@ -492,6 +492,117 @@ test('offer-check timeout still de-duplicates a repeated original FAQ using the 
   assert.equal(result.debug.dailyFaqFailedStage, 'offer-checks');
   assert.equal(result.debug.dailyFaqProductLinkSkipped[0].reason, 'repeated-faq');
   assert.equal(result.markdown, article + footer);
+});
+
+const editorialRepo = 'https://github.com/example/cli-bridge';
+const editorialReport = [
+  '## **今日焦点 TOP 10**', '', '### 1. 一款应用宣布调整维护方式', '',
+  '据[本次更新](https://example.org/update)，该应用支持把外部插件迁移到独立接口。', '',
+  '## **⌘ 开源 TOP 项目**', '', '### example/cli-bridge：把命令行工具接给 Agent', '',
+  `**项目提供一套接口，把已有命令行工具交给 Agent 调用。** [项目地址](${editorialRepo})里给出了接口和用法。`, '',
+].join('\n');
+
+test('a missing commercial scene still publishes a sourced FAQ without a model or extra fetch', async () => {
+  const noRequest = () => assert.fail('Editorial fallback must not make a remote request');
+  const result = await runOptional({
+    loadDailyFaqSceneContext,
+    ensureDailyFaqProductLinks: (markdown, ctx) => ensureDailyFaqProductLinks(markdown, ctx, { fetchImpl: noRequest }),
+    generateContentWithTransportFallback: noRequest,
+  })(editorialReport, { catalogUrl: nov22Catalog, topics: ['Gemini'] });
+  const faq = result.markdown.match(DAILY_FAQ_SECTION)?.[0];
+  assert.match(faq, /cli-bridge 适合拿来做什么/);
+  assert.ok(faq.includes(editorialRepo));
+  assert.match(faq, /把已有命令行工具交给 Agent 调用/);
+  assert.doesNotMatch(faq, /aivora\.cn/);
+  assert.equal(result.markdown.replace(DAILY_FAQ_SECTION, '').trimEnd(), editorialReport.trimEnd());
+  assert.equal(result.debug.dailyFaqSeparateGenerationAttempted, false);
+  assert.equal(result.debug.dailyFaqProductLinkSkipped[0].reason, 'no-fresh-published-source');
+  assert.equal(result.debug.dailyFaqUsedSourceFallback, true);
+});
+
+test('an already published question is replaced only using another cited item', async () => {
+  const history = [{ question: 'cli-bridge 适合拿来做什么？', sourceUrls: [editorialRepo] }];
+  const raw = editorialReport + `\n## 相关问题\n\n### cli-bridge 适合拿来做什么？\n\n[项目地址](${editorialRepo})。\n`;
+  const result = await ensureDailyFaqProductLinks(raw, { delivery: { reason: 'no-fresh-published-source' }, recentFaqs: history });
+  const faq = result.markdown.match(DAILY_FAQ_SECTION)?.[0];
+  assert.ok(faq.includes('https://example.org/update'));
+  assert.ok(!faq.includes(editorialRepo));
+  assert.match(faq, /把外部插件迁移到独立接口/);
+  assert.equal(result.skipped[0].reason, 'repeated-faq');
+  assert.equal(result.markdown.replace(DAILY_FAQ_SECTION, '').trimEnd(), editorialReport.trimEnd());
+});
+
+test('a healthy FAQ is preserved and no FAQ is invented from an uncited or store-only item', async () => {
+  const delivery = { delivery: { reason: 'verified-catalog-unavailable' } };
+  const valid = editorialReport + `\n## 相关问题\n\n### 如何核对工具能不能接？\n\n按[项目说明](${editorialRepo})列出的接口先试一个小任务。\n`;
+  assert.equal((await ensureDailyFaqProductLinks(valid, delivery)).markdown, valid);
+  const weak = '## 今日焦点 TOP 10\n\n### 1. 新工具发布\n\n**连上已有工具前，需要先确认输入和输出格式。** ' +
+    '[店铺](https://www.aivora.cn/products/missing) [坏链接](https://bad%zz.test/)';
+  assert.equal((await ensureDailyFaqProductLinks(weak, delivery)).markdown, weak);
+});
+
+test('a repository answer uses the titled repository and excludes known subpaths', async () => {
+  const oneProject = `## 开源 TOP 项目\n\n### example/cli-bridge：把命令行工具接给 Agent\n\n[依赖]` +
+    `(${editorialRepo}/blob/main/README.md)。项目提供一套接口，把已有命令行工具交给 Agent 调用。 [仓库](${editorialRepo})。`;
+  const delivery = { delivery: { reason: 'no-fresh-published-source' } };
+  const chosen = await ensureDailyFaqProductLinks(oneProject, delivery);
+  const faq = chosen.markdown.match(DAILY_FAQ_SECTION)?.[0];
+  assert.match(faq, /cli-bridge 适合拿来做什么/);
+  assert.ok(faq.includes(editorialRepo));
+  assert.doesNotMatch(faq, /blob\/main/);
+  const known = [{ question: '这个命令行插件是什么？', sourceUrls: ['https://github.com/Example/CLI-Bridge/blob/main/README.md'] }];
+  assert.equal((await ensureDailyFaqProductLinks(oneProject, { ...delivery, recentFaqs: known })).markdown, oneProject);
+  const mismatched = oneProject.replace(` [仓库](${editorialRepo})。`, '');
+  assert.equal((await ensureDailyFaqProductLinks(mismatched, delivery)).markdown, mismatched);
+});
+
+test('a dependency capability cannot become the FAQ for the titled repository', async () => {
+  const dependencies = `## 开源 TOP 项目\n\n### example/cli-bridge：命令行桥接\n\n` +
+    `[SDK](https://github.com/example/sdk) 支持批量并发运行多个进程。 [项目仓库](${editorialRepo})。`;
+  const result = await ensureDailyFaqProductLinks(dependencies, { delivery: { reason: 'no-fresh-published-source' } });
+  assert.equal(result.markdown, dependencies);
+});
+
+test('different URLs do not permit the same tool and FAQ theme', async () => {
+  const article = '## 开源 TOP 项目\n\n### example/claude-bridge：Claude 编程工作流\n\n' +
+    '**该项目提供一套可复用的 Claude 工作流。** [仓库](https://github.com/example/claude-bridge)。';
+  const result = await ensureDailyFaqProductLinks(article, {
+    delivery: { reason: 'no-fresh-published-source' },
+    recentFaqs: [{ topic: 'Claude', theme: 'workflow', question: 'Claude 工作流从哪里开始？', sourceUrls: ['https://example.org/other'] }],
+  });
+  assert.equal(result.markdown, article);
+});
+
+test('the seven-day topic check includes every tool in both current and published questions', async () => {
+  const delivery = { delivery: { reason: 'no-fresh-published-source' } };
+  const article = '## 开源 TOP 项目\n\n### example/toolkit：Claude 与 ChatGPT 工作流\n\n' +
+    '该项目支持把 Claude 工作流的提示词导出到 ChatGPT。 [仓库](https://github.com/example/toolkit)。';
+  const different = '## 开源 TOP 项目\n\n### example/bridge：Claude 工作流迁移工具\n\n' +
+    '该项目支持把 Claude 工作流的指令复制到另一台电脑。 [仓库](https://github.com/example/bridge)。';
+  const fresh = await ensureDailyFaqProductLinks(article, delivery);
+  const question = fresh.markdown.match(DAILY_FAQ_SECTION)?.[0].match(/^### (.+)$/m)?.[1];
+  assert.ok(question?.includes('Claude') && question.includes('ChatGPT') && question.includes('工作流'));
+  const histories = [
+    [article, { topic: 'Claude', question: 'Claude 工作流从哪里开始？' }],
+    [different, { topic: 'ChatGPT', question }],
+  ];
+  for (const [draft, entry] of histories) {
+    const result = await ensureDailyFaqProductLinks(draft, { ...delivery, recentFaqs: [{ ...entry, theme: 'workflow' }] });
+    assert.equal(result.markdown, draft);
+  }
+});
+
+test('fallback skips boilerplate answers, unsupported clauses, and ambiguous headline citations', async () => {
+  const delivery = { delivery: { reason: 'no-fresh-published-source' } };
+  const head = '## 今日焦点 TOP 10\n\n### 1. 一个前端工具发布新版\n\n';
+  const ambiguous = head + '据[原文](https://example.org/one)，新版支持将插件迁到接口。 [另一出处](https://example.org/two)。';
+  const detached = head + '新版支持将插件迁到新的独立接口。 详情请看[原文](https://example.org/more)。';
+  const moreReading = head + '据[发布方](https://example.org/press)，本次发布提供了更多资料供读者查阅。';
+  const empty = '## 开源 TOP 项目\n\n### example/cli-bridge：把命令行工具接给 Agent\n\n' +
+    `请看发布方说明，细节以[项目仓库](${editorialRepo})为准。`;
+  for (const text of [ambiguous, detached, moreReading, empty]) {
+    assert.equal((await ensureDailyFaqProductLinks(text, delivery)).markdown, text);
+  }
 });
 
 test('published FAQ history excludes today, survives month rollover and treats failures as optional', async () => {

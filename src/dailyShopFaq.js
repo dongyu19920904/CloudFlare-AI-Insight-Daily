@@ -1,8 +1,8 @@
 import { DAILY_AIVORA_FAQ_CTA } from './dailySectionSanitizer.js';
 import { parseAivoraSitemapUrls } from './opportunityAivoraLinkPolicy.js';
 import { stripHtml } from './helpers.js';
-import { DAILY_FAQ_SECTION, getDailyFaqTheme, matchesDailyFaqTopic, isDailyFaqPrimarySource, isRepeatedDailyFaq, insertStandaloneDailyFaq } from './dailyStandaloneFaq.js';
-import { extractDailyMarkdownLinks } from './dailyMarkdownItems.js';
+import { DAILY_FAQ_SECTION, getDailyFaqTheme, matchesDailyFaqTopic, isDailyFaqPrimarySource, isRepeatedDailyFaq, insertStandaloneDailyFaq, normalizeStandaloneDailyFaqSection } from './dailyStandaloneFaq.js';
+import { dailyInlineLinkRanges, extractDailyMarkdownLinks, extractNumberedDailyItems } from './dailyMarkdownItems.js';
 import { dailyMediaSourceKey } from './dailySourceMedia.js';
 
 const SITEMAP_URL = 'https://www.aivora.cn/sitemap.xml';
@@ -356,6 +356,85 @@ export function finalizeDailyShopFaq(markdown, context = {}) {
   return content.slice(0, faq.index) + cleanedFaq + content.slice(faq.index + faq[0].length);
 }
 
+function faqRepositoryKey(url) {
+  const source = new URL(url);
+  if (!['github.com', 'www.github.com', 'raw.githubusercontent.com'].includes(source.hostname)) return '';
+  return source.pathname.match(/^\/([\w.-]+\/[\w.-]+)(?:\/|$)/u)?.[1].toLowerCase() || '';
+}
+
+function editorialFaqSourceKey(url) {
+  const key = dailyMediaSourceKey(url);
+  if (!key) return '';
+  const repository = faqRepositoryKey(url);
+  return repository ? `github:${repository}` : key;
+}
+
+function restoreSourceOnlyFaq(result, history = []) {
+  if (DAILY_FAQ_SECTION.test(result.markdown)) return result;
+  const sections = [...result.markdown.matchAll(/^##[ \t]+([^\r\n]+)\r?\n([\s\S]*?)(?=^##[ \t]+|(?![\s\S]))/gm)];
+  const projectBody = sections.find(([, heading]) => /开源\s*TOP\s*项目/i.test(heading))?.[2] || '';
+  const topBody = sections.find(([, heading]) => /今日焦点.*\bTOP\b/i.test(heading))?.[2] || '';
+  const projects = [...projectBody.matchAll(/^###[ \t]+([^\r\n]+)\r?\n([\s\S]*?)(?=^###[ \t]+|(?![\s\S]))/gm)]
+    .map(([, title, body]) => ({ title, body, project: true }));
+  const usedSources = new Set(history.flatMap(item => item.sourceUrls || []).map(editorialFaqSourceKey));
+  const plain = text => text.replace(/[`*_]/g, '').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '')
+    .replace(/[\t ]+/g, ' ').trim();
+
+  for (const item of [...projects, ...extractNumberedDailyItems(topBody)]) {
+    const repository = item.project ? item.title.trim().replace(/^\*\*|\*\*$/g, '')
+      .match(/^([\w.-]+\/[\w.-]+)(?:[ \t：:]|$)/u)?.[1] : '';
+    if (item.project && !repository) continue;
+    const paragraph = item.body.trimStart().split(/\r?\n[ \t]*\r?\n/, 1)[0];
+    const ranges = dailyInlineLinkRanges(paragraph);
+    const references = [...ranges.filter(link => !link.image).map(link => link.url), item.headingLink?.url].filter(Boolean);
+    const url = references.find(value => {
+      if (!/^https:\/\/[^\s()<>\\"']+$/i.test(value)) return false;
+      try {
+        const source = new URL(value);
+        if (source.username || source.password || /(?:^|\.)aivora\.cn$/i.test(source.hostname)) return false;
+        return !item.project || (source.hostname === 'github.com' && /^\/[^/]+\/[^/]+\/?$/.test(source.pathname) &&
+          faqRepositoryKey(value) === repository.toLowerCase());
+      } catch { return false; }
+    });
+    const sourceKey = editorialFaqSourceKey(url);
+    // Multiple independent citations make it unsafe to attribute a detached sentence to one source.
+    if (!sourceKey || usedSources.has(sourceKey) || references.some(ref => editorialFaqSourceKey(ref) !== sourceKey)) continue;
+
+    const headline = plain(item.title);
+    if (!headline || headline.length > 72 || /[<>{}\[\]?#！？]|融资|股价|估值|财报|对冲|押注|预测市场/.test(headline)) continue;
+
+    // A TOP answer must come from the sentence with the citation (or the linked headline's prose).
+    const cited = '\u0000';
+    const prose = ranges.reduceRight((text, { start, end, image, url: inlineUrl }) => {
+      const mark = !image && inlineUrl === url ? cited : ' ';
+      return text.slice(0, start) + mark + text.slice(end);
+    }, paragraph);
+    const sentences = plain(prose).split(/(?<=[。！？])/u)
+      .filter(text => item.project || url === item.headingLink?.url || text.includes(cited))
+      .map(text => text.replaceAll(cited, '').trim().replace(/^(?:据\s*[，,]|[，,：:、])+\s*/u, ''));
+    const fact = sentences.find(text => text.length >= 12 && text.length <= 126 &&
+      /支持|实现|用于|用来|能够|允许|拆成|新增|修复|提供[^。！？]{0,24}(?:\bAPI\b|接口|插件|工具|模型|工作流|脚本|组件)/i.test(text) &&
+      !/[<>{}\[\]\\]|https?:\/\/|星标|Stars|今日新增|供.{0,6}(?:查阅|参考|阅读)|(?:详情|细节).{0,12}(?:看|见|以).{0,3}原文/i.test(text));
+    if (!fact) continue;
+    const themeText = `${headline}\n${fact}`;
+    const topics = TOPICS.filter(({ pattern }) => pattern.test(themeText));
+    const theme = getDailyFaqTheme(themeText);
+    const topical = theme && topics.length > 0;
+    // Published history is rebuilt from question text; keep the same subject and theme visible there.
+    if (topical && (getDailyFaqTheme(headline) !== theme || topics.some(({ pattern }) => !pattern.test(headline)))) continue;
+    const question = item.project && !topical ? `${repository.split('/')[1]} 适合拿来做什么？` : `「${headline}」主要讲了什么？`;
+    if (isRepeatedDailyFaq(question, '', history) || (topical && history.some(entry => entry.theme === theme &&
+      topics.some(({ pattern }) => pattern.test(`${entry.topic || ''}\n${entry.question || ''}`))))) continue;
+    const line = /[。！？]$/u.test(fact) ? fact : `${fact}。`;
+    const label = item.project ? '项目仓库' : '本期引用的原文';
+    const answer = `本期提到：${line} 具体范围可查[${label}](${url})，再判断是否适合手头的任务。`;
+    const draft = `## **❓ 相关问题**\n\n### ${question}\n\n${answer}`;
+    const faq = normalizeStandaloneDailyFaqSection(draft, url, `${item.title}\n${paragraph}`);
+    if (faq) return { ...result, markdown: insertStandaloneDailyFaq(result.markdown, faq), usedSourceFallback: true };
+  }
+  return result;
+}
+
 // Product delivery is a final FAQ field, not a second model's optional writing task.
 export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetchImpl = fetch, timeoutMs = 1500 } = {}) {
   const content = String(markdown || '');
@@ -371,12 +450,13 @@ export async function ensureDailyFaqProductLinks(markdown, context = {}, { fetch
         const used = new Set(context.recentFaqs.flatMap(item => item.sourceUrls || []).map(dailyMediaSourceKey));
         if (isRepeatedDailyFaq(question, topic, context.recentFaqs) ||
             extractDailyMarkdownLinks(section[0]).some(({ url }) => used.has(dailyMediaSourceKey(url)))) {
-          return { ...result, markdown: content.slice(0, section.index) + content.slice(section.index + section[0].length),
-            skipped: [{ reason: 'repeated-faq', offerReason: reason }] };
+          return restoreSourceOnlyFaq({ ...result,
+            markdown: content.slice(0, section.index) + content.slice(section.index + section[0].length),
+            skipped: [{ reason: 'repeated-faq', offerReason: reason }] }, context.recentFaqs);
         }
       }
       const safe = await ensureDailyFaqProductLinks(content, { ...context, delivery: null, faqHistoryUnavailable: true }, { fetchImpl, timeoutMs });
-      return { ...safe, markdown: finalizeDailyShopFaq(safe.markdown), skipped: [{ reason }] };
+      return restoreSourceOnlyFaq({ ...safe, markdown: finalizeDailyShopFaq(safe.markdown), skipped: [{ reason }] }, context.recentFaqs);
     }
     const { product, topic, sourceUrl } = context.scene;
     const links = extractDailyMarkdownLinks(section?.[0] || '');
