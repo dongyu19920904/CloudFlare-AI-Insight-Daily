@@ -3129,7 +3129,8 @@ export async function handleScheduledDaily(event, env, ctx, specifiedDate = null
     }
     publicationMarkdown = normalizeDailyPagesVideos(publicationMarkdown);
     await commitDailyOutputs(env, dateStr, publicationMarkdown);
-    if (!specifiedDate) {
+    // The cron backup passes a resolved date, not a manual date override.
+    if (!specifiedDate || event?.cron) {
         debugInfo.dailyPagesNotification = await notifyDailyPages(env, dateStr);
         if (!debugInfo.dailyPagesNotification.sent) {
             console.warn('[Scheduled][Daily] Pages notification unavailable; the Pages schedule remains the fallback.');
